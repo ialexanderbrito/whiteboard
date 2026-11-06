@@ -1,0 +1,31 @@
+{
+  "rules": {
+    "presence": {
+      "$boardId": {
+        ".read": "auth != null",
+        "$userId": {
+          ".write": "auth != null && auth.uid === $userId",
+          ".validate": "newData.hasChildren(['userId', 'name', 'color'])",
+          "userId": {
+            ".validate": "newData.val() === auth.uid"
+          },
+          "name": {
+            ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 50"
+          },
+          "color": {
+            ".validate": "newData.isString() && newData.val().matches(/^#[0-9a-fA-F]{6}$/)"
+          },
+          "cursor": {
+            ".validate": "newData.val() === null || (newData.hasChildren(['x', 'y']) && newData.child('x').isNumber() && newData.child('y').isNumber())"
+          },
+          "selectedElementId": {
+            ".validate": "newData.val() === null || newData.isString()"
+          },
+          "lastSeen": {
+            ".validate": "newData.val() === null || newData.isNumber()"
+          }
+        }
+      }
+    }
+  }
+}

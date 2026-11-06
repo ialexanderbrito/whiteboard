@@ -1,0 +1,45 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Função auxiliar: usuário logado (Google ou Convidado anônimo)
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Coleção de quadros (/boards/{boardId})
+    match /boards/{boardId} {
+      // Qualquer membro do time pode visualizar quadros compartilhados
+      allow read: if isAuthenticated();
+      
+      // Criação: exige usuário autenticado e registro do ownerId
+      allow create: if isAuthenticated() 
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0;
+      
+      // Atualização de título ou metadados
+      allow update: if isAuthenticated();
+      
+      // Apenas o criador/dono do quadro tem permissão para excluí-lo
+      allow delete: if isAuthenticated() && resource.data.ownerId == request.auth.uid;
+      
+      // Subcoleção de elementos do canvas (/boards/{boardId}/elements/{elementId})
+      match /elements/{elementId} {
+        // Leitura em tempo real para todos na sala
+        allow read: if isAuthenticated();
+        
+        // Criação e edição com validação de tipo e coordenadas
+        allow create, update: if isAuthenticated()
+          && request.resource.data.updatedBy == request.auth.uid
+          && request.resource.data.type in ['sticky', 'rect', 'circle', 'text', 'arrow', 'line', 'pen']
+          && request.resource.data.x is number
+          && request.resource.data.y is number;
+        
+        // Qualquer membro pode remover elementos no fluxo de colaboração
+        allow delete: if isAuthenticated();
+      }
+    }
+  }
+}
