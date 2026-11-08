@@ -6,15 +6,19 @@ import type { CanvasElement } from '../../types/element';
 interface FreeDrawItemProps {
   element: CanvasElement;
   isSelected: boolean;
+  userSelectionColor?: string;
   remoteSelector?: { name: string; color: string };
+  draggable?: boolean;
   onSelect: (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => void;
   onChange: (updates: Partial<CanvasElement>) => void;
 }
 
-export const FreeDrawItem: React.FC<FreeDrawItemProps> = ({
+export const FreeDrawItem: React.FC<FreeDrawItemProps> = React.memo(({
   element,
   isSelected,
+  userSelectionColor = '#0284c7',
   remoteSelector,
+  draggable,
   onSelect,
   onChange,
 }) => {
@@ -22,6 +26,7 @@ export const FreeDrawItem: React.FC<FreeDrawItemProps> = ({
   const points = element.points || [];
   const stroke = element.stroke || '#0f172a';
   const strokeWidth = element.strokeWidth || 3;
+  const isItemDraggable = draggable !== undefined ? draggable && !element.locked : !element.locked;
 
   return (
     <Group
@@ -29,7 +34,7 @@ export const FreeDrawItem: React.FC<FreeDrawItemProps> = ({
       id={element.id}
       x={element.x}
       y={element.y}
-      draggable
+      draggable={isItemDraggable}
       onClick={onSelect}
       onTap={onSelect}
       onDragEnd={(e) => {
@@ -51,28 +56,50 @@ export const FreeDrawItem: React.FC<FreeDrawItemProps> = ({
         onChange({
           x: Math.round(node.x()),
           y: Math.round(node.y()),
-          points: scaledPoints,
+          points: scaledPoints.map(p => Math.round(p)),
           rotation: Math.round(node.rotation()),
         });
       }}
     >
+      {/* Halo de seleção (remota ou local) por trás do traço real */}
+      {(remoteSelector || isSelected) && (
+        <Line
+          points={points}
+          stroke={remoteSelector ? remoteSelector.color : userSelectionColor}
+          strokeWidth={strokeWidth + 5}
+          opacity={0.3}
+          tension={0.4}
+          lineCap="round"
+          lineJoin="round"
+          listening={false}
+          perfectDrawEnabled={false}
+          shadowForStrokeEnabled={false}
+        />
+      )}
+
+      {/* Traço real com cor e espessura originais / atualizadas em tempo real */}
       <Line
         points={points}
-        stroke={remoteSelector ? remoteSelector.color : isSelected ? '#3b82f6' : stroke}
-        strokeWidth={remoteSelector ? strokeWidth + 2 : isSelected ? strokeWidth + 1 : strokeWidth}
+        stroke={stroke}
+        strokeWidth={strokeWidth}
+        opacity={element.opacity ?? 1}
         tension={0.4}
         lineCap="round"
         lineJoin="round"
-        hitStrokeWidth={18}
+        hitStrokeWidth={Math.max(16, strokeWidth + 8)}
+        perfectDrawEnabled={false}
+        shadowForStrokeEnabled={false}
       />
 
+      {/* Tag do colega que está com o traço selecionado */}
       {remoteSelector && points.length >= 2 && (
-        <Group x={points[0]} y={points[1] - 22}>
+        <Group x={points[0]} y={points[1] - 24} listening={false}>
           <Rect
             fill={remoteSelector.color}
-            height={18}
-            width={Math.max(60, remoteSelector.name.length * 8.5)}
+            height={20}
+            width={Math.max(60, remoteSelector.name.length * 9)}
             cornerRadius={[4, 4, 0, 0]}
+            listening={false}
           />
           <Text
             text={remoteSelector.name}
@@ -80,10 +107,13 @@ export const FreeDrawItem: React.FC<FreeDrawItemProps> = ({
             fontSize={11}
             fontStyle="bold"
             x={6}
-            y={3}
+            y={4}
+            listening={false}
           />
         </Group>
       )}
     </Group>
   );
-};
+});
+
+FreeDrawItem.displayName = 'FreeDrawItem';
