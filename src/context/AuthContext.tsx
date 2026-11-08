@@ -17,6 +17,7 @@ interface AuthContextType {
   isConfigured: boolean;
   signInWithGoogle: () => Promise<void>;
   signInAsGuest: (name: string) => Promise<void>;
+  updateGuestProfile: (name: string, color?: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -115,6 +116,52 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   };
 
+  const updateGuestProfile = async (name: string, color?: string) => {
+    if (!currentUser) return;
+
+    const isGoogleAccount = !currentUser.isAnonymous;
+    // Usuários com conta Google mantêm sempre o nome oficial da conta Google
+    const effectiveName = isGoogleAccount ? currentUser.displayName : (name.trim() || currentUser.displayName);
+    const userColor = color || currentUser.color || getSavedColor();
+
+    if (color) {
+      localStorage.setItem(COLOR_STORAGE_KEY, color);
+    }
+
+    if (!isFirebaseConfigured || !auth || !auth.currentUser) {
+      // Mock local
+      const updatedUser: CurrentUser = {
+        ...currentUser,
+        displayName: effectiveName,
+        color: userColor,
+      };
+      localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(updatedUser));
+      setCurrentUser(updatedUser);
+      return;
+    }
+
+    // Apenas convidados anônimos podem atualizar o displayName no Firebase Auth
+    if (!isGoogleAccount && effectiveName !== currentUser.displayName) {
+      try {
+        await updateProfile(auth.currentUser, {
+          displayName: effectiveName,
+        });
+      } catch (err) {
+        console.warn('Erro ao atualizar perfil no Firebase Auth:', err);
+      }
+    }
+
+    setCurrentUser((prev) =>
+      prev
+        ? {
+            ...prev,
+            displayName: effectiveName,
+            color: userColor,
+          }
+        : null
+    );
+  };
+
   const logout = async () => {
     if (!isFirebaseConfigured || !auth) {
       localStorage.removeItem(GUEST_STORAGE_KEY);
@@ -133,6 +180,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isConfigured: isFirebaseConfigured,
         signInWithGoogle,
         signInAsGuest,
+        updateGuestProfile,
         logout,
       }}
     >
