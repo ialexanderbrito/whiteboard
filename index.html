@@ -3,12 +3,179 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Mirio - Whiteboard Colaborativo</title>
-    <meta name="description" content="Whiteboard colaborativo em tempo real para equipes pensarem e criarem juntos com Firebase" />
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>✨</text></svg>">
+    <title>Mirio — Ideias visuais em tempo real</title>
+
+    <!-- Previne flash branco de tema (FOUC) antes do carregamento do React -->
+    <script>
+      (function() {
+        try {
+          var saved = localStorage.getItem('mirio_theme');
+          var isDark = saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches) || (saved === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          if (isDark) {
+            document.documentElement.classList.add('dark');
+            document.documentElement.style.backgroundColor = '#09090b';
+          } else {
+            document.documentElement.classList.remove('dark');
+            document.documentElement.style.backgroundColor = '#ffffff';
+          }
+        } catch (e) {}
+      })();
+    </script>
+    
+    <!-- Metatags Principais de SEO -->
+    <meta name="title" content="Mirio — Ideias visuais em tempo real" />
+    <meta name="description" content="Canvas infinito, retrospectivas de sprint e fluxogramas sincronizados a 60fps com cursores ao vivo para equipes de produto e design." />
+    <meta name="keywords" content="whiteboard colaborativo, miro, lousa virtual, canvas infinito, tempo real, retrospectiva de sprint, fluxogramas, firebase realtime, cursores ao vivo, produto e design" />
+    <meta name="author" content="Mirio" />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://mirio-whiteboard.web.app/" />
+
+    <!-- Open Graph / Facebook / WhatsApp / LinkedIn -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://mirio-whiteboard.web.app/" />
+    <meta property="og:site_name" content="Mirio" />
+    <meta property="og:title" content="Mirio — Ideias visuais em tempo real" />
+    <meta property="og:description" content="Canvas infinito, retrospectivas de sprint e fluxogramas sincronizados a 60fps com cursores ao vivo para equipes de produto e design." />
+    <meta property="og:image" content="https://mirio-whiteboard.web.app/og.png" />
+    <meta property="og:image:secure_url" content="https://mirio-whiteboard.web.app/og.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Mirio — Ideias visuais em tempo real" />
+    <meta property="og:locale" content="pt_BR" />
+
+    <!-- Twitter Cards -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:url" content="https://mirio-whiteboard.web.app/" />
+    <meta name="twitter:title" content="Mirio — Ideias visuais em tempo real" />
+    <meta name="twitter:description" content="Canvas infinito, retrospectivas de sprint e fluxogramas sincronizados a 60fps com cursores ao vivo para equipes de produto e design." />
+    <meta name="twitter:image" content="https://mirio-whiteboard.web.app/og.png" />
+    <meta name="twitter:image:alt" content="Mirio — Ideias visuais em tempo real" />
+
+    <!-- Favicon & Touch Icons -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" href="/logo-icon-dark.png" />
+    <link rel="apple-touch-icon" href="/logo-icon-dark.png" />
+
+    <!-- Cores de Interface do Navegador (PWA / Mobile) -->
+    <meta name="theme-color" content="#09090b" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Mirio" />
+
+    <!-- Dados Estruturados Schema.org (JSON-LD) para SEO Rico -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "Mirio",
+      "url": "https://mirio-whiteboard.web.app",
+      "description": "Whiteboard colaborativo em tempo real para equipes de produto e design com canvas infinito e sincronização instantânea.",
+      "applicationCategory": "DesignApplication",
+      "operatingSystem": "Web Browser",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "BRL"
+      },
+      "featureList": [
+        "Canvas infinito a 60 FPS",
+        "Cursores ao vivo via Firebase Realtime Database",
+        "Retrospectivas de sprint e sticky notes",
+        "Conectores e diagramas de fluxo",
+        "Colaboração multiplayer instantânea"
+      ]
+    }
+    </script>
+
+    <!-- Tipografia Oficial -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Estilos Inline para Prevenção de FOUC e Carregamento Fluido Instantâneo -->
+    <style>
+      #initial-loader {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background-color: #ffffff;
+        font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        color: #09090b;
+        z-index: 9999;
+        user-select: none;
+      }
+      .dark #initial-loader {
+        background-color: #09090b;
+        color: #fafafa;
+      }
+      .init-dots {
+        position: absolute;
+        inset: 0;
+        background-image: radial-gradient(#e4e4e7 1px, transparent 1px);
+        background-size: 20px 20px;
+        opacity: 0.7;
+        pointer-events: none;
+      }
+      .dark .init-dots {
+        background-image: radial-gradient(#27272a 1px, transparent 1px);
+      }
+      .init-center {
+        position: relative;
+        z-index: 10;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 20px;
+      }
+      .dark .dark-hidden { display: none !important; }
+      .light-hidden { display: none !important; }
+      .dark .light-hidden { display: block !important; }
+      .init-rail {
+        position: relative;
+        height: 2px;
+        width: 144px;
+        border-radius: 9999px;
+        background: rgba(0,0,0,0.06);
+        overflow: hidden;
+        border: 1px solid rgba(0,0,0,0.04);
+      }
+      .dark .init-rail {
+        background: rgba(255,255,255,0.08);
+        border-color: rgba(255,255,255,0.04);
+      }
+      .init-beam {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 50%;
+        background: linear-gradient(90deg, transparent, currentColor, transparent);
+        animation: init-beam-anim 1.4s cubic-bezier(0.77, 0, 0.175, 1) infinite;
+      }
+      @keyframes init-beam-anim {
+        0% { transform: translateX(-100%); }
+        50% { transform: translateX(35%); }
+        100% { transform: translateX(120%); }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div id="initial-loader" aria-hidden="true">
+        <div class="init-dots"></div>
+        <div class="init-center">
+          <img src="/logo-icon-light.png" alt="Mirio" style="height: 36px; width: auto;" class="dark-hidden" />
+          <img src="/logo-icon-dark.png" alt="Mirio" style="height: 36px; width: auto;" class="light-hidden" />
+          <div class="init-rail">
+            <div class="init-beam"></div>
+          </div>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
