@@ -2676,36 +2676,6 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       />
       )}
 
-      {/* Menu de Contexto do Botão Direito no Board (Design Moderno & Emil Kowalski) */}
-      <BoardContextMenu
-        isOpen={contextMenuState.isOpen}
-        position={contextMenuState.screenPos}
-        targetElements={elements.filter((el) => contextMenuState.targetElementIds.includes(el.id))}
-        onClose={() => setContextMenuState((prev) => ({ ...prev, isOpen: false }))}
-        onCreateSticky={handleContextMenuCreateSticky}
-        onCreateShape={handleContextMenuCreateShape}
-        onCreateText={handleContextMenuCreateText}
-        onCreateArrow={handleContextMenuCreateArrow}
-        onCreateFrame={handleContextMenuCreateFrame}
-        onPaste={handleContextMenuPaste}
-        onSelectAll={() => onSelectionChange(elements.map((el) => el.id))}
-        onCopy={handleCopy}
-        onCut={handleCut}
-        onDuplicate={handleDuplicateSelected}
-        onDelete={handleDeleteSelected}
-        onToggleLock={handleToggleLockSelected}
-        onReorderLayer={handleReorderLayer}
-        onAlign={handleAlignSelected}
-        onStartEditing={handleStartEditingElement}
-        onOpenTemplates={onOpenTemplates}
-        onOpenStickers={onOpenStickers}
-        onResetZoom={onResetZoom || (() => onStageChange({ x: 0, y: 0 }, 1))}
-        onToggleGrid={onToggleGrid}
-        showGrid={showGrid}
-        readOnly={readOnly}
-        canCommentOnly={canCommentOnly}
-      />
-
       {/* Balão de Hiperlink Flutuante Estilo Miro (exibido quando um elemento com link está selecionado) */}
       {selectedElements.length === 1 && !inlineEditing && (
         <ElementLinkBalloon
@@ -3628,10 +3598,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           onSelectAll={() => onSelectionChange(elements.map((el) => el.id))}
           onCopy={handleCopy}
           onCut={handleCut}
-          onDuplicate={() => {
-            const targets = elements.filter((el) => contextMenuState.targetElementIds.includes(el.id));
-            if (targets.length > 0) handleBatchDuplicate(targets);
-          }}
+          onDuplicate={handleDuplicateSelected}
           onDelete={handleDeleteSelected}
           onToggleLock={handleToggleLockSelected}
           onReorderLayer={handleReorderLayer}
@@ -3639,7 +3606,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           onStartEditing={handleStartEditingElement}
           onOpenTemplates={onOpenTemplates}
           onOpenStickers={onOpenStickers}
-          onResetZoom={onResetZoom}
+          onResetZoom={onResetZoom || (() => onStageChange({ x: 0, y: 0 }, 1))}
           onToggleGrid={onToggleGrid}
           showGrid={showGrid}
           readOnly={readOnly}
