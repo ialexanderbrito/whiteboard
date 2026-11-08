@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { Stage, Layer, Transformer, Rect, Circle, Line, Star, Group, Text } from 'react-konva';
 import type Konva from 'konva';
-import type { CanvasElement, ToolType, ElementType } from '../../types/element';
+import type { CanvasElement, ToolType } from '../../types/element';
 import type { UserPresence, CurrentUser } from '../../types/board';
 import { StickyNoteItem } from './StickyNoteItem';
 import { ShapeItem } from './ShapeItem';
