@@ -7,23 +7,10 @@ import type { Board, BoardPermission, CurrentUser } from '../types/board';
  * @param isPasswordUnlocked Se o usuário desbloqueou o quadro com senha com sucesso
  */
 export function isBoardOwner(board: Board | null, user: CurrentUser | null): boolean {
-  if (!board || !user) return false;
-  // 1. Se o ownerId bate exatamente com o uid do usuário
-  if (board.ownerId && board.ownerId === user.uid) {
-    return true;
-  }
-  // 2. Fallback resiliente: se o quadro não tem ownerId ou tem 'guest', mas o usuário está autenticado
-  if (!board.ownerId || board.ownerId === 'guest') {
-    if (!user.isAnonymous) {
-      if (board.ownerName && user.displayName && board.ownerName.trim().toLowerCase() === user.displayName.trim().toLowerCase()) {
-        return true;
-      }
-      if (!board.ownerName) {
-        return true;
-      }
-    }
-  }
-  return false;
+  if (!board || !user || !board.ownerId || !user.uid) return false;
+  // O proprietário é estritamente o usuário cujo UID coincide com ownerId do quadro.
+  // Usuários convidados que entram com Google em quadros criados por convidados NUNCA devem assumir posse do quadro.
+  return board.ownerId === user.uid;
 }
 
 /**

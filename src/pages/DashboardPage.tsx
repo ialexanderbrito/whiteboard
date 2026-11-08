@@ -110,8 +110,8 @@ export const DashboardPage: React.FC = () => {
   const handleConfirmDelete = async () => {
     if (!boardToDelete || !currentUser) return;
     const isOwner = isBoardOwner(boardToDelete, currentUser);
-    // Convidados e não-proprietários não podem excluir quadros
-    if (currentUser.isAnonymous || !isOwner) {
+    // Apenas o proprietário pode excluir o quadro
+    if (!isOwner) {
       setBoardToDelete(null);
       return;
     }
@@ -374,7 +374,7 @@ export const DashboardPage: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {filteredBoards.map((b) => {
               const isOwner = isBoardOwner(b, currentUser);
-              const canManage = isOwner && !currentUser?.isAnonymous;
+              const canManage = isOwner;
 
               return (
                 <Card
@@ -535,7 +535,7 @@ export const DashboardPage: React.FC = () => {
               <TableBody>
                 {filteredBoards.map((b) => {
                   const isOwner = isBoardOwner(b, currentUser);
-                  const canManage = isOwner && !currentUser?.isAnonymous;
+                  const canManage = isOwner;
 
                   return (
                     <TableRow

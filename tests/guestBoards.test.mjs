@@ -46,8 +46,8 @@ function isBoardVisibleToUser(board, user, visitedIds = []) {
  * Regras de permissão de ações no Dashboard
  */
 function getDashboardBoardActions(board, user) {
-  const isOwner = board.ownerId === user?.uid;
-  const canManage = isOwner && !user?.isAnonymous;
+  const isOwner = Boolean(board?.ownerId && user?.uid && board.ownerId === user.uid);
+  const canManage = isOwner;
 
   return {
     canDelete: canManage,
@@ -179,6 +179,52 @@ test('Proprietário registrado possui permissão total de apagar, compartilhar e
   assert.equal(actions.canDelete, true, 'Proprietário pode apagar');
   assert.equal(actions.canShare, true, 'Proprietário pode compartilhar');
   assert.equal(actions.canEnter, true, 'Proprietário pode entrar');
+});
+
+test('Convidado que cria o quadro é o proprietário e possui permissão total de apagar e gerenciar seu próprio quadro', () => {
+  const guestCreatedBoard = {
+    id: 'board_guest_456',
+    title: 'Brainstorm do Convidado',
+    ownerId: 'guest_user_123',
+    ownerName: 'Beatriz',
+    defaultPermission: 'edit',
+  };
+
+  const guestCreator = {
+    uid: 'guest_user_123',
+    displayName: 'Beatriz',
+    email: null,
+    isAnonymous: true,
+  };
+
+  const actions = getDashboardBoardActions(guestCreatedBoard, guestCreator);
+
+  assert.equal(actions.canDelete, true, 'Convidado criador pode apagar');
+  assert.equal(actions.canShare, true, 'Convidado criador pode compartilhar');
+  assert.equal(actions.canEnter, true, 'Convidado criador pode entrar');
+});
+
+test('Usuário que entra com conta Google em quadro criado por convidado NÃO se torna dono e não tem permissão de apagar', () => {
+  const guestCreatedBoard = {
+    id: 'board_guest_456',
+    title: 'Brainstorm do Convidado',
+    ownerId: 'guest_user_123',
+    ownerName: 'Beatriz',
+    defaultPermission: 'edit',
+  };
+
+  const invitedGoogleUser = {
+    uid: 'google_user_999',
+    displayName: 'Carlos Convidado Google',
+    email: 'carlos@gmail.com',
+    isAnonymous: false,
+  };
+
+  const actions = getDashboardBoardActions(guestCreatedBoard, invitedGoogleUser);
+
+  assert.equal(actions.canDelete, false, 'Usuário Google convidado NÃO pode apagar');
+  assert.equal(actions.canShare, false, 'Usuário Google convidado NÃO pode gerenciar como dono');
+  assert.equal(actions.canEnter, true, 'Usuário Google convidado pode entrar para colaborar');
 });
 
 test('Filtro de busca tolera quadros com título nulo ou indefinido sem lançar TypeError', () => {

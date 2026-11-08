@@ -510,24 +510,14 @@ export const BoardPage: React.FC = () => {
     }
   }, [boardId, currentUser, board, hasNoAccess, isOwner, boardNotFound]);
 
-  // Auto-repara metadados do proprietário e limpa members caso o proprietário estivesse duplicado
+  // Limpa members caso o proprietário estivesse duplicado na lista de participantes
   useEffect(() => {
-    if (boardId && currentUser && !currentUser.isAnonymous && board && isOwner && !boardNotFound) {
-      const needsOwnerFix = !board.ownerId || board.ownerId === 'guest' || !board.ownerName;
+    if (boardId && currentUser && board && isOwner && !boardNotFound) {
       const hasSelfInMembers = Boolean(board.members && board.members[currentUser.uid]);
-
-      if (needsOwnerFix || hasSelfInMembers) {
-        const updates: any = {};
-        if (needsOwnerFix) {
-          updates.ownerId = currentUser.uid;
-          updates.ownerName = currentUser.displayName || board.ownerName || 'Alexander';
-        }
-        if (hasSelfInMembers && board.members) {
-          const cleaned = { ...board.members };
-          delete cleaned[currentUser.uid];
-          updates.members = cleaned;
-        }
-        boardService.updateBoardSettings(boardId, updates);
+      if (hasSelfInMembers && board.members) {
+        const cleaned = { ...board.members };
+        delete cleaned[currentUser.uid];
+        boardService.updateBoardSettings(boardId, { members: cleaned });
       }
     }
   }, [boardId, currentUser, board, isOwner, boardNotFound]);
@@ -1601,7 +1591,7 @@ export const BoardPage: React.FC = () => {
           onOpenShortcuts: () => setIsShortcutsModalOpen(true),
           onExportPNG: handleExportPNG,
           onExportJSON: handleExportJSON,
-          onShare: (isOwner && !currentUser?.isAnonymous) ? handleCopyShareLink : undefined,
+          onShare: isOwner ? handleCopyShareLink : undefined,
           onResetZoom: handleResetZoom,
           onOpenCursorChat: () => {
             setMouseScreenPos(currentMousePosRef.current);

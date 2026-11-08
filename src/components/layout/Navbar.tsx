@@ -355,8 +355,8 @@ export const Navbar: React.FC<NavbarProps> = React.memo(({
           onToggleRemoteCursors={onToggleRemoteCursors}
         />
 
-        {/* Botão de Compartilhar (Apenas proprietários podem compartilhar; convidados não podem) */}
-        {isBoardOwner(board || null, currentUser) && !currentUser.isAnonymous && (
+        {/* Botão de Compartilhar (Proprietários podem compartilhar seu quadro) */}
+        {isBoardOwner(board || null, currentUser) && (
           <>
             <Tooltip>
               <TooltipTrigger asChild>

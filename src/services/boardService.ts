@@ -149,7 +149,7 @@ export const boardService = {
       id: boardId,
       title,
       ownerId: user.uid,
-      ownerName: user.displayName,
+      ownerName: user.displayName?.trim() || (user.isAnonymous ? 'Convidado' : 'Usuário'),
       createdAt: Date.now(),
       updatedAt: Date.now(),
       defaultPermission,
@@ -307,7 +307,7 @@ export const boardService = {
             id: cleanId,
             title: typeof rawData.title === 'string' && rawData.title.trim() ? rawData.title.trim() : 'Quadro sem título',
             ownerId: rawData.ownerId || '',
-            ownerName: rawData.ownerName || 'Alexander',
+            ownerName: typeof rawData.ownerName === 'string' && rawData.ownerName.trim() ? rawData.ownerName.trim() : 'Criador',
             createdAt: rawData.createdAt || Date.now(),
             updatedAt: rawData.updatedAt || rawData.createdAt || Date.now(),
             defaultPermission: rawData.defaultPermission || 'edit',
@@ -808,9 +808,6 @@ export const boardService = {
           const boardData = boardSnap.data() as Board;
           // O proprietário nunca deve ser registrado como membro/visitante do seu próprio quadro
           if (boardData.ownerId === user.uid) {
-            return;
-          }
-          if (!boardData.ownerId && !user.isAnonymous && user.displayName && user.displayName === boardData.ownerName) {
             return;
           }
           // Se o usuário foi removido deste quadro pelo proprietário, não permite auto-registro

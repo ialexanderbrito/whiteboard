@@ -330,27 +330,29 @@ export const ShareModal: React.FC<ShareModalProps> = ({
       ...Array.from(removedIds),
     ]);
 
-    // 1. Dono do quadro
-    const ownerUid = board?.ownerId || (isOwner ? currentUser?.uid : undefined);
-    const ownerName = isOwner
+    // 1. Dono do quadro (sempre baseado no ownerId legítimo do quadro)
+    const ownerUid = board?.ownerId;
+    const isOwnerCurrentUser = Boolean(ownerUid && currentUser?.uid && ownerUid === currentUser.uid);
+    const ownerName = isOwnerCurrentUser
       ? (currentUser?.displayName || board?.ownerName || 'Proprietário')
       : (board?.ownerName || 'Proprietário');
-    const isOwnerOnline = isOwner ? true : Boolean(remoteUsers?.some((u) => u.userId === ownerUid));
+    const isOwnerOnline = isOwnerCurrentUser ? true : Boolean(remoteUsers?.some((u) => u.userId === ownerUid));
+    const isOwnerAnonymous = isOwnerCurrentUser ? Boolean(currentUser.isAnonymous) : false;
 
     const ownerPerson: AccessPerson = {
-      id: ownerUid || (isOwner ? currentUser.uid : 'owner'),
-      uid: ownerUid || (isOwner ? currentUser.uid : undefined),
+      id: ownerUid || (isOwnerCurrentUser ? currentUser.uid : 'owner'),
+      uid: ownerUid || (isOwnerCurrentUser ? currentUser.uid : undefined),
       name: ownerName,
-      email: isOwner ? currentUser.email : null,
-      photoURL: isOwner ? currentUser.photoURL : null,
-      color: isOwner ? (currentUser.color || '#3b82f6') : '#3b82f6',
+      email: isOwnerCurrentUser ? currentUser.email : null,
+      photoURL: isOwnerCurrentUser ? currentUser.photoURL : null,
+      color: isOwnerCurrentUser ? (currentUser.color || '#3b82f6') : '#3b82f6',
       isOwner: true,
-      isCurrentUser: isOwner,
-      isAnonymous: false,
+      isCurrentUser: isOwnerCurrentUser,
+      isAnonymous: isOwnerAnonymous,
       isOnline: isOwnerOnline,
       role: 'edit',
-      subtitle: isOwner
-        ? (currentUser.email ? `Online agora • ${currentUser.email}` : 'Online agora • Proprietário')
+      subtitle: isOwnerCurrentUser
+        ? (currentUser.email ? `Online agora • ${currentUser.email}` : (currentUser.isAnonymous ? 'Online agora • Criador (Convidado)' : 'Online agora • Proprietário'))
         : (isOwnerOnline ? 'Online agora • Proprietário' : 'Proprietário do quadro'),
       badgeLabel: 'Proprietário',
     };
