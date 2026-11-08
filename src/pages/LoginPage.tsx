@@ -18,14 +18,18 @@ import {
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const redirectUrl = searchParams.get('redirect') || '/';
+  const queryRedirect = searchParams.get('redirect');
+  const redirectUrl = queryRedirect || (typeof window !== 'undefined' ? sessionStorage.getItem('mirio_auth_redirect') : null) || '/';
   const { currentUser, isConfigured, signInWithGoogle, signInAsGuest } = useAuth();
 
   // Se já estiver logado, redireciona para a rota solicitada se houver
   useEffect(() => {
     document.title = 'Entrar - Mirio';
-    if (currentUser && redirectUrl && redirectUrl !== '/') {
-      navigate(redirectUrl, { replace: true });
+    const savedRedirect = sessionStorage.getItem('mirio_auth_redirect');
+    const target = (redirectUrl && redirectUrl !== '/') ? redirectUrl : savedRedirect;
+    if (currentUser && target && target !== '/') {
+      sessionStorage.removeItem('mirio_auth_redirect');
+      navigate(target, { replace: true });
     }
   }, [currentUser, navigate, redirectUrl]);
 
@@ -234,14 +238,19 @@ export const LoginPage: React.FC = () => {
             <div className="w-full max-w-sm">
               <AuthCard
                 onGoogleLogin={async () => {
+                  if (redirectUrl && redirectUrl !== '/') {
+                    sessionStorage.setItem('mirio_auth_redirect', redirectUrl);
+                  }
                   await signInWithGoogle();
                   if (redirectUrl && redirectUrl !== '/') {
+                    sessionStorage.removeItem('mirio_auth_redirect');
                     navigate(redirectUrl, { replace: true });
                   }
                 }}
                 onGuestLogin={async (name: string) => {
                   await signInAsGuest(name);
                   if (redirectUrl && redirectUrl !== '/') {
+                    sessionStorage.removeItem('mirio_auth_redirect');
                     navigate(redirectUrl, { replace: true });
                   }
                 }}

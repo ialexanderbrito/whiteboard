@@ -24,9 +24,16 @@ const LegacyBoardRedirect: React.FC = () => {
 // Rota raiz ("/"): exibe o Dashboard para usuários logados ou a tela de login diretamente na raiz se não autenticado
 const RootRoute: React.FC = () => {
   const { currentUser, loading } = useAuth();
+  const [searchParams] = useSearchParams();
+  const redirect = searchParams.get('redirect') || (typeof window !== 'undefined' ? sessionStorage.getItem('mirio_auth_redirect') : null);
 
   if (loading) {
     return <PageLoader />;
+  }
+
+  if (currentUser && redirect && redirect !== '/') {
+    sessionStorage.removeItem('mirio_auth_redirect');
+    return <Navigate to={redirect} replace />;
   }
 
   if (!currentUser) {

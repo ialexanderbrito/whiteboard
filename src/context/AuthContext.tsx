@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { 
   signInWithPopup, 
+  signInWithRedirect,
+  getRedirectResult,
   signInAnonymously, 
   updateProfile, 
   signOut, 
@@ -10,12 +12,13 @@ import {
 import { auth, googleProvider, isFirebaseConfigured } from '../config/firebase';
 import type { CurrentUser } from '../types/board';
 import { getRandomUserColor } from '../utils/colors';
+import { isMobileOrInAppBrowser } from '../utils/authErrors';
 
 interface AuthContextType {
   currentUser: CurrentUser | null;
   loading: boolean;
   isConfigured: boolean;
-  signInWithGoogle: () => Promise<void>;
+  signInWithGoogle: (forceRedirect?: boolean) => Promise<void>;
   signInAsGuest: (name: string) => Promise<void>;
   updateGuestProfile: (name: string, color?: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -55,6 +58,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
+    // Processa o resultado do redirecionamento (signInWithRedirect) se o usuário retornou de login Google
+    getRedirectResult(auth)
+      .then((result) => {
+        if (result?.user) {
+          const color = getSavedColor();
+          setCurrentUser({
+            uid: result.user.uid,
+            displayName: result.user.displayName || 'Usuário',
+            email: result.user.email,
+            photoURL: result.user.photoURL,
+            isAnonymous: result.user.isAnonymous,
+            color,
+          });
+        }
+      })
+      .catch((error) => {
+        console.warn('Erro ao processar resultado do redirecionamento do Google:', error);
+      });
+
     const unsubscribe = onAuthStateChanged(auth, (user: FirebaseUser | null) => {
       if (user) {
         const color = getSavedColor();
@@ -75,11 +97,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => unsubscribe();
   }, []);
 
-  const signInWithGoogle = async () => {
+  const signInWithGoogle = async (forceRedirect: boolean = false) => {
     if (!isFirebaseConfigured || !auth || !googleProvider) {
       throw new Error('Firebase não está configurado no arquivo .env.');
     }
-    await signInWithPopup(auth, googleProvider);
+
+    // Em navegadores móveis ou in-app webviews, popups são quase sempre bloqueados pelo sistema.
+    // Nesses ambientes, ou caso forceRedirect seja solicitado, usamos redirecionamento direto sem popups.
+    const preferRedirect = forceRedirect || isMobileOrInAppBrowser();
+
+    if (preferRedirect) {
+      await signInWithRedirect(auth, googleProvider);
+      return;
+    }
+
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (err: unknown) {
+      const error = err as { code?: string; message?: string };
+
+      // Se o navegador bloquear o popup (auth/popup-blocked) ou cancelar a janela (auth/cancelled-popup-request),
+      // transiciona de forma totalmente transparente e automática para redirecionamento full-page.
+      // O usuário não precisa saber como desbloquear popup nas configurações do navegador.
+      if (
+        error?.code === 'auth/popup-blocked' ||
+        error?.code === 'auth/cancelled-popup-request'
+      ) {
+        console.warn('Popup bloqueado pelo navegador. Redirecionando automaticamente via Google Auth...');
+        await signInWithRedirect(auth, googleProvider);
+        return;
+      }
+
+      // Se o próprio usuário fechou o popup intencionalmente clicando no X, não exibe erro na interface
+      if (error?.code === 'auth/popup-closed-by-user') {
+        return;
+      }
+
+      throw err;
+    }
   };
 
   const signInAsGuest = async (name: string) => {

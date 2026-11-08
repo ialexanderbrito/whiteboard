@@ -53,6 +53,7 @@ if (isFirebaseConfigured) {
 
     rtdb = getDatabase(app);
     googleProvider = new GoogleAuthProvider();
+    googleProvider.setCustomParameters({ prompt: 'select_account' });
   } catch (error) {
     console.error('Erro ao inicializar Firebase:', error);
   }
