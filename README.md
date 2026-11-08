@@ -1,160 +1,150 @@
-# ✨ Mirio — Whiteboard Colaborativo em Tempo Real
+<div align="center">
 
-**Mirio** é uma plataforma de whiteboard colaborativo estilo Miro criada para equipes pensarem, desenharem e colaborarem em tempo real. Desenvolvido com **React + Vite + TypeScript**, **Konva.js**, **Tailwind CSS** e **Firebase** (Cloud Firestore + Realtime Database).
+<img src="./public/logo-full-light.png#gh-light-mode-only" alt="Mirio Whiteboard" width="380" />
+<img src="./public/logo-full-dark.png#gh-dark-mode-only" alt="Mirio Whiteboard" width="380" />
+
+<br />
+<br />
+
+**O whiteboard colaborativo em tempo real, fluido e sem fricção para equipes modernas.**
+
+Pense, desenhe, faça ideações e facilite dinâmicas com a agilidade do Miro e a leveza que seu time precisa.
+
+<br />
+
+[![React](https://img.shields.io/badge/React_19-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Vite](https://img.shields.io/badge/Vite_6-646CFF?style=for-the-badge&logo=vite&logoColor=FFD62E)](https://vitejs.dev/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
+[![Firebase](https://img.shields.io/badge/Firebase-FFCA28?style=for-the-badge&logo=firebase&logoColor=black)](https://firebase.google.com/)
+[![Licença MIT](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](./LICENSE)
+
+<br />
+
+<img src="./public/og.png" alt="Prévia do Mirio Whiteboard" width="90%" style="border-radius: 12px; box-shadow: 0 20px 40px rgba(0,0,0,0.15);" />
+
+</div>
+
+<br />
 
 ---
 
-## 🚀 Funcionalidades
+## ✨ Por que o Mirio?
 
-- **🎨 Whiteboard Interativo & Infinito**:
-  - **Post-its (Sticky Notes)**: Notas adesivas nas cores clássicas do Miro com edição rápida de texto com duplo clique.
-  - **Formas Geométricas**: Retângulos e Círculos com redimensionamento e rotação.
-  - **Setas & Conectores**: Setas direcionais para fluxogramas e diagramação.
-  - **Desenho Livre (Caneta)**: Traço fluído com suavização de curva.
-  - **Caixas de Texto**: Inserção de texto livre no canvas.
-  - **Manipulação & Transformação**: Mover, redimensionar e girar elementos via Konva Transformer.
-  - **Pan & Zoom**: Navegação fluída com a roda do mouse e botão de mão/espaço para arrastar a lousa.
-  - **Atalhos**: `Delete` / `Backspace` para apagar elementos, atalhos de ferramentas (`V`, `N`, `R`, `O`, `A`, `P`, `T`, `H`).
+O **Mirio** foi concebido para eliminar barreiras entre uma ideia e sua execução. Sem interfaces sobrecarregadas ou barreiras de acesso: compartilhe um link e comece a colaborar em segundos.
 
-- **⚡ Colaboração em Tempo Real (Firebase Híbrido)**:
-  - **Cursores ao Vivo (RTDB)**: Acompanhe os ponteiros do mouse de cada membro voando na tela em tempo real com nome e cor personalizada.
-  - **Presença Instantânea**: Lista de avatares no topo mostrando quem está no quadro no momento.
-  - **Destaque de Seleção Compartilhada**: Quando um colega seleciona ou move um post-it/forma, uma borda com a cor e o nome dele aparece para toda a equipe.
-  - **Persistência Confiável (Firestore)**: Cada elemento possui ID próprio, evitando conflitos de sobrescrita acidental.
+### 🚀 Destaques da Experiência
 
-- **🔒 Autenticação & Compartilhamento**:
-  - **Google Sign-In**: Login com um clique para contas Google.
-  - **Acesso Anônimo (Guest)**: Colegas que receberem o link podem entrar instantaneamente digitando apenas seu nome.
-  - **Dashboard de Quadros**: Gerencie múltiplos quadros, renomeie, exclua ou copie links diretos.
+- **⚡ Entrada Sem Burocracia**: Participe em 1 clique como convidado ou conecte-se com sua conta Google.
+- **🎨 Canvas Infinito & Fluido**: Motor gráfico em Konva.js com zoom suave, navegação a 60 FPS e suporte a telas Retina.
+- **📝 Post-its Inteligentes**: Notas adesivas com paleta pensada para contraste, hiperlinks clicáveis e tipografia moderna.
+- **🔷 Formas Geométricas & Desenho Livre**: Retângulos, círculos, triângulos, losangos, estrelas, conectores direcionais e caneta com suavização.
+- **💬 Cursor Chat & Interações Vivas**: Pressione `/` e converse diretamente pela posição do seu mouse (estilo Figma), aponte com feixe Laser (`L`) e envie reações flutuantes.
+- **⏱️ Facilitação Profissional**: Cronômetro colaborativo sincronizado na sala e sessões de votação anônima com pódio automático.
+- **📋 Templates Prontos para Sprint**: Crie com um clique quadros para *Lean Canvas*, *Retrospectivas*, *Brainstorming* e *Matriz de Priorização*.
+- **🔒 Segurança & Controle**: Quadros protegidos por senha opcional, modo apresentação para slides e permissões granulares por participante.
+- **🌗 Design System Imersivo**: Tema Claro e Escuro com transições suaves e zero oscilação visual (Zero-FOUC).
 
 ---
 
-## 🛠️ Como Executar o Projeto
+## 🎯 Principais Recursos
 
-### 1. Clonar e Instalar Dependências
+<table>
+  <tr>
+    <td width="50%">
+      <h3>🖌️ Criação e Diagramação</h3>
+      <ul>
+        <li><strong>Post-its Clássicos</strong>: Edição rápida com duplo clique e auto-dimensionamento.</li>
+        <li><strong>Formas Vetoriais</strong>: Redimensione segurando <code>Shift</code> para proporção perfeita.</li>
+        <li><strong>Conectores Direcionais</strong>: Setas e linhas magnéticas para fluxogramas.</li>
+        <li><strong>Molduras (Frames)</strong>: Agrupe conteúdos e monte apresentações em sequência.</li>
+        <li><strong>Stickers & Apple Emojis</strong>: Dê expressividade e contexto visual às discussões.</li>
+      </ul>
+    </td>
+    <td width="50%">
+      <h3>🤝 Colaboração em Equipe</h3>
+      <ul>
+        <li><strong>Cursores ao Vivo</strong>: Acompanhe os movimentos de cada colega em tempo real.</li>
+        <li><strong>Cursor Chat</strong>: Bate-papo instantâneo sobre a tela.</li>
+        <li><strong>Apontador Laser</strong>: Destaque pontos na tela sem sujar o canvas.</li>
+        <li><strong>Sessões de Votação</strong>: Votos limitados e apuração transparente para tomadas de decisão.</li>
+        <li><strong>Timer Compartilhado</strong>: Mantenha reuniões e dinâmicas no tempo certo.</li>
+      </ul>
+    </td>
+  </tr>
+</table>
 
-```bash
-git clone https://github.com/seu-usuario/mirio.git
-cd mirio
-npm install
-```
+---
 
-### 2. Configurar o Firebase
+## ⌨️ Atalhos Rápidos
 
-Crie um projeto no [Console do Firebase](https://console.firebase.google.com/) e ative os seguintes serviços:
+Ganhe velocidade dominando os atalhos do teclado:
 
-1. **Authentication**:
-   - Vá em **Authentication** -> **Sign-in method**.
-   - Ative o provedor **Google**.
-   - Ative o provedor **Anônimo (Anonymous)**.
+| Tecla | Função |
+| :---: | :--- |
+| <kbd>V</kbd> | Ferramenta Seleção / Mover |
+| <kbd>Espaço</kbd> ou <kbd>H</kbd> | Arrastar a Tela (Pan) |
+| <kbd>N</kbd> | Criar Post-it |
+| <kbd>R</kbd> | Retângulo |
+| <kbd>O</kbd> | Círculo |
+| <kbd>T</kbd> | Caixa de Texto |
+| <kbd>P</kbd> | Caneta de Desenho Livre |
+| <kbd>L</kbd> | Apontador Laser temporário |
+| <kbd>/</kbd> | Abrir Cursor Chat |
+| <kbd>F</kbd> | Criar Moldura / Frame |
+| <kbd>Delete</kbd> | Excluir seleção |
+| <kbd>Ctrl</kbd> + <kbd>Z</kbd> | Desfazer ação |
 
-2. **Cloud Firestore**:
-   - Vá em **Firestore Database** -> **Criar banco de dados**.
-   - Inicie no modo de teste ou configure as regras:
-     ```javascript
-     rules_version = '2';
-     service cloud.firestore {
-       match /databases/{database}/documents {
-         match /boards/{boardId} {
-           allow read, write: if request.auth != null;
-           match /elements/{elementId} {
-             allow read, write: if request.auth != null;
-           }
-         }
-       }
-     }
-     ```
+> 💡 *Você também pode pressionar <kbd>?</kbd> a qualquer momento no quadro para ver a lista completa de atalhos.*
 
-3. **Realtime Database (RTDB)**:
-   - Vá em **Realtime Database** -> **Criar banco de dados**.
-   - Configure as regras de leitura e escrita:
-     ```json
-     {
-       "rules": {
-         "presence": {
-           "$boardId": {
-             ".read": "auth != null",
-             "$userId": {
-               ".write": "auth != null && auth.uid == $userId"
-             }
-           }
-         }
-       }
-     }
-     ```
+---
 
-4. **Copie as Chaves para o `.env`**:
-   Copie o arquivo `.env.example` para `.env` e preencha suas variáveis:
-   ```env
-   VITE_FIREBASE_API_KEY=AIzaSy...
-   VITE_FIREBASE_AUTH_DOMAIN=seu-projeto.firebaseapp.com
-   VITE_FIREBASE_DATABASE_URL=https://seu-projeto-default-rtdb.firebaseio.com
-   VITE_FIREBASE_PROJECT_ID=seu-projeto
-   VITE_FIREBASE_STORAGE_BUCKET=seu-projeto.appspot.com
-   VITE_FIREBASE_MESSAGING_SENDER_ID=123456789
-   VITE_FIREBASE_APP_ID=1:123456789:web:abcdef
+## 🚀 Como Executar
+
+### Pré-requisitos
+- [Node.js](https://nodejs.org/) (versão 18 ou superior)
+- Gerenciador de pacotes `npm`
+
+### Instalação
+
+1. **Clone o repositório:**
+   ```bash
+   git clone https://github.com/ialexanderbrito/whiteboard.git
+   cd whiteboard
    ```
 
-*(Nota: Enquanto você não configurar o Firebase, o Mirio funciona em modo local/demonstração com sincronização entre abas do mesmo navegador para você testar imediatamente!)*
+2. **Instale as dependências:**
+   ```bash
+   npm install
+   ```
 
-### 3. Iniciar o Servidor de Desenvolvimento
+3. **Inicie o ambiente de desenvolvimento:**
+   ```bash
+   npm run dev
+   ```
 
-```bash
-npm run dev
-```
+Acesse [http://localhost:5173](http://localhost:5173) no seu navegador.
 
-Acesse em seu navegador: `http://localhost:5173`
-
----
-
-## ⌨️ Atalhos de Teclado no Canvas
-
-| Tecla | Ação |
-|---|---|
-| `V` | Ferramenta Selecionar / Mover |
-| `H` ou `Barra de Espaço` (segurar) | Mover a Tela (Pan) |
-| `N` | Criar Post-it (Sticky Note) |
-| `R` | Criar Retângulo |
-| `O` | Criar Círculo |
-| `A` | Criar Seta / Conector |
-| `P` | Caneta (Desenho livre) |
-| `T` | Inserir Caixa de Texto |
-| `Delete` ou `Backspace` | Excluir elemento selecionado |
-| `Scroll do Mouse` | Zoom in / Zoom out |
-| `Duplo Clique` | Editar texto de Post-it ou Caixa de Texto |
+> ℹ️ *Por padrão, o projeto inclui um modo de demonstração local automático. Para habilitar sincronização multiusuário na nuvem, basta configurar as credenciais do Firebase no arquivo `.env` seguindo o `.env.example`.*
 
 ---
 
-## 📦 Estrutura de Código
+## 🛠️ Tecnologias Utilizadas
 
-```
-mirio/
-├── src/
-│   ├── config/
-│   │   └── firebase.ts           # Inicialização e detecção do Firebase
-│   ├── context/
-│   │   └── AuthContext.tsx       # Provedor de autenticação (Google e Guest)
-│   ├── types/
-│   │   ├── board.ts              # Modelos de quadro, presença e usuário
-│   │   └── element.ts            # Tipos e ferramentas de elementos do canvas
-│   ├── services/
-│   │   ├── boardService.ts       # Operações CRUD de quadros
-│   │   ├── elementService.ts     # Sincronização de elementos no Firestore
-│   │   └── presenceService.ts    # Transmissão de cursores e presença no RTDB
-│   ├── components/
-│   │   ├── layout/
-│   │   │   └── Navbar.tsx        # Barra superior com título e avatares
-│   │   └── whiteboard/
-│   │       ├── WhiteboardCanvas.tsx # Canvas principal Konva com eventos
-│   │       ├── Toolbar.tsx          # Barra de ferramentas flutuante
-│   │       ├── RemoteCursors.tsx    # Renderização dos cursores dos colegas
-│   │       ├── StickyNoteItem.tsx   # Post-its coloridos
-│   │       ├── ShapeItem.tsx        # Retângulos e círculos
-│   │       ├── ArrowItem.tsx        # Setas e linhas
-│   │       ├── FreeDrawItem.tsx     # Traço de caneta
-│   │       └── TextItem.tsx         # Caixas de texto
-│   └── pages/
-│       ├── LoginPage.tsx         # Login com Google e entrada de convidado
-│       ├── DashboardPage.tsx     # Listagem de quadros da equipe
-│       └── BoardPage.tsx         # Lousa colaborativa
-```
+- **Interface & Componentes**: [React 19](https://react.dev/), [TypeScript](https://www.typescriptlang.org/), [Tailwind CSS](https://tailwindcss.com/), [shadcn/ui](https://ui.shadcn.com/)
+- **Renderização Gráfica**: [Konva.js](https://konvajs.org/) e [React Konva](https://github.com/konvajs/react-konva)
+- **Tempo Real & Nuvem**: [Firebase](https://firebase.google.com/) (Firestore + Realtime Database)
+- **Ícones & Emojis**: [Lucide React](https://lucide.dev/), Emojis em alta resolução
+- **Build & Qualidade**: [Vite](https://vitejs.dev/), Node Test Runner
+
+---
+
+## 📄 Licença
+
+Este projeto é distribuído sob os termos da licença [MIT](./LICENSE).
+
+<br />
+
+<div align="center">
+  <sub>Criado com dedicação para colaboração visual em tempo real.</sub>
+</div>
