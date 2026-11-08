@@ -41,7 +41,7 @@ export const formatAuthError = (err: unknown): string => {
 
   switch (code) {
     case 'auth/popup-blocked':
-      return 'O navegador bloqueou o pop-up. Redirecionando para o login seguro do Google...';
+      return 'O navegador bloqueou o pop-up do Google. Permita pop-ups para este site na barra de endereços e tente novamente.';
     
     // Ações voluntárias ou sobreposições não devem exibir mensagem de erro agressiva
     case 'auth/popup-closed-by-user':

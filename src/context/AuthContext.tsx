@@ -12,7 +12,6 @@ import {
 import { auth, googleProvider, isFirebaseConfigured } from '../config/firebase';
 import type { CurrentUser } from '../types/board';
 import { getRandomUserColor } from '../utils/colors';
-import { isMobileOrInAppBrowser } from '../utils/authErrors';
 
 interface AuthContextType {
   currentUser: CurrentUser | null;
@@ -110,57 +109,47 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  const signInWithGoogle = async (forceRedirect: boolean = false) => {
+  const signInWithGoogle = (forceRedirect: boolean = false): Promise<void> => {
     if (!isFirebaseConfigured || !auth || !googleProvider) {
-      throw new Error('Firebase não está configurado no arquivo .env.');
+      return Promise.reject(new Error('Firebase não está configurado no arquivo .env.'));
     }
 
-    // Em webviews sociais internas estritas (Instagram, FB In-App, TikTok) em produção onde window.open é desabilitado
-    const isStrictInApp = isMobileOrInAppBrowser() && 
-      typeof window !== 'undefined' && 
-      window.location.hostname !== 'localhost' && 
-      window.location.hostname !== '127.0.0.1';
-
-    if (forceRedirect || isStrictInApp) {
-      await signInWithRedirect(auth, googleProvider);
-      return;
+    if (forceRedirect) {
+      return signInWithRedirect(auth, googleProvider);
     }
 
-    try {
-      const result = await signInWithPopup(auth, googleProvider);
-      if (result?.user) {
-        const color = getSavedColor();
-        setCurrentUser({
-          uid: result.user.uid,
-          displayName: result.user.displayName || 'Usuário',
-          email: result.user.email,
-          photoURL: result.user.photoURL,
-          isAnonymous: result.user.isAnonymous,
-          color,
-        });
-      }
-    } catch (err: unknown) {
-      const error = err as { code?: string; message?: string };
+    // Executa signInWithPopup de forma síncrona dentro do evento de clique original do usuário
+    // para preservar o transient user activation do navegador e evitar que o pop-up seja bloqueado.
+    return signInWithPopup(auth, googleProvider)
+      .then((result) => {
+        if (result?.user) {
+          const color = getSavedColor();
+          setCurrentUser({
+            uid: result.user.uid,
+            displayName: result.user.displayName || 'Usuário',
+            email: result.user.email,
+            photoURL: result.user.photoURL,
+            isAnonymous: result.user.isAnonymous,
+            color,
+          });
+        }
+      })
+      .catch((err: unknown) => {
+        const error = err as { code?: string; message?: string };
 
-      // Se o próprio usuário fechou o popup intencionalmente clicando no X, não exibe erro na interface
-      if (error?.code === 'auth/popup-closed-by-user') {
-        return;
-      }
+        // Se o usuário fechou a janela do Google intencionalmente, não exibe erro
+        if (error?.code === 'auth/popup-closed-by-user') {
+          return;
+        }
 
-      // Se o navegador bloquear o popup (auth/popup-blocked) fora do localhost, tenta o fallback
-      if (
-        (error?.code === 'auth/popup-blocked' || error?.code === 'auth/cancelled-popup-request') &&
-        typeof window !== 'undefined' &&
-        window.location.hostname !== 'localhost' &&
-        window.location.hostname !== '127.0.0.1'
-      ) {
-        console.warn('Popup bloqueado pelo navegador em produção. Redirecionando automaticamente via Google Auth...');
-        await signInWithRedirect(auth, googleProvider);
-        return;
-      }
-
-      throw err;
-    }
+        // Em ambientes fora do Firebase Hosting (como a Vercel, onde mirio-wb.vercel.app difere do
+        // authDomain mirio-whiteboard.firebaseapp.com), o redirecionamento (signInWithRedirect)
+        // perde o contexto da sessão devido ao bloqueio estrito de cookies de terceiros / storage partitioning
+        // nos navegadores modernos (Chrome CHIPS, Safari ITP), resultando em um loop infinito de redirecionamentos.
+        // Portanto, nunca forçamos redirecionamento automático aqui; deixamos o erro auth/popup-blocked subir
+        // para orientar o usuário a permitir a janela pop-up na barra de endereços do navegador.
+        throw err;
+      });
   };
 
   const signInAsGuest = async (name: string) => {

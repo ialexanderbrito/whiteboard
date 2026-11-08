@@ -237,15 +237,16 @@ export const LoginPage: React.FC = () => {
             {/* AuthCard com a Logo Oficial Mirio */}
             <div className="w-full max-w-sm">
               <AuthCard
-                onGoogleLogin={async () => {
+                onGoogleLogin={() => {
                   if (redirectUrl && redirectUrl !== '/') {
                     sessionStorage.setItem('mirio_auth_redirect', redirectUrl);
                   }
-                  await signInWithGoogle();
-                  const saved = sessionStorage.getItem('mirio_auth_redirect');
-                  sessionStorage.removeItem('mirio_auth_redirect');
-                  const target = (redirectUrl && redirectUrl !== '/') ? redirectUrl : (saved || '/');
-                  navigate(target, { replace: true });
+                  return signInWithGoogle().then(() => {
+                    const saved = sessionStorage.getItem('mirio_auth_redirect');
+                    sessionStorage.removeItem('mirio_auth_redirect');
+                    const target = (redirectUrl && redirectUrl !== '/') ? redirectUrl : (saved || '/');
+                    navigate(target, { replace: true });
+                  });
                 }}
                 onGuestLogin={async (name: string) => {
                   await signInAsGuest(name);

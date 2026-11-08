@@ -8,7 +8,7 @@ test('formatAuthError: properly formats popup-blocked to informative friendly me
   const error = { code: 'auth/popup-blocked', message: 'Firebase: Error (auth/popup-blocked).' };
   const formatted = formatAuthError(error);
   assert.ok(formatted.includes('bloqueou o pop-up'), 'Must explain that popup was blocked');
-  assert.ok(formatted.includes('Redirecionando'), 'Must inform user that redirection is taking place');
+  assert.ok(formatted.includes('Permita pop-ups'), 'Must inform user how to allow popups');
   assert.ok(!formatted.includes('Firebase: Error'), 'Must not leak ugly raw Firebase error code');
 });
 
@@ -65,14 +65,14 @@ test('isMobileOrInAppBrowser: returns false for standard desktop browsers', () =
   assert.equal(isMobileOrInAppBrowser(macSafari, 0), false, 'Desktop Mac Safari without touch points is not mobile');
 });
 
-test('AuthContext.tsx handles popup-blocked with automatic signInWithRedirect fallback and getRedirectResult', () => {
+test('AuthContext.tsx executes signInWithPopup and maintains safe getRedirectResult', () => {
   const authContextPath = path.resolve('src/context/AuthContext.tsx');
   const content = fs.readFileSync(authContextPath, 'utf-8');
 
-  assert.ok(content.includes('signInWithRedirect'), 'AuthContext must import and use signInWithRedirect');
+  assert.ok(content.includes('signInWithPopup'), 'AuthContext must import and use signInWithPopup');
   assert.ok(content.includes('getRedirectResult'), 'AuthContext must import and process getRedirectResult');
-  assert.ok(content.includes('auth/popup-blocked'), 'AuthContext must catch auth/popup-blocked error');
-  assert.ok(content.includes('signInWithRedirect(auth, googleProvider)'), 'AuthContext must fallback to signInWithRedirect when popup is blocked');
+  assert.ok(content.includes('auth/popup-blocked'), 'AuthContext must handle auth/popup-blocked');
+  assert.ok(content.includes('signInWithRedirect(auth, googleProvider)'), 'AuthContext preserves signInWithRedirect for forced redirects');
 });
 
 test('Cross-page OAuth redirect preserves destination via sessionStorage', () => {

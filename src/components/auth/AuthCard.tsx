@@ -36,20 +36,34 @@ export const AuthCard: React.FC<AuthCardProps> = ({
   const [loadingGuest, setLoadingGuest] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
-  const handleGoogle = async () => {
-    if (!onGoogleLogin) return;
-    setLoadingGoogle(true);
+  const handleGoogle = () => {
+    if (!onGoogleLogin || loadingGoogle) return;
     setErrorMessage('');
+
+    // Dispara a autenticação síncrona dentro do evento de clique para preservar
+    // a ativação de usuário transitória (User Gesture) do navegador e evitar bloqueio de popup
+    let authPromise: Promise<void>;
     try {
-      await onGoogleLogin();
+      authPromise = onGoogleLogin();
     } catch (err: unknown) {
       const message = formatAuthError(err);
       if (message) {
         setErrorMessage(message);
       }
-    } finally {
-      setLoadingGoogle(false);
+      return;
     }
+
+    setLoadingGoogle(true);
+    authPromise
+      .catch((err: unknown) => {
+        const message = formatAuthError(err);
+        if (message) {
+          setErrorMessage(message);
+        }
+      })
+      .finally(() => {
+        setLoadingGoogle(false);
+      });
   };
 
   const handleGuest = async (e: React.FormEvent) => {
