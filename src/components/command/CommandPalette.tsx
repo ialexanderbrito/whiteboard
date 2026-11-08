@@ -98,6 +98,8 @@ export interface CommandPaletteBoardContext {
   onChangeGridSize?: (size: GridSize) => void;
   gridOpacity?: number;
   onChangeGridOpacity?: (opacity: number) => void;
+  showRemoteCursors?: boolean;
+  onToggleRemoteCursors?: (show?: boolean) => void;
 }
 
 export interface CommandPaletteDashboardContext {
@@ -605,7 +607,19 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             </CommandGroup>
 
             {/* Visualização & Grade do Canvas */}
-            <CommandGroup heading="Grade do Canvas">
+            <CommandGroup heading="Exibição e Grade">
+              {boardContext.onToggleRemoteCursors && (
+                <CommandItem
+                  onSelect={() => handleSelect(() => boardContext.onToggleRemoteCursors?.(!boardContext.showRemoteCursors))}
+                  className="group"
+                >
+                  <div className="flex size-6 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500 group-data-[selected=true]:bg-blue-500 group-data-[selected=true]:text-white transition-colors">
+                    {boardContext.showRemoteCursors ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                  </div>
+                  <span>{boardContext.showRemoteCursors ? 'Ocultar Cursores dos Colegas' : 'Exibir Cursores dos Colegas'}</span>
+                </CommandItem>
+              )}
+
               {boardContext.onToggleGrid && (
                 <CommandItem
                   onSelect={() => handleSelect(() => boardContext.onToggleGrid?.(!boardContext.showGrid))}

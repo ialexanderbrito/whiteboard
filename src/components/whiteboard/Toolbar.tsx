@@ -80,19 +80,19 @@ interface ToolbarProps {
 }
 
 const PEN_COLORS = [
-  { name: 'Preto / Carvão', value: '#0f172a' },
+  { name: 'Preto', value: '#0f172a' },
   { name: 'Cinza Ardósia', value: '#64748b' },
   { name: 'Azul Caneta', value: '#2563eb' },
   { name: 'Azul Celeste', value: '#0284c7' },
   { name: 'Verde Esmeralda', value: '#10b981' },
   { name: 'Verde Menta', value: '#14b8a6' },
-  { name: 'Âmbar / Laranja', value: '#f59e0b' },
+  { name: 'Laranja', value: '#f59e0b' },
   { name: 'Amarelo Marca-texto', value: '#eab308' },
-  { name: 'Vermelho / Alerta', value: '#ef4444' },
-  { name: 'Coral / Carmim', value: '#f43f5e' },
+  { name: 'Vermelho', value: '#ef4444' },
+  { name: 'Coral', value: '#f43f5e' },
   { name: 'Roxo Criativo', value: '#8b5cf6' },
   { name: 'Rosa Vibrante', value: '#ec4899' },
-  { name: 'Branco / Giz', value: '#ffffff' },
+  { name: 'Branco', value: '#ffffff' },
 ];
 
 const PEN_WIDTHS = [
@@ -105,7 +105,7 @@ const PEN_WIDTHS = [
 const SHAPE_OPTIONS = [
   { id: 'rect' as ToolType, label: 'Retângulo', icon: Square },
   { id: 'circle' as ToolType, label: 'Círculo', icon: Circle },
-  { id: 'diamond' as ToolType, label: 'Losango / Decisão', icon: Diamond },
+  { id: 'diamond' as ToolType, label: 'Losango', icon: Diamond },
   { id: 'triangle' as ToolType, label: 'Triângulo', icon: Triangle },
   { id: 'star' as ToolType, label: 'Estrela', icon: Star },
 ];
@@ -211,7 +211,7 @@ export const Toolbar: React.FC<ToolbarProps> = React.memo(({
               </button>
             </TooltipTrigger>
             <TooltipContent side={tooltipSide}>
-              <p className="font-medium text-xs">Mover Tela / Pan <span className="opacity-60 text-[10px]">(H ou Espaço)</span></p>
+              <p className="font-medium text-xs">Mover <span className="opacity-60 text-[10px]">(H ou Espaço)</span></p>
             </TooltipContent>
           </Tooltip>
 
@@ -269,7 +269,7 @@ export const Toolbar: React.FC<ToolbarProps> = React.memo(({
               </TooltipTrigger>
               <TooltipContent side={tooltipSide}>
                 <p className="font-medium text-xs">
-                  {canCommentOnly ? 'Comentário / Post-it' : 'Post-it'}{' '}
+                  {canCommentOnly ? 'Comentário' : 'Post-it'}{' '}
                   <span className="opacity-60 text-[10px]">(N)</span>
                 </p>
               </TooltipContent>
@@ -755,7 +755,7 @@ export const Toolbar: React.FC<ToolbarProps> = React.memo(({
               </button>
             </TooltipTrigger>
             <TooltipContent side={tooltipSide}>
-              <p className="font-medium text-xs">Moldura / Raia <span className="opacity-60 text-[10px]">(F)</span></p>
+              <p className="font-medium text-xs">Moldura <span className="opacity-60 text-[10px]">(F)</span></p>
             </TooltipContent>
           </Tooltip>
           </>

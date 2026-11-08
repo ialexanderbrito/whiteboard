@@ -56,6 +56,8 @@ interface NavbarProps {
   onChangeGridOpacity?: (opacity: number) => void;
   showGrid?: boolean;
   onToggleGrid?: (show?: boolean) => void;
+  showRemoteCursors?: boolean;
+  onToggleRemoteCursors?: (show?: boolean) => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = React.memo(({
@@ -90,6 +92,8 @@ export const Navbar: React.FC<NavbarProps> = React.memo(({
   onChangeGridOpacity,
   showGrid,
   onToggleGrid,
+  showRemoteCursors,
+  onToggleRemoteCursors,
 }) => {
   const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -347,6 +351,8 @@ export const Navbar: React.FC<NavbarProps> = React.memo(({
           onChangeGridOpacity={onChangeGridOpacity}
           showGrid={showGrid}
           onToggleGrid={onToggleGrid}
+          showRemoteCursors={showRemoteCursors}
+          onToggleRemoteCursors={onToggleRemoteCursors}
         />
 
         {/* Botão de Compartilhar (Apenas proprietários podem compartilhar; convidados não podem) */}
