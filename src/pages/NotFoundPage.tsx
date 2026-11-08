@@ -90,7 +90,7 @@ export const NotFoundPage: React.FC<NotFoundPageProps> = ({
         );
         navigate(`/b/${newBoardId}`);
       } else {
-        navigate('/login');
+        navigate('/');
       }
     } catch (err) {
       console.error('Erro ao criar quadro novo:', err);

@@ -1,5 +1,5 @@
 import React, { Suspense, lazy } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useParams, useSearchParams } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { TooltipProvider } from './components/ui/tooltip';
@@ -21,8 +21,8 @@ const LegacyBoardRedirect: React.FC = () => {
   return <Navigate to={`/b/${cleanId}`} replace />;
 };
 
-// Componente para proteger a rota do Dashboard
-const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+// Rota raiz ("/"): exibe o Dashboard para usuários logados ou a tela de login diretamente na raiz se não autenticado
+const RootRoute: React.FC = () => {
   const { currentUser, loading } = useAuth();
 
   if (loading) {
@@ -30,10 +30,17 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
   }
 
   if (!currentUser) {
-    return <Navigate to="/login" replace />;
+    return <LoginPage />;
   }
 
-  return <>{children}</>;
+  return <DashboardPage />;
+};
+
+// Redireciona acessos à rota legada /login diretamente para a raiz "/", preservando parâmetros como ?redirect=
+const LegacyLoginRedirect: React.FC = () => {
+  const [searchParams] = useSearchParams();
+  const redirect = searchParams.get('redirect');
+  return <Navigate to={redirect ? `/?redirect=${encodeURIComponent(redirect)}` : '/'} replace />;
 };
 
 export const App: React.FC = () => {
@@ -44,15 +51,8 @@ export const App: React.FC = () => {
           <BrowserRouter>
             <Suspense fallback={<PageLoader />}>
               <Routes>
-                <Route path="/login" element={<LoginPage />} />
-                <Route
-                  path="/"
-                  element={
-                    <ProtectedRoute>
-                      <DashboardPage />
-                    </ProtectedRoute>
-                  }
-                />
+                <Route path="/" element={<RootRoute />} />
+                <Route path="/login" element={<LegacyLoginRedirect />} />
                 <Route path="/board/:boardId" element={<LegacyBoardRedirect />} />
                 <Route path="/b/:boardId" element={<BoardPage />} />
                 <Route path="/404" element={<NotFoundPage />} />
