@@ -44,12 +44,17 @@ export function getUserBoardPermission(
     return 'edit';
   }
 
-  // 2. Verifica se o usuário tem permissão específica atribuída por UID (inclui convidados sem Google)
+  // 2. Se o usuário foi expressamente removido pelo proprietário do quadro, bloqueia imediatamente o acesso
+  if (board.removedMemberIds && board.removedMemberIds.includes(user.uid)) {
+    return 'none';
+  }
+
+  // 3. Verifica se o usuário tem permissão específica atribuída por UID (inclui convidados sem Google)
   if (board.members && board.members[user.uid]?.role) {
     return board.members[user.uid].role!;
   }
 
-  // 3. Verifica se o usuário foi convidado explicitamente pelo e-mail
+  // 4. Verifica se o usuário foi convidado explicitamente pelo e-mail
   if (user.email && board.collaborators) {
     const userEmail = user.email.trim().toLowerCase();
     const collab = Object.values(board.collaborators).find(

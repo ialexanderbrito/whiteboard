@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import type { Board, BoardPermission, CurrentUser, UserPresence } from '../../types/board';
 import { isBoardOwner } from '../../utils/permissions';
+import { boardService } from '../../services/boardService';
 
 interface ShareModalProps {
   open: boolean;
@@ -41,7 +42,7 @@ interface ShareModalProps {
   board: Board | null;
   currentUser: CurrentUser;
   remoteUsers?: UserPresence[];
-  onUpdateBoardSettings?: (updates: Partial<Pick<Board, 'defaultPermission' | 'collaborators' | 'collaboratorEmails' | 'members' | 'isPasswordProtected' | 'password'>>) => Promise<void>;
+  onUpdateBoardSettings?: (updates: Partial<Pick<Board, 'defaultPermission' | 'collaborators' | 'collaboratorEmails' | 'members' | 'removedMemberIds' | 'isPasswordProtected' | 'password'>>) => Promise<void>;
 }
 
 const PERMISSION_LABELS: Record<BoardPermission, { label: string; desc: string }> = {
@@ -88,6 +89,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   const [inviteInput, setInviteInput] = useState('');
   const [inviteRole, setInviteRole] = useState<BoardPermission>('edit');
   const [inviteSuccess, setInviteSuccess] = useState(false);
+  const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
 
   // Estados de proteção por senha
   const [hasPassword, setHasPassword] = useState(Boolean(board?.isPasswordProtected));
@@ -101,6 +103,12 @@ export const ShareModal: React.FC<ShareModalProps> = ({
       setBoardPassword(board.password || '');
     }
   }, [board]);
+
+  useEffect(() => {
+    if (open) {
+      setRemovedIds(new Set());
+    }
+  }, [open]);
 
   const defaultPermission: BoardPermission = board?.defaultPermission || 'edit';
   const isOwner = isBoardOwner(board, currentUser);
@@ -219,27 +227,82 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   const handleUpdatePersonRole = async (person: AccessPerson, newRole: BoardPermission | 'remove') => {
     if (!board || !onUpdateBoardSettings || person.isOwner) return;
 
-    const updates: Partial<Pick<Board, 'collaborators' | 'collaboratorEmails' | 'members'>> = {};
+    if (newRole === 'remove') {
+      // 1. Marca imediatamente no estado local para remoção instantânea na UI do modal
+      const idKey = person.id;
+      const uidKey = person.uid || '';
+      const emailKey = person.email ? person.email.replace(/[.#$[\]]/g, '_') : '';
+      setRemovedIds((prev) => {
+        const next = new Set(prev);
+        if (idKey) next.add(idKey);
+        if (uidKey) next.add(uidKey);
+        if (emailKey) {
+          next.add(emailKey);
+          next.add(`email_${emailKey}`);
+        }
+        if (person.email) next.add(person.email);
+        return next;
+      });
+
+      // 2. Remove membro/convidado do Firestore e limpa presença
+      if (person.uid) {
+        await boardService.removeBoardMember(board.id, person.uid);
+      }
+
+      // 3. Remove colaborador de e-mail se houver
+      if (person.email) {
+        await boardService.removeBoardCollaborator(board.id, person.email);
+      }
+
+      // 4. Prepara atualização de estado local do quadro
+      const updatedMembers = { ...(board.members || {}) };
+      if (person.uid) {
+        delete updatedMembers[person.uid];
+      }
+      const updatedRemoved = Array.from(
+        new Set([...(board.removedMemberIds || []), ...(person.uid ? [person.uid] : [])])
+      );
+
+      const updatedCollaborators = { ...(board.collaborators || {}) };
+      if (person.email) {
+        const cleanKey = person.email.replace(/[.#$[\]]/g, '_');
+        delete updatedCollaborators[cleanKey];
+      }
+      const collaboratorEmails = Object.values(updatedCollaborators)
+        .map((c) => (c?.email ? c.email.toLowerCase() : ''))
+        .filter(Boolean);
+
+      await onUpdateBoardSettings({
+        members: updatedMembers,
+        removedMemberIds: updatedRemoved,
+        collaborators: updatedCollaborators,
+        collaboratorEmails,
+      });
+      return;
+    }
+
+    const updates: Partial<Pick<Board, 'collaborators' | 'collaboratorEmails' | 'members' | 'removedMemberIds'>> = {};
+
+    // Se estiver re-atribuindo papel válido, remove de removedMemberIds se estava na lista de removidos
+    if (newRole !== 'none' && person.uid && board.removedMemberIds?.includes(person.uid)) {
+      updates.removedMemberIds = (board.removedMemberIds || []).filter((id) => id !== person.uid);
+    }
 
     // 1. Atualiza membros (members) se a pessoa possuir UID
     if (person.uid) {
       const updatedMembers = { ...(board.members || {}) };
-      if (newRole === 'remove') {
-        delete updatedMembers[person.uid];
-      } else {
-        const existing = updatedMembers[person.uid];
-        updatedMembers[person.uid] = {
-          uid: person.uid,
-          name: person.name,
-          email: person.email || null,
-          photoURL: person.photoURL || null,
-          role: newRole,
-          joinedAt: existing?.joinedAt || Date.now(),
-          lastSeen: Date.now(),
-          isAnonymous: person.isAnonymous,
-          color: person.color || '#3b82f6',
-        };
-      }
+      const existing = updatedMembers[person.uid];
+      updatedMembers[person.uid] = {
+        uid: person.uid,
+        name: person.name,
+        email: person.email || null,
+        photoURL: person.photoURL || null,
+        role: newRole,
+        joinedAt: existing?.joinedAt || Date.now(),
+        lastSeen: Date.now(),
+        isAnonymous: person.isAnonymous,
+        color: person.color || '#3b82f6',
+      };
       updates.members = updatedMembers;
     }
 
@@ -247,9 +310,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
     if (person.email) {
       const emailKey = person.email.replace(/[.#$[\]]/g, '_');
       const updatedCollaborators = { ...(board.collaborators || {}) };
-      if (newRole === 'remove') {
-        delete updatedCollaborators[emailKey];
-      } else if (updatedCollaborators[emailKey]) {
+      if (updatedCollaborators[emailKey]) {
         updatedCollaborators[emailKey] = { ...updatedCollaborators[emailKey], role: newRole };
       }
       updates.collaborators = updatedCollaborators;
@@ -264,6 +325,10 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   // Unifica e calcula todas as pessoas com acesso ao quadro (Dono, Membros registrados, Visitantes online e Convites)
   const peopleWithAccess = useMemo<AccessPerson[]>(() => {
     const map = new Map<string, AccessPerson>();
+    const effectiveRemovedSet = new Set([
+      ...(board?.removedMemberIds || []),
+      ...Array.from(removedIds),
+    ]);
 
     // 1. Dono do quadro
     const ownerUid = board?.ownerId || (isOwner ? currentUser?.uid : undefined);
@@ -293,6 +358,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
     // 2. Membros registrados no board (visitantes, anônimos e usuários que já acessaram)
     const members = Object.values(board?.members || {});
     for (const m of members) {
+      if (effectiveRemovedSet.has(m.uid)) continue;
       if (ownerUid && m.uid === ownerUid) continue;
       if (isOwner && m.uid === currentUser.uid) continue;
       if (isOwner && currentUser.email && m.email && m.email.toLowerCase() === currentUser.email.toLowerCase()) continue;
@@ -329,6 +395,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
     // 3. Usuários conectados na sala agora (remoteUsers) que ainda não foram sincronizados
     if (remoteUsers && remoteUsers.length > 0) {
       for (const r of remoteUsers) {
+        if (effectiveRemovedSet.has(r.userId)) continue;
         if (ownerUid && r.userId === ownerUid) continue;
         if (isOwner && r.userId === currentUser.uid) continue;
         if (map.has(r.userId)) {
@@ -362,34 +429,43 @@ export const ShareModal: React.FC<ShareModalProps> = ({
 
     // 4. Usuário atual (se não for dono e ainda não estiver na lista)
     if (!isOwner && currentUser?.uid && !map.has(currentUser.uid)) {
-      const isGuest = Boolean(currentUser.isAnonymous || !currentUser.email);
-      map.set(currentUser.uid, {
-        id: currentUser.uid,
-        uid: currentUser.uid,
-        name: currentUser.displayName || (isGuest ? 'Convidado' : 'Usuário'),
-        email: currentUser.email || null,
-        photoURL: currentUser.photoURL || null,
-        color: currentUser.color || '#3b82f6',
-        isOwner: false,
-        isCurrentUser: true,
-        isAnonymous: isGuest,
-        isOnline: true,
-        role: defaultPermission,
-        subtitle: isGuest ? 'Online agora • Convidado via link' : `Online agora • ${currentUser.email}`,
-        badgeLabel: isGuest ? 'Convidado' : undefined,
-      });
+      if (!effectiveRemovedSet.has(currentUser.uid)) {
+        const isGuest = Boolean(currentUser.isAnonymous || !currentUser.email);
+        map.set(currentUser.uid, {
+          id: currentUser.uid,
+          uid: currentUser.uid,
+          name: currentUser.displayName || (isGuest ? 'Convidado' : 'Usuário'),
+          email: currentUser.email || null,
+          photoURL: currentUser.photoURL || null,
+          color: currentUser.color || '#3b82f6',
+          isOwner: false,
+          isCurrentUser: true,
+          isAnonymous: isGuest,
+          isOnline: true,
+          role: defaultPermission,
+          subtitle: isGuest ? 'Online agora • Convidado via link' : `Online agora • ${currentUser.email}`,
+          badgeLabel: isGuest ? 'Convidado' : undefined,
+        });
+      }
     }
 
     // 5. Convites enviados por e-mail (collaborators)
     const collaborators = Object.values(board?.collaborators || {});
     for (const c of collaborators) {
       const emailLower = c.email.toLowerCase();
+      const emailKey = c.email.replace(/[.#$[\]]/g, '_');
+      if (
+        removedIds.has(`email_${emailKey}`) ||
+        removedIds.has(c.email) ||
+        removedIds.has(emailKey)
+      ) {
+        continue;
+      }
       if (isOwner && currentUser.email && currentUser.email.toLowerCase() === emailLower) continue;
       const alreadyExists = Array.from(map.values()).some(
         (p) => p.email && p.email.toLowerCase() === emailLower
       );
       if (!alreadyExists) {
-        const emailKey = c.email.replace(/[.#$[\]]/g, '_');
         const isThisUser = Boolean(currentUser.email && currentUser.email.toLowerCase() === emailLower);
         map.set(`email_${emailKey}`, {
           id: emailKey,
@@ -417,7 +493,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
     });
 
     return [ownerPerson, ...otherPeople];
-  }, [board, currentUser, remoteUsers, isOwner, defaultPermission]);
+  }, [board, currentUser, remoteUsers, isOwner, defaultPermission, removedIds]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

@@ -28,7 +28,7 @@ interface NavbarProps {
   title: string;
   board?: Board | null;
   onUpdateTitle: (newTitle: string) => void;
-  onUpdateBoardSettings?: (updates: Partial<Pick<Board, 'defaultPermission' | 'collaborators' | 'collaboratorEmails' | 'members' | 'isPasswordProtected' | 'password'>>) => Promise<void>;
+  onUpdateBoardSettings?: (updates: Partial<Pick<Board, 'defaultPermission' | 'collaborators' | 'collaboratorEmails' | 'members' | 'removedMemberIds' | 'isPasswordProtected' | 'password'>>) => Promise<void>;
   onBackToDashboard: () => void;
   currentUser: CurrentUser;
   onOpenEditProfile?: () => void;

@@ -7,7 +7,10 @@ import {
   deleteDoc, 
   updateDoc, 
   writeBatch,
-  onSnapshot 
+  onSnapshot,
+  deleteField,
+  arrayUnion,
+  arrayRemove
 } from 'firebase/firestore';
 import { ref as rtdbRef, remove as rtdbRemove } from 'firebase/database';
 import { db, rtdb, isFirebaseConfigured } from '../config/firebase';
@@ -218,6 +221,14 @@ export const boardService = {
         const userEmailLower = user.email ? user.email.toLowerCase() : null;
 
         const filtered = allLocal.filter((b) => {
+          // Se o usuário foi expressamente removido pelo proprietário deste quadro ou bloqueado, nunca deve aparecer no dashboard dele
+          if (b.removedMemberIds && b.removedMemberIds.includes(user.uid)) {
+            return false;
+          }
+          if (b.members && b.members[user.uid]?.role === 'none') {
+            return false;
+          }
+
           // 1. É o proprietário do quadro
           if (b.ownerId === user.uid) return true;
 
@@ -234,17 +245,12 @@ export const boardService = {
             }
           }
 
-          // 3. É membro registrado no quadro
-          if (b.members && b.members[user.uid]) {
+          // 3. É membro registrado no quadro com acesso permitido (role !== 'none')
+          if (b.members && b.members[user.uid] && b.members[user.uid].role !== 'none') {
             return true;
           }
 
-          // 4. Compartilhado com convidados (acesso geral liberado !== 'none', padrão é 'edit')
-          if (b.defaultPermission !== 'none') {
-            return true;
-          }
-
-          // 5. Foi visitado por este usuário via link e não possui acesso restrito ('none')
+          // 4. Foi visitado por este usuário via link específico e não possui acesso restrito ('none')
           if (visitedIds.includes(b.id) && b.defaultPermission !== 'none') {
             return true;
           }
@@ -310,9 +316,18 @@ export const boardService = {
               ? rawData.collaboratorEmails.filter(Boolean).map((e) => String(e).toLowerCase())
               : [],
             members: rawData.members || {},
+            removedMemberIds: Array.isArray(rawData.removedMemberIds) ? rawData.removedMemberIds : [],
             isPasswordProtected: Boolean(rawData.isPasswordProtected),
             password: rawData.password || '',
           };
+
+          // Se o usuário foi expressamente removido pelo proprietário deste quadro ou bloqueado, nunca deve aparecer no dashboard dele
+          if (b.removedMemberIds && b.removedMemberIds.includes(user.uid)) {
+            return;
+          }
+          if (b.members && b.members[user.uid]?.role === 'none') {
+            return;
+          }
 
           // 1. É o proprietário do quadro
           if (b.ownerId === user.uid) {
@@ -332,19 +347,13 @@ export const boardService = {
             }
           }
 
-          // 3. É membro registrado no quadro
-          if (b.members && b.members[user.uid]) {
+          // 3. É membro registrado no quadro com acesso permitido (role !== 'none')
+          if (b.members && b.members[user.uid] && b.members[user.uid].role !== 'none') {
             validBoards.push(b);
             return;
           }
 
-          // 4. Compartilhado com convidados (acesso geral liberado !== 'none', padrão é 'edit')
-          if (b.defaultPermission !== 'none') {
-            validBoards.push(b);
-            return;
-          }
-
-          // 5. Foi visitado por este usuário via link e não possui acesso restrito ('none')
+          // 4. Foi visitado por este usuário via link e não possui acesso restrito ('none')
           if (visitedIds.includes(b.id) && b.defaultPermission !== 'none') {
             validBoards.push(b);
             return;
@@ -569,7 +578,7 @@ export const boardService = {
 
   async updateBoardSettings(
     rawBoardId: string,
-    updates: Partial<Pick<Board, 'title' | 'ownerId' | 'ownerName' | 'defaultPermission' | 'collaborators' | 'collaboratorEmails' | 'members' | 'isPasswordProtected' | 'password'>>
+    updates: Partial<Pick<Board, 'title' | 'ownerId' | 'ownerName' | 'defaultPermission' | 'collaborators' | 'collaboratorEmails' | 'members' | 'removedMemberIds' | 'isPasswordProtected' | 'password'>>
   ): Promise<void> {
     const boardId = cleanBoardId(rawBoardId);
     if (!boardId) return;
@@ -604,7 +613,133 @@ export const boardService = {
     }
 
     const docRef = doc(db, 'boards', boardId);
-    await setDoc(docRef, payload, { merge: true });
+    try {
+      await updateDoc(docRef, payload);
+    } catch {
+      await setDoc(docRef, payload, { merge: true });
+    }
+  },
+
+  /**
+   * Remove um membro/convidado do quadro de forma definitiva:
+   * 1. Remove da coleção members no Firestore (via deleteField) e localStorage
+   * 2. Adiciona o UID em removedMemberIds para impedir que ele volte ou veja o quadro
+   * 3. Remove a presença ativa no Realtime Database e BroadcastChannel
+   * 4. Remove do histórico de quadros visitados do usuário
+   */
+  async removeBoardMember(rawBoardId: string, memberUid: string): Promise<void> {
+    const boardId = cleanBoardId(rawBoardId);
+    if (!boardId || !memberUid) return;
+
+    // 1. Remove histórico local de visitas
+    removeVisitedBoard(boardId, memberUid);
+
+    // 2. Limpa presença no RTDB se estiver conectado
+    if (isFirebaseConfigured && rtdb) {
+      try {
+        const presenceRef = rtdbRef(rtdb, `presence/${boardId}/${memberUid}`);
+        await rtdbRemove(presenceRef);
+      } catch (e) {
+        console.warn('Erro ao remover presença RTDB:', e);
+      }
+    }
+
+    // Broadcast local para abas desconectarem presença
+    try {
+      const channel = new BroadcastChannel(`mirio_presence_${boardId}`);
+      channel.postMessage({ type: 'leave', userId: memberUid });
+      channel.close();
+    } catch {}
+
+    // 3. Atualiza Firestore
+    if (isFirebaseConfigured && db) {
+      try {
+        const docRef = doc(db, 'boards', boardId);
+        await updateDoc(docRef, {
+          [`members.${memberUid}`]: deleteField(),
+          removedMemberIds: arrayUnion(memberUid),
+          updatedAt: Date.now(),
+        });
+        return;
+      } catch (err) {
+        console.warn('Erro ao remover membro do Firestore via updateDoc:', err);
+      }
+    }
+
+    // 4. Armazenamento Local
+    let local: Board[] = [];
+    try {
+      local = JSON.parse(localStorage.getItem(LOCAL_BOARDS_KEY) || '[]');
+      if (!Array.isArray(local)) local = [];
+    } catch {
+      local = [];
+    }
+    const idx = local.findIndex((b) => b && (cleanBoardId(b.id) === boardId || b.id === `board_${boardId}`));
+    if (idx !== -1) {
+      const updatedMembers = { ...(local[idx].members || {}) };
+      delete updatedMembers[memberUid];
+      const removedIds = Array.from(new Set([...(local[idx].removedMemberIds || []), memberUid]));
+      local[idx] = {
+        ...local[idx],
+        members: updatedMembers,
+        removedMemberIds: removedIds,
+        updatedAt: Date.now(),
+      };
+      localStorage.setItem(LOCAL_BOARDS_KEY, JSON.stringify(local));
+      notifyLocalSubscribers();
+    }
+  },
+
+  /**
+   * Remove um colaborador convidado por e-mail:
+   * 1. Remove da coleção collaborators no Firestore (via deleteField) e localStorage
+   * 2. Remove o e-mail do array collaboratorEmails
+   */
+  async removeBoardCollaborator(rawBoardId: string, email: string): Promise<void> {
+    const boardId = cleanBoardId(rawBoardId);
+    if (!boardId || !email) return;
+
+    const emailLower = email.toLowerCase().trim();
+    const emailKey = emailLower.replace(/[.#$[\]]/g, '_');
+
+    if (isFirebaseConfigured && db) {
+      try {
+        const docRef = doc(db, 'boards', boardId);
+        await updateDoc(docRef, {
+          [`collaborators.${emailKey}`]: deleteField(),
+          collaboratorEmails: arrayRemove(emailLower),
+          updatedAt: Date.now(),
+        });
+        return;
+      } catch (err) {
+        console.warn('Erro ao remover colaborador do Firestore via updateDoc:', err);
+      }
+    }
+
+    // Armazenamento Local
+    let local: Board[] = [];
+    try {
+      local = JSON.parse(localStorage.getItem(LOCAL_BOARDS_KEY) || '[]');
+      if (!Array.isArray(local)) local = [];
+    } catch {
+      local = [];
+    }
+    const idx = local.findIndex((b) => b && (cleanBoardId(b.id) === boardId || b.id === `board_${boardId}`));
+    if (idx !== -1) {
+      const updatedCollaborators = { ...(local[idx].collaborators || {}) };
+      delete updatedCollaborators[emailKey];
+      const updatedEmails = Object.values(updatedCollaborators)
+        .map((c) => (c?.email ? c.email.toLowerCase() : ''))
+        .filter(Boolean);
+      local[idx] = {
+        ...local[idx],
+        collaborators: updatedCollaborators,
+        collaboratorEmails: updatedEmails,
+        updatedAt: Date.now(),
+      };
+      localStorage.setItem(LOCAL_BOARDS_KEY, JSON.stringify(local));
+      notifyLocalSubscribers();
+    }
   },
 
   /**
@@ -646,6 +781,10 @@ export const boardService = {
       if (local[idx].ownerId === user.uid) {
         return;
       }
+      // Se o usuário foi removido deste quadro pelo proprietário, não permite auto-registro
+      if (local[idx].removedMemberIds?.includes(user.uid) || local[idx].members?.[user.uid]?.role === 'none') {
+        return;
+      }
       const currentMembers = local[idx].members || {};
       const existingRole = currentMembers[user.uid]?.role;
       local[idx].members = {
@@ -672,6 +811,10 @@ export const boardService = {
             return;
           }
           if (!boardData.ownerId && !user.isAnonymous && user.displayName && user.displayName === boardData.ownerName) {
+            return;
+          }
+          // Se o usuário foi removido deste quadro pelo proprietário, não permite auto-registro
+          if (boardData.removedMemberIds?.includes(user.uid) || boardData.members?.[user.uid]?.role === 'none') {
             return;
           }
         } else {

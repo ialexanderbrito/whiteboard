@@ -29,6 +29,7 @@ export interface Board {
   collaborators?: Record<string, BoardCollaborator>;
   collaboratorEmails?: string[];
   members?: Record<string, BoardMember>;
+  removedMemberIds?: string[];
   isPasswordProtected?: boolean;
   password?: string;
 }

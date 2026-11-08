@@ -7,6 +7,14 @@ import assert from 'node:assert/strict';
 function isBoardVisibleToUser(board, user, visitedIds = []) {
   if (!user) return false;
 
+  // Se o usuário foi expressamente removido pelo proprietário deste quadro ou bloqueado
+  if (board.removedMemberIds && board.removedMemberIds.includes(user.uid)) {
+    return false;
+  }
+  if (board.members && board.members[user.uid]?.role === 'none') {
+    return false;
+  }
+
   // 1. É o proprietário do quadro
   if (board.ownerId === user.uid) return true;
 
@@ -21,17 +29,12 @@ function isBoardVisibleToUser(board, user, visitedIds = []) {
     }
   }
 
-  // 3. É membro registrado no quadro
-  if (board.members && board.members[user.uid]) {
+  // 3. É membro registrado no quadro com acesso liberado (role !== 'none')
+  if (board.members && board.members[user.uid] && board.members[user.uid].role !== 'none') {
     return true;
   }
 
-  // 4. Compartilhado com convidados (acesso geral liberado !== 'none')
-  if (board.defaultPermission !== 'none') {
-    return true;
-  }
-
-  // 5. Visitado pelo usuário via link e não possui restrição
+  // 4. Visitado pelo usuário via link direto e não possui restrição
   if (visitedIds.includes(board.id) && board.defaultPermission !== 'none') {
     return true;
   }
@@ -53,7 +56,27 @@ function getDashboardBoardActions(board, user) {
   };
 }
 
-test('Quadro compartilhado com convidados aparece na listagem de usuários convidados', () => {
+test('Quadro não compartilhado não aparece no dashboard de convidado que entra diretamente no site', () => {
+  const unsharedBoard = {
+    id: 'x3nn0eru',
+    title: '#00 - Mirio',
+    ownerId: 'owner_alexander',
+    ownerName: 'Alexander',
+    defaultPermission: 'edit',
+  };
+
+  const directGuest = {
+    uid: 'guest_abc999',
+    displayName: 'Convidado Visitante',
+    email: null,
+    isAnonymous: true,
+  };
+
+  // Convidado entra diretamente no site sem ter visitado o link específico do quadro
+  assert.equal(isBoardVisibleToUser(unsharedBoard, directGuest, []), false);
+});
+
+test('Quadro acessado via link pelo convidado aparece no histórico/dashboard dele', () => {
   const sharedBoard = {
     id: 'board123',
     title: 'Sprint Planning Equipe',
@@ -69,7 +92,28 @@ test('Quadro compartilhado com convidados aparece na listagem de usuários convi
     isAnonymous: true,
   };
 
-  assert.equal(isBoardVisibleToUser(sharedBoard, guestUser), true);
+  assert.equal(isBoardVisibleToUser(sharedBoard, guestUser, ['board123']), true);
+});
+
+test('Usuário/Convidado removido da lista pelo proprietário perde acesso e o quadro desaparece do dashboard', () => {
+  const boardWithRemoved = {
+    id: 'x3nn0eru',
+    title: '#00 - Mirio',
+    ownerId: 'owner_alexander',
+    ownerName: 'Alexander',
+    defaultPermission: 'edit',
+    removedMemberIds: ['guest_abc999'],
+  };
+
+  const removedGuest = {
+    uid: 'guest_abc999',
+    displayName: 'Convidado Removido',
+    email: null,
+    isAnonymous: true,
+  };
+
+  // Mesmo que o quadro estivesse no histórico local (visitedIds), a remoção impede a exibição
+  assert.equal(isBoardVisibleToUser(boardWithRemoved, removedGuest, ['x3nn0eru']), false);
 });
 
 test('Quadro privado (defaultPermission: none) não aparece para convidados não autorizados', () => {

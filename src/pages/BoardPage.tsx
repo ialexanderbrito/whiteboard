@@ -790,7 +790,7 @@ export const BoardPage: React.FC = () => {
   };
 
   const handleUpdateBoardSettings = async (
-    updates: Partial<Pick<Board, 'defaultPermission' | 'collaborators' | 'collaboratorEmails' | 'members' | 'isPasswordProtected' | 'password'>>
+    updates: Partial<Pick<Board, 'defaultPermission' | 'collaborators' | 'collaboratorEmails' | 'members' | 'removedMemberIds' | 'isPasswordProtected' | 'password'>>
   ) => {
     if (!boardId || !board || !isOwner) return;
     setBoard({ ...board, ...updates });
