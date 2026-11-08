@@ -178,6 +178,20 @@ export const BoardPage: React.FC = () => {
     localStorage.setItem('mirio_grid_opacity', String(clamped));
   };
 
+  // Configuração de exibição dos cursores remotos dos colegas (persistido em localStorage)
+  const [showRemoteCursors, setShowRemoteCursors] = useState<boolean>(() => {
+    const saved = localStorage.getItem('mirio_show_remote_cursors');
+    return saved !== null ? saved !== 'false' : true;
+  });
+
+  const handleToggleRemoteCursors = (show?: boolean) => {
+    setShowRemoteCursors((prev) => {
+      const next = typeof show === 'boolean' ? show : !prev;
+      localStorage.setItem('mirio_show_remote_cursors', String(next));
+      return next;
+    });
+  };
+
   // Modo Apresentação em Tela Cheia
   const [isPresentationMode, setIsPresentationMode] = useState(false);
   const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
@@ -1321,6 +1335,8 @@ export const BoardPage: React.FC = () => {
           onChangeGridOpacity={handleChangeGridOpacity}
           showGrid={showGrid}
           onToggleGrid={handleToggleGrid}
+          showRemoteCursors={showRemoteCursors}
+          onToggleRemoteCursors={handleToggleRemoteCursors}
         />
       )}
 
@@ -1597,6 +1613,8 @@ export const BoardPage: React.FC = () => {
           isDarkMode: isDark,
           showGrid,
           onToggleGrid: handleToggleGrid,
+          showRemoteCursors,
+          onToggleRemoteCursors: handleToggleRemoteCursors,
           gridType,
           onChangeGridType: handleChangeGridType,
           gridSize,
@@ -1629,12 +1647,14 @@ export const BoardPage: React.FC = () => {
       />
 
       {/* Camada de Cursores Remotos Voando na Tela */}
-      <RemoteCursors
-        remoteUsers={remoteUsers}
-        stageX={stagePos.x}
-        stageY={stagePos.y}
-        scale={scale}
-      />
+      {showRemoteCursors && (
+        <RemoteCursors
+          remoteUsers={remoteUsers}
+          stageX={stagePos.x}
+          stageY={stagePos.y}
+          scale={scale}
+        />
+      )}
 
       {/* Canvas Principal com Konva */}
       <WhiteboardCanvas
