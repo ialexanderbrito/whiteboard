@@ -26,3 +26,7 @@ dist-ssr
 # Environment variables
 .env
 .env.production
+
+# AI Agents & Skills
+.agents/
+skills-lock.json
