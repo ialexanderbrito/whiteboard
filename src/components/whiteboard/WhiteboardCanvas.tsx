@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { Stage, Layer, Transformer, Rect, Circle, Line, Star, Group, Text } from 'react-konva';
 import type Konva from 'konva';
-import type { CanvasElement, ToolType } from '../../types/element';
+import type { CanvasElement, ToolType, ElementType } from '../../types/element';
 import type { UserPresence, CurrentUser } from '../../types/board';
 import { StickyNoteItem } from './StickyNoteItem';
 import { ShapeItem } from './ShapeItem';
@@ -1831,13 +1831,38 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       return;
     }
 
-    if (!isDrawing.current || !drawingElement) return;
+    if (!isDrawing.current) return;
 
     const isShift = Boolean(e.evt?.shiftKey);
 
     if (rafId.current) cancelAnimationFrame(rafId.current);
 
     rafId.current = requestAnimationFrame(() => {
+      // Formas geométricas: só cria o drawingElement para pré-visualização quando o usuário de fato arrasta
+      if (['rect', 'circle', 'diamond', 'triangle', 'star'].includes(currentTool)) {
+        const start = shapeDragStartRef.current || worldPos;
+        const dist = Math.hypot(worldPos.x - start.x, worldPos.y - start.y);
+        if (dist >= 4 || drawingElement) {
+          const bounds = calculateShapeDragBounds(currentTool, start, worldPos, isShift);
+          const shapeFill = selectedColor && selectedColor !== '#0f172a' ? selectedColor : '#ffffff';
+          setDrawingElement({
+            id: 'temp_shape_preview',
+            type: currentTool as ElementType,
+            ...bounds,
+            fill: shapeFill,
+            stroke: '#334155',
+            strokeWidth: 2,
+            zIndex: elements.length + 1,
+            updatedBy: currentUser.uid,
+            updatedByName: currentUser.displayName,
+            updatedAt: 0,
+          });
+        }
+        return;
+      }
+
+      if (!drawingElement) return;
+
       if (drawingElement.type === 'pen') {
         const newPoints = [...(drawingElement.points || []), worldPos.x, worldPos.y];
         setDrawingElement({
@@ -1851,18 +1876,6 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           ...drawingElement,
           points: [0, 0, dx, dy],
         });
-      } else if (['rect', 'circle', 'diamond', 'triangle', 'star'].includes(drawingElement.type)) {
-        const start = shapeDragStartRef.current || { x: drawingElement.x, y: drawingElement.y };
-        const bounds = calculateShapeDragBounds(drawingElement.type, start, worldPos, isShift);
-
-        setDrawingElement((prev) =>
-          prev
-            ? {
-                ...prev,
-                ...bounds,
-              }
-            : null
-        );
       }
     });
   };
@@ -1960,7 +1973,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     }
 
     // Finalização de desenho de Caneta ou Seta ou Forma
-    if (isDrawing.current && drawingElement) {
+    if (isDrawing.current && (drawingElement || shapeDragStartRef.current)) {
       isDrawing.current = false;
       const finishedDrawing = drawingElement;
       const dragStart = shapeDragStartRef.current;
@@ -1968,6 +1981,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       shapeDragStartRef.current = null;
 
       if (
+        finishedDrawing &&
         finishedDrawing.type === 'pen' &&
         finishedDrawing.points &&
         finishedDrawing.points.length > 2
@@ -2063,7 +2077,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           });
         }
         // Não seleciona o elemento recém-criado: o usuário continua em modo caneta pronto para o próximo traço!
-      } else if (finishedDrawing.type === 'arrow' && finishedDrawing.points) {
+      } else if (finishedDrawing && finishedDrawing.type === 'arrow' && finishedDrawing.points) {
         await onAddElement({
           type: 'arrow',
           x: Math.round(finishedDrawing.x),
@@ -2076,26 +2090,29 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           updatedByName: currentUser.displayName,
         });
         onSelectTool('select');
-      } else if (['rect', 'circle', 'diamond', 'triangle', 'star'].includes(finishedDrawing.type)) {
+      } else if (
+        ['rect', 'circle', 'diamond', 'triangle', 'star'].includes(currentTool) ||
+        Boolean(finishedDrawing && ['rect', 'circle', 'diamond', 'triangle', 'star'].includes(finishedDrawing.type))
+      ) {
+        const shapeType = (finishedDrawing?.type || currentTool) as ElementType;
         const start = dragStart;
         const worldPos = getPointerWorldPos();
         const dist = start ? Math.hypot(worldPos.x - start.x, worldPos.y - start.y) : 0;
-        const hasCustomSize = dist >= 15;
-        const shapeType = finishedDrawing.type;
+        const hasCustomSize = dist >= 15 && Boolean(finishedDrawing && finishedDrawing.width && finishedDrawing.height);
         const shapeFill =
-          finishedDrawing.fill || (selectedColor && selectedColor !== '#0f172a' ? selectedColor : '#ffffff');
-        const shapeStroke = finishedDrawing.stroke || '#334155';
-        const shapeStrokeWidth = finishedDrawing.strokeWidth || 2;
+          finishedDrawing?.fill || (selectedColor && selectedColor !== '#0f172a' ? selectedColor : '#ffffff');
+        const shapeStroke = finishedDrawing?.stroke || '#334155';
+        const shapeStrokeWidth = finishedDrawing?.strokeWidth || 2;
 
         const bounds =
-          hasCustomSize && finishedDrawing.width && finishedDrawing.height
+          hasCustomSize && finishedDrawing
             ? {
                 x: Math.round(finishedDrawing.x),
                 y: Math.round(finishedDrawing.y),
-                width: Math.max(12, Math.round(finishedDrawing.width)),
-                height: Math.max(12, Math.round(finishedDrawing.height)),
+                width: Math.max(12, Math.round(finishedDrawing.width || 0)),
+                height: Math.max(12, Math.round(finishedDrawing.height || 0)),
                 ...(shapeType === 'circle'
-                  ? { radius: Math.max(6, Math.round(finishedDrawing.radius || finishedDrawing.width / 2)) }
+                  ? { radius: Math.max(6, Math.round(finishedDrawing.radius || (finishedDrawing.width || 0) / 2)) }
                   : {}),
               }
             : getDefaultShapeBounds(shapeType, start || worldPos);
@@ -3056,7 +3073,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           isMouseOverCanvasRef.current = false;
         }}
       >
-        <Layer>
+        <Layer id="elements-layer">
           {/* Renderização de todos os elementos no canvas Konva */}
           {sortedElements.map((elem) => {
             const isSelected = selectedIds.includes(elem.id);
@@ -3271,7 +3288,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
 
           {drawingElement &&
             ['rect', 'circle', 'diamond', 'triangle', 'star'].includes(drawingElement.type) &&
-            ((drawingElement.width && drawingElement.width > 4) || (drawingElement.radius && drawingElement.radius > 4)) && (
+            (((drawingElement.width ?? 0) > 4) || ((drawingElement.radius ?? 0) > 4)) ? (
               <Group listening={false}>
                 {drawingElement.type === 'circle' && (
                   <Circle
@@ -3394,7 +3411,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
                   </Group>
                 )}
               </Group>
-            )}
+            ) : null}
 
           {/* Caixa de Seleção Marquee Rubber-band estilo Windows / Miro */}
           {marqueeBox && (
