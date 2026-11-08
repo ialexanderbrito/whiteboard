@@ -15,6 +15,7 @@ import { EditLinkModal } from './EditLinkModal';
 import { CanvasGrid, type GridType, type GridSize } from './CanvasGrid';
 import type { LaserPoint } from './LaserTrailOverlay';
 import { SelectionContextBar } from './SelectionContextBar';
+import { BoardContextMenu } from './BoardContextMenu';
 import { alignElements, type AlignmentType } from '../../utils/alignment';
 import { recognizeSmartShape } from '../../utils/smartDrawing';
 import { eraseStrokePartially } from '../../utils/partialEraser';
@@ -78,6 +79,9 @@ interface WhiteboardCanvasProps {
   readOnly?: boolean;
   canCommentOnly?: boolean;
   onOpenShortcuts?: () => void;
+  onOpenTemplates?: () => void;
+  onOpenStickers?: () => void;
+  onResetZoom?: () => void;
   gridType?: GridType;
   gridSize?: GridSize;
   gridOpacity?: number;
@@ -273,6 +277,9 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
   readOnly = false,
   canCommentOnly = false,
   onOpenShortcuts,
+  onOpenTemplates,
+  onOpenStickers,
+  onResetZoom,
   gridType = 'hybrid',
   gridSize = 'medium',
   gridOpacity,
@@ -298,6 +305,19 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
 
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   const [inlineEditing, setInlineEditing] = useState<InlineEditingState | null>(null);
+
+  // Estado do Menu de Contexto do Botão Direito no Board
+  const [contextMenuState, setContextMenuState] = useState<{
+    isOpen: boolean;
+    screenPos: { x: number; y: number };
+    worldPos: { x: number; y: number };
+    targetElementIds: string[];
+  }>({
+    isOpen: false,
+    screenPos: { x: 0, y: 0 },
+    worldPos: { x: 0, y: 0 },
+    targetElementIds: [],
+  });
   const [isMouseDownState, setIsMouseDownState] = useState(false);
 
   // Rastreamento do cursor no canvas e controle de área de transferência (Ctrl+C, Ctrl+V, Ctrl+X)
@@ -1428,6 +1448,10 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
 
   // Pressionar mouse no canvas
   const handleMouseDown = async (e: Konva.KonvaEventObject<MouseEvent>) => {
+    if (contextMenuState.isOpen) {
+      setContextMenuState((prev) => ({ ...prev, isOpen: false }));
+    }
+
     // Intercepta botão do meio do mouse (scroll wheel click) para navegar na tela e nunca abrir seleção
     if (e.evt.button === 1) {
       e.evt.preventDefault();
@@ -2458,6 +2482,12 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     }
   };
 
+  // Duplicar elementos selecionados a partir do menu
+  const handleDuplicateSelected = () => {
+    if (readOnly || canCommentOnly || selectedElements.length === 0) return;
+    handleBatchDuplicate(selectedElements);
+  };
+
   // Alinhar múltiplos elementos selecionados
   const handleAlignSelected = (type: AlignmentType) => {
     if (selectedElements.length > 1 && !readOnly && !canCommentOnly) {
@@ -2518,6 +2548,9 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
 
   return (
     <div
+      onContextMenu={(e) => {
+        e.preventDefault();
+      }}
       onAuxClick={(e) => {
         if (e.button === 1) e.preventDefault();
       }}
@@ -2642,6 +2675,36 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         }
       />
       )}
+
+      {/* Menu de Contexto do Botão Direito no Board (Design Moderno & Emil Kowalski) */}
+      <BoardContextMenu
+        isOpen={contextMenuState.isOpen}
+        position={contextMenuState.screenPos}
+        targetElements={elements.filter((el) => contextMenuState.targetElementIds.includes(el.id))}
+        onClose={() => setContextMenuState((prev) => ({ ...prev, isOpen: false }))}
+        onCreateSticky={handleContextMenuCreateSticky}
+        onCreateShape={handleContextMenuCreateShape}
+        onCreateText={handleContextMenuCreateText}
+        onCreateArrow={handleContextMenuCreateArrow}
+        onCreateFrame={handleContextMenuCreateFrame}
+        onPaste={handleContextMenuPaste}
+        onSelectAll={() => onSelectionChange(elements.map((el) => el.id))}
+        onCopy={handleCopy}
+        onCut={handleCut}
+        onDuplicate={handleDuplicateSelected}
+        onDelete={handleDeleteSelected}
+        onToggleLock={handleToggleLockSelected}
+        onReorderLayer={handleReorderLayer}
+        onAlign={handleAlignSelected}
+        onStartEditing={handleStartEditingElement}
+        onOpenTemplates={onOpenTemplates}
+        onOpenStickers={onOpenStickers}
+        onResetZoom={onResetZoom || (() => onStageChange({ x: 0, y: 0 }, 1))}
+        onToggleGrid={onToggleGrid}
+        showGrid={showGrid}
+        readOnly={readOnly}
+        canCommentOnly={canCommentOnly}
+      />
 
       {/* Balão de Hiperlink Flutuante Estilo Miro (exibido quando um elemento com link está selecionado) */}
       {selectedElements.length === 1 && !inlineEditing && (
@@ -3022,6 +3085,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           }
         }}
         onWheel={handleWheel}
+        onContextMenu={handleStageContextMenu}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -3545,6 +3609,41 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           isNew={linkModalState.isNew}
           onSave={handleSaveModalLink}
           onRemove={handleRemoveModalLink}
+        />
+      )}
+
+      {/* Menu de contexto nativo com botão direito */}
+      {contextMenuState.isOpen && (
+        <BoardContextMenu
+          isOpen={contextMenuState.isOpen}
+          position={contextMenuState.screenPos}
+          targetElements={elements.filter((el) => contextMenuState.targetElementIds.includes(el.id))}
+          onClose={() => setContextMenuState((prev) => ({ ...prev, isOpen: false }))}
+          onCreateSticky={handleContextMenuCreateSticky}
+          onCreateShape={handleContextMenuCreateShape}
+          onCreateText={handleContextMenuCreateText}
+          onCreateArrow={handleContextMenuCreateArrow}
+          onCreateFrame={handleContextMenuCreateFrame}
+          onPaste={handleContextMenuPaste}
+          onSelectAll={() => onSelectionChange(elements.map((el) => el.id))}
+          onCopy={handleCopy}
+          onCut={handleCut}
+          onDuplicate={() => {
+            const targets = elements.filter((el) => contextMenuState.targetElementIds.includes(el.id));
+            if (targets.length > 0) handleBatchDuplicate(targets);
+          }}
+          onDelete={handleDeleteSelected}
+          onToggleLock={handleToggleLockSelected}
+          onReorderLayer={handleReorderLayer}
+          onAlign={handleAlignSelected}
+          onStartEditing={handleStartEditingElement}
+          onOpenTemplates={onOpenTemplates}
+          onOpenStickers={onOpenStickers}
+          onResetZoom={onResetZoom}
+          onToggleGrid={onToggleGrid}
+          showGrid={showGrid}
+          readOnly={readOnly}
+          canCommentOnly={canCommentOnly}
         />
       )}
     </div>

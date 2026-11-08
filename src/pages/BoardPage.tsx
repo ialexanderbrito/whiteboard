@@ -1681,6 +1681,9 @@ export const BoardPage: React.FC = () => {
         readOnly={isReadOnly}
         canCommentOnly={isCommentOnly}
         onOpenShortcuts={() => setIsShortcutsModalOpen(true)}
+        onOpenTemplates={() => setIsSprintTemplatesOpen(true)}
+        onOpenStickers={() => setIsStickersModalOpen(true)}
+        onResetZoom={handleResetZoom}
         gridType={gridType}
         gridSize={gridSize}
         gridOpacity={gridOpacity}

@@ -309,7 +309,9 @@ export const Toolbar: React.FC<ToolbarProps> = React.memo(({
                   type="button"
                   onClick={() => {
                     onSelectTool(currentShape);
-                    setActivePicker(activePicker === 'shapes' ? null : 'shapes');
+                    if (isShapeActive) {
+                      setActivePicker(activePicker === 'shapes' ? null : 'shapes');
+                    }
                   }}
                   className={`size-8 rounded-md transition-colors flex items-center justify-center relative active:scale-[0.98] ${
                     isShapeActive

@@ -99,6 +99,8 @@ html, body {
   width: 100%;
   margin: 0;
   padding: 0;
+  user-select: none;
+  -webkit-user-select: none;
   font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
@@ -109,6 +111,8 @@ html, body {
 .konvajs-content canvas {
   background-color: transparent !important;
   outline: none !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
 }
 
 #root {
@@ -116,6 +120,8 @@ html, body {
   width: 100%;
   margin: 0;
   padding: 0;
+  user-select: none;
+  -webkit-user-select: none;
   display: flex;
   flex-direction: column;
 }
