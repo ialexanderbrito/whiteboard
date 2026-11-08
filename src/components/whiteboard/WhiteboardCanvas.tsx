@@ -1484,6 +1484,11 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       return;
     }
 
+    // Previne seleção nativa de texto e arrastes fantasmas do browser ao interagir no canvas
+    if (e.evt.preventDefault) {
+      e.evt.preventDefault();
+    }
+
     // Ferramenta Apontador Laser (L) - Emite feixe efêmero sem alterar elementos
     if (currentTool === 'laser') {
       if (isLocalLaserDrawingRef) isLocalLaserDrawingRef.current = true;
@@ -1604,24 +1609,6 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       }
       isDrawing.current = true;
       shapeDragStartRef.current = { x: worldPos.x, y: worldPos.y };
-      const shapeFill = selectedColor && selectedColor !== '#0f172a' ? selectedColor : '#ffffff';
-      const newShape: CanvasElement = {
-        id: 'temp_shape_preview',
-        type: currentTool as ElementType,
-        x: worldPos.x,
-        y: worldPos.y,
-        width: 0,
-        height: 0,
-        radius: 0,
-        fill: shapeFill,
-        stroke: '#334155',
-        strokeWidth: 2,
-        zIndex: elements.length + 1,
-        updatedBy: currentUser.uid,
-        updatedByName: currentUser.displayName,
-        updatedAt: 0,
-      };
-      setDrawingElement(newShape);
       return;
     }
 
