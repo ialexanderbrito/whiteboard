@@ -22,13 +22,13 @@ export const LoginPage: React.FC = () => {
   const redirectUrl = queryRedirect || (typeof window !== 'undefined' ? sessionStorage.getItem('mirio_auth_redirect') : null) || '/';
   const { currentUser, isConfigured, signInWithGoogle, signInAsGuest } = useAuth();
 
-  // Se já estiver logado, redireciona para a rota solicitada se houver
+  // Se já estiver logado, redireciona para a rota solicitada ou para o workspace principal
   useEffect(() => {
     document.title = 'Entrar - Mirio';
-    const savedRedirect = sessionStorage.getItem('mirio_auth_redirect');
-    const target = (redirectUrl && redirectUrl !== '/') ? redirectUrl : savedRedirect;
-    if (currentUser && target && target !== '/') {
+    if (currentUser) {
+      const savedRedirect = sessionStorage.getItem('mirio_auth_redirect');
       sessionStorage.removeItem('mirio_auth_redirect');
+      const target = (redirectUrl && redirectUrl !== '/') ? redirectUrl : (savedRedirect || '/');
       navigate(target, { replace: true });
     }
   }, [currentUser, navigate, redirectUrl]);
@@ -242,17 +242,17 @@ export const LoginPage: React.FC = () => {
                     sessionStorage.setItem('mirio_auth_redirect', redirectUrl);
                   }
                   await signInWithGoogle();
-                  if (redirectUrl && redirectUrl !== '/') {
-                    sessionStorage.removeItem('mirio_auth_redirect');
-                    navigate(redirectUrl, { replace: true });
-                  }
+                  const saved = sessionStorage.getItem('mirio_auth_redirect');
+                  sessionStorage.removeItem('mirio_auth_redirect');
+                  const target = (redirectUrl && redirectUrl !== '/') ? redirectUrl : (saved || '/');
+                  navigate(target, { replace: true });
                 }}
                 onGuestLogin={async (name: string) => {
                   await signInAsGuest(name);
-                  if (redirectUrl && redirectUrl !== '/') {
-                    sessionStorage.removeItem('mirio_auth_redirect');
-                    navigate(redirectUrl, { replace: true });
-                  }
+                  const saved = sessionStorage.getItem('mirio_auth_redirect');
+                  sessionStorage.removeItem('mirio_auth_redirect');
+                  const target = (redirectUrl && redirectUrl !== '/') ? redirectUrl : (saved || '/');
+                  navigate(target, { replace: true });
                 }}
                 isFirebaseConfigured={isConfigured}
                 description="Whiteboard colaborativo em tempo real para seu time pensar, desenhar e criar junto."

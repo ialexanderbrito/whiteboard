@@ -58,9 +58,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
-    // Processa o resultado do redirecionamento (signInWithRedirect) se o usuário retornou de login Google
+    let isMounted = true;
+    let unsubscribe: (() => void) | null = null;
+
+    // Processa primeiro qualquer retorno de redirecionamento (signInWithRedirect)
+    // Mantém loading=true até getRedirectResult concluir para nunca exibir a tela de login indevidamente
     getRedirectResult(auth)
       .then((result) => {
+        if (!isMounted) return;
         if (result?.user) {
           const color = getSavedColor();
           setCurrentUser({
@@ -75,26 +80,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       })
       .catch((error) => {
         console.warn('Erro ao processar resultado do redirecionamento do Google:', error);
+      })
+      .finally(() => {
+        if (!isMounted || !auth) return;
+        unsubscribe = onAuthStateChanged(auth, (user: FirebaseUser | null) => {
+          if (!isMounted) return;
+          if (user) {
+            const color = getSavedColor();
+            setCurrentUser({
+              uid: user.uid,
+              displayName: user.displayName || (user.isAnonymous ? 'Convidado' : 'Usuário'),
+              email: user.email,
+              photoURL: user.photoURL,
+              isAnonymous: user.isAnonymous,
+              color,
+            });
+          } else {
+            setCurrentUser(null);
+          }
+          setLoading(false);
+        });
       });
 
-    const unsubscribe = onAuthStateChanged(auth, (user: FirebaseUser | null) => {
-      if (user) {
-        const color = getSavedColor();
-        setCurrentUser({
-          uid: user.uid,
-          displayName: user.displayName || (user.isAnonymous ? 'Convidado' : 'Usuário'),
-          email: user.email,
-          photoURL: user.photoURL,
-          isAnonymous: user.isAnonymous,
-          color,
-        });
-      } else {
-        setCurrentUser(null);
+    return () => {
+      isMounted = false;
+      if (unsubscribe) {
+        unsubscribe();
       }
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
+    };
   }, []);
 
   const signInWithGoogle = async (forceRedirect: boolean = false) => {
@@ -102,34 +115,47 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       throw new Error('Firebase não está configurado no arquivo .env.');
     }
 
-    // Em navegadores móveis ou in-app webviews, popups são quase sempre bloqueados pelo sistema.
-    // Nesses ambientes, ou caso forceRedirect seja solicitado, usamos redirecionamento direto sem popups.
-    const preferRedirect = forceRedirect || isMobileOrInAppBrowser();
+    // Em webviews sociais internas estritas (Instagram, FB In-App, TikTok) em produção onde window.open é desabilitado
+    const isStrictInApp = isMobileOrInAppBrowser() && 
+      typeof window !== 'undefined' && 
+      window.location.hostname !== 'localhost' && 
+      window.location.hostname !== '127.0.0.1';
 
-    if (preferRedirect) {
+    if (forceRedirect || isStrictInApp) {
       await signInWithRedirect(auth, googleProvider);
       return;
     }
 
     try {
-      await signInWithPopup(auth, googleProvider);
+      const result = await signInWithPopup(auth, googleProvider);
+      if (result?.user) {
+        const color = getSavedColor();
+        setCurrentUser({
+          uid: result.user.uid,
+          displayName: result.user.displayName || 'Usuário',
+          email: result.user.email,
+          photoURL: result.user.photoURL,
+          isAnonymous: result.user.isAnonymous,
+          color,
+        });
+      }
     } catch (err: unknown) {
       const error = err as { code?: string; message?: string };
 
-      // Se o navegador bloquear o popup (auth/popup-blocked) ou cancelar a janela (auth/cancelled-popup-request),
-      // transiciona de forma totalmente transparente e automática para redirecionamento full-page.
-      // O usuário não precisa saber como desbloquear popup nas configurações do navegador.
-      if (
-        error?.code === 'auth/popup-blocked' ||
-        error?.code === 'auth/cancelled-popup-request'
-      ) {
-        console.warn('Popup bloqueado pelo navegador. Redirecionando automaticamente via Google Auth...');
-        await signInWithRedirect(auth, googleProvider);
+      // Se o próprio usuário fechou o popup intencionalmente clicando no X, não exibe erro na interface
+      if (error?.code === 'auth/popup-closed-by-user') {
         return;
       }
 
-      // Se o próprio usuário fechou o popup intencionalmente clicando no X, não exibe erro na interface
-      if (error?.code === 'auth/popup-closed-by-user') {
+      // Se o navegador bloquear o popup (auth/popup-blocked) fora do localhost, tenta o fallback
+      if (
+        (error?.code === 'auth/popup-blocked' || error?.code === 'auth/cancelled-popup-request') &&
+        typeof window !== 'undefined' &&
+        window.location.hostname !== 'localhost' &&
+        window.location.hostname !== '127.0.0.1'
+      ) {
+        console.warn('Popup bloqueado pelo navegador em produção. Redirecionando automaticamente via Google Auth...');
+        await signInWithRedirect(auth, googleProvider);
         return;
       }
 

@@ -31,16 +31,15 @@ const RootRoute: React.FC = () => {
     return <PageLoader />;
   }
 
-  if (currentUser && redirect && redirect !== '/') {
-    sessionStorage.removeItem('mirio_auth_redirect');
-    return <Navigate to={redirect} replace />;
+  if (currentUser) {
+    if (redirect && redirect !== '/') {
+      sessionStorage.removeItem('mirio_auth_redirect');
+      return <Navigate to={redirect} replace />;
+    }
+    return <DashboardPage />;
   }
 
-  if (!currentUser) {
-    return <LoginPage />;
-  }
-
-  return <DashboardPage />;
+  return <LoginPage />;
 };
 
 // Redireciona acessos à rota legada /login diretamente para a raiz "/", preservando parâmetros como ?redirect=
