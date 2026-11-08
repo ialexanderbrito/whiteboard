@@ -656,7 +656,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
 
   // Colar elementos, imagens externas ou texto como sticky note
   const handlePaste = useCallback(
-    async (e?: ClipboardEvent) => {
+    async (e?: ClipboardEvent, customTargetCenter?: { x: number; y: number }) => {
       if (readOnly || canCommentOnly) return;
 
       // 1. Verificar se o evento contém imagem (ex: Print Screen ou cópia da web)
@@ -672,12 +672,14 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
               const dataUrl = await fileToDataUrl(file);
               const dims = await getImageDimensions(dataUrl);
 
-              const targetX =
-                mouseWorldPosRef.current && isMouseOverCanvasRef.current
+              const targetX = customTargetCenter
+                ? customTargetCenter.x
+                : mouseWorldPosRef.current && isMouseOverCanvasRef.current
                   ? mouseWorldPosRef.current.x
                   : Math.round((-stagePos.x + window.innerWidth / 2) / scale);
-              const targetY =
-                mouseWorldPosRef.current && isMouseOverCanvasRef.current
+              const targetY = customTargetCenter
+                ? customTargetCenter.y
+                : mouseWorldPosRef.current && isMouseOverCanvasRef.current
                   ? mouseWorldPosRef.current.y
                   : Math.round((-stagePos.y + window.innerHeight / 2) / scale);
 
@@ -728,12 +730,14 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
 
           if (!isMirioJson) {
             e.preventDefault();
-            const targetX =
-              mouseWorldPosRef.current && isMouseOverCanvasRef.current
+            const targetX = customTargetCenter
+              ? customTargetCenter.x
+              : mouseWorldPosRef.current && isMouseOverCanvasRef.current
                 ? mouseWorldPosRef.current.x
                 : Math.round((-stagePos.x + window.innerWidth / 2) / scale);
-            const targetY =
-              mouseWorldPosRef.current && isMouseOverCanvasRef.current
+            const targetY = customTargetCenter
+              ? customTargetCenter.y
+              : mouseWorldPosRef.current && isMouseOverCanvasRef.current
                 ? mouseWorldPosRef.current.y
                 : Math.round((-stagePos.y + window.innerHeight / 2) / scale);
 
@@ -778,7 +782,10 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       let targetCenterX: number;
       let targetCenterY: number;
 
-      if (mouseWorldPosRef.current && isMouseOverCanvasRef.current) {
+      if (customTargetCenter) {
+        targetCenterX = customTargetCenter.x;
+        targetCenterY = customTargetCenter.y;
+      } else if (mouseWorldPosRef.current && isMouseOverCanvasRef.current) {
         // Posiciona o centro da seleção colada sob o cursor do mouse
         targetCenterX = mouseWorldPosRef.current.x + offsetSteps * 25;
         targetCenterY = mouseWorldPosRef.current.y + offsetSteps * 25;
@@ -2163,6 +2170,351 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       }
     }
   }, [canvasCursor]);
+
+  // Menu de contexto com botão direito no canvas ou sobre elementos
+  const handleStageContextMenu = (e: Konva.KonvaEventObject<PointerEvent>) => {
+    e.evt.preventDefault();
+    if (isMiddlePanning.current) return;
+
+    const clientX = e.evt.clientX;
+    const clientY = e.evt.clientY;
+
+    const stage = stageRef.current;
+    if (!stage) return;
+    const pointer = stage.getPointerPosition() || { x: clientX - stagePos.x, y: clientY - stagePos.y };
+    const worldPos = {
+      x: (pointer.x - stagePos.x) / scale,
+      y: (pointer.y - stagePos.y) / scale,
+    };
+
+    // Detecta se o clique foi em um elemento do canvas
+    let clickedElementId: string | null = null;
+    if (e.target && e.target !== stage) {
+      let curr: Konva.Node | null = e.target;
+      while (curr && curr !== stage) {
+        const id = curr.id();
+        if (id && elements.some((el) => el.id === id)) {
+          clickedElementId = id;
+          break;
+        }
+        curr = curr.parent;
+      }
+    }
+
+    let targetIds: string[] = [];
+    if (clickedElementId) {
+      // Se clicou em um elemento que já está na seleção, mantém a seleção múltipla
+      if (selectedIds.includes(clickedElementId)) {
+        targetIds = selectedIds;
+      } else {
+        // Se clicou em um elemento isolado não selecionado, seleciona exclusivamente ele
+        targetIds = [clickedElementId];
+        onSelectionChange([clickedElementId]);
+      }
+    } else {
+      // Clicou no fundo do canvas: limpa a seleção para apresentar o menu de criação do board
+      if (selectedIds.length > 0) {
+        onSelectionChange([]);
+      }
+    }
+
+    setContextMenuState({
+      isOpen: true,
+      screenPos: { x: clientX, y: clientY },
+      worldPos,
+      targetElementIds: targetIds,
+    });
+  };
+
+  // Criação imediata de Nota Adesiva no ponto clicado
+  const handleContextMenuCreateSticky = async (color?: string) => {
+    if (readOnly) return;
+    const posX = Math.round(contextMenuState.worldPos.x - 90);
+    const posY = Math.round(contextMenuState.worldPos.y - 90);
+    const stickyColor = color || selectedColor || '#fff9b1';
+    const id = await onAddElement({
+      type: 'sticky',
+      x: posX,
+      y: posY,
+      width: 180,
+      height: 180,
+      fill: stickyColor,
+      text: '',
+      zIndex: elements.length + 1,
+      updatedBy: currentUser.uid,
+      updatedByName: currentUser.displayName,
+    });
+    onSelectionChange([id]);
+    setInlineEditing({
+      elementId: id,
+      type: 'sticky',
+      worldX: posX,
+      worldY: posY,
+      width: 180,
+      height: 180,
+      text: '',
+      fill: stickyColor,
+    });
+    onSelectTool('select');
+  };
+
+  // Criação imediata de Forma Geométrica no ponto clicado
+  const handleContextMenuCreateShape = async (
+    shapeType: 'rect' | 'circle' | 'diamond' | 'triangle' | 'star'
+  ) => {
+    if (readOnly || canCommentOnly) return;
+    const bounds = getDefaultShapeBounds(shapeType, contextMenuState.worldPos);
+    const shapeFill = selectedColor && selectedColor !== '#0f172a' ? selectedColor : '#ffffff';
+    const id = await onAddElement({
+      type: shapeType,
+      ...bounds,
+      fill: shapeFill,
+      stroke: '#334155',
+      strokeWidth: 2,
+      zIndex: elements.length + 1,
+      updatedBy: currentUser.uid,
+      updatedByName: currentUser.displayName,
+    } as any);
+    onSelectionChange([id]);
+    onSelectTool('select');
+  };
+
+  // Criação imediata de Caixa de Texto no ponto clicado
+  const handleContextMenuCreateText = async () => {
+    if (readOnly || canCommentOnly) return;
+    const posX = Math.round(contextMenuState.worldPos.x);
+    const posY = Math.round(contextMenuState.worldPos.y);
+    const id = await onAddElement({
+      type: 'text',
+      x: posX,
+      y: posY,
+      width: 220,
+      text: '',
+      fontSize: 20,
+      fill: '#0f172a',
+      zIndex: elements.length + 1,
+      updatedBy: currentUser.uid,
+      updatedByName: currentUser.displayName,
+    });
+    onSelectionChange([id]);
+    setInlineEditing({
+      elementId: id,
+      type: 'text',
+      worldX: posX,
+      worldY: posY,
+      width: 220,
+      height: 40,
+      text: '',
+      fontSize: 20,
+      fill: '#0f172a',
+    });
+    onSelectTool('select');
+  };
+
+  // Criação imediata de Seta / Conector no ponto clicado
+  const handleContextMenuCreateArrow = async () => {
+    if (readOnly || canCommentOnly) return;
+    const posX = Math.round(contextMenuState.worldPos.x - 80);
+    const posY = Math.round(contextMenuState.worldPos.y);
+    const id = await onAddElement({
+      type: 'arrow',
+      x: posX,
+      y: posY,
+      points: [0, 0, 160, 0],
+      stroke: '#2563eb',
+      strokeWidth: 2,
+      zIndex: elements.length + 1,
+      updatedBy: currentUser.uid,
+      updatedByName: currentUser.displayName,
+    });
+    onSelectionChange([id]);
+    onSelectTool('select');
+  };
+
+  // Criação imediata de Moldura / Frame no ponto clicado
+  const handleContextMenuCreateFrame = async () => {
+    if (readOnly || canCommentOnly) return;
+    const posX = Math.round(contextMenuState.worldPos.x - 160);
+    const posY = Math.round(contextMenuState.worldPos.y - 140);
+    const id = await onAddElement({
+      type: 'frame',
+      x: posX,
+      y: posY,
+      width: 320,
+      height: 480,
+      text: 'Área de Sprint',
+      fill: 'rgba(241, 245, 249, 0.45)',
+      stroke: '#94a3b8',
+      strokeWidth: 2,
+      zIndex: 1,
+      updatedBy: currentUser.uid,
+      updatedByName: currentUser.displayName,
+    });
+    onSelectionChange([id]);
+    onSelectTool('select');
+  };
+
+  // Colar conteúdo da área de transferência exatamente na coordenada do clique
+  const handleContextMenuPaste = async () => {
+    if (readOnly || canCommentOnly) return;
+    await handlePaste(undefined, contextMenuState.worldPos);
+  };
+
+  // Organizar ordem de camadas (Z-Index)
+  const handleReorderLayer = (action: 'bringToFront' | 'sendToBack' | 'bringForward' | 'sendBackward') => {
+    if (readOnly || canCommentOnly || selectedElements.length === 0) return;
+    const selectedIdsSet = new Set(selectedElements.map((e) => e.id));
+
+    if (action === 'bringToFront') {
+      const maxZ = Math.max(...elements.map((e) => e.zIndex || 0), 0);
+      const updates = selectedElements.map((el, i) => ({
+        id: el.id,
+        updates: { zIndex: maxZ + i + 1 },
+      }));
+      if (onBatchUpdateElements) {
+        onBatchUpdateElements(updates);
+      } else {
+        updates.forEach((u) => onUpdateElement(u.id, u.updates));
+      }
+    } else if (action === 'sendToBack') {
+      const minZ = Math.min(...elements.map((e) => e.zIndex || 0), 1);
+      const updates = selectedElements.map((el, i) => ({
+        id: el.id,
+        updates: { zIndex: Math.max(1, minZ - selectedElements.length + i) },
+      }));
+      if (onBatchUpdateElements) {
+        onBatchUpdateElements(updates);
+      } else {
+        updates.forEach((u) => onUpdateElement(u.id, u.updates));
+      }
+    } else if (action === 'bringForward') {
+      const sorted = [...elements].sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0));
+      const updates: { id: string; updates: { zIndex: number } }[] = [];
+      for (const sel of selectedElements) {
+        const idx = sorted.findIndex((e) => e.id === sel.id);
+        if (idx !== -1 && idx < sorted.length - 1) {
+          const nextElem = sorted[idx + 1];
+          if (!selectedIdsSet.has(nextElem.id)) {
+            updates.push({ id: sel.id, updates: { zIndex: (nextElem.zIndex || 0) + 1 } });
+          }
+        }
+      }
+      if (updates.length > 0) {
+        if (onBatchUpdateElements) {
+          onBatchUpdateElements(updates);
+        } else {
+          updates.forEach((u) => onUpdateElement(u.id, u.updates));
+        }
+      }
+    } else if (action === 'sendBackward') {
+      const sorted = [...elements].sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0));
+      const updates: { id: string; updates: { zIndex: number } }[] = [];
+      for (const sel of selectedElements) {
+        const idx = sorted.findIndex((e) => e.id === sel.id);
+        if (idx > 0) {
+          const prevElem = sorted[idx - 1];
+          if (!selectedIdsSet.has(prevElem.id)) {
+            updates.push({ id: sel.id, updates: { zIndex: Math.max(1, (prevElem.zIndex || 0) - 1) } });
+          }
+        }
+      }
+      if (updates.length > 0) {
+        if (onBatchUpdateElements) {
+          onBatchUpdateElements(updates);
+        } else {
+          updates.forEach((u) => onUpdateElement(u.id, u.updates));
+        }
+      }
+    }
+  };
+
+  // Bloquear ou Desbloquear elementos selecionados
+  const handleToggleLockSelected = () => {
+    if (readOnly || canCommentOnly || selectedElements.length === 0) return;
+    const shouldLock = selectedElements.some((el) => !el.locked);
+    if (onBatchUpdateElements) {
+      onBatchUpdateElements(
+        selectedElements.map((el) => ({ id: el.id, updates: { locked: shouldLock } }))
+      );
+    } else {
+      selectedElements.forEach((el) => onUpdateElement(el.id, { locked: shouldLock }));
+    }
+  };
+
+  // Deletar elementos selecionados
+  const handleDeleteSelected = () => {
+    if (readOnly || selectedElements.length === 0) return;
+    const idsToDelete = canCommentOnly
+      ? selectedElements.filter((el) => el.updatedBy === currentUser.uid).map((el) => el.id)
+      : selectedElements.map((el) => el.id);
+
+    if (idsToDelete.length > 0) {
+      if (onBatchDeleteElements) {
+        onBatchDeleteElements(idsToDelete);
+      } else {
+        idsToDelete.forEach((id) => onDeleteElement(id));
+      }
+      onSelectionChange([]);
+    }
+  };
+
+  // Alinhar múltiplos elementos selecionados
+  const handleAlignSelected = (type: AlignmentType) => {
+    if (selectedElements.length > 1 && !readOnly && !canCommentOnly) {
+      const updates = alignElements(selectedElements, type);
+      if (updates.length > 0) {
+        if (onBatchUpdateElements) {
+          onBatchUpdateElements(updates);
+        } else {
+          updates.forEach((u) => onUpdateElement(u.id, u.updates));
+        }
+      }
+    }
+  };
+
+  // Iniciar edição inline para textos e post-its a partir do menu
+  const handleStartEditingElement = (elemId: string) => {
+    const elem = elements.find((e) => e.id === elemId);
+    if (!elem) return;
+    if (elem.type === 'sticky') {
+      setInlineEditing({
+        elementId: elem.id,
+        type: 'sticky',
+        worldX: elem.x,
+        worldY: elem.y,
+        width: elem.width || 180,
+        height: elem.height || 180,
+        text: stripMarkdownLinks(elem.text || ''),
+        fill: elem.fill || '#fff9b1',
+        textColor: elem.textColor,
+      });
+    } else if (elem.type === 'text') {
+      setInlineEditing({
+        elementId: elem.id,
+        type: 'text',
+        worldX: elem.x,
+        worldY: elem.y,
+        width: elem.width || 200,
+        height: elem.height || 40,
+        text: stripMarkdownLinks(elem.text || ''),
+        fontSize: elem.fontSize || 20,
+        fill: elem.fill || '#0f172a',
+        textColor: elem.textColor,
+      });
+    } else if (elem.type === 'frame') {
+      setInlineEditing({
+        elementId: elem.id,
+        type: 'frame',
+        worldX: elem.x,
+        worldY: elem.y,
+        width: elem.width || 320,
+        height: 32,
+        text: stripMarkdownLinks(elem.text || ''),
+        fill: '#334155',
+        textColor: '#ffffff',
+      });
+    }
+  };
 
   return (
     <div
