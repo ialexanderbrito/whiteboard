@@ -1,0 +1,26 @@
+# Mirio Robots.txt
+User-agent: *
+Allow: /
+Allow: /og.png
+Allow: /favicon.svg
+Allow: /logo-icon-dark.png
+Allow: /logo-full-dark.png
+
+# Redes Sociais e Crawlers
+User-agent: WhatsApp
+Allow: /
+
+User-agent: facebookexternalhit
+Allow: /
+
+User-agent: Twitterbot
+Allow: /
+
+User-agent: LinkedInBot
+Allow: /
+
+User-agent: TelegramBot
+Allow: /
+
+# Sitemap
+Sitemap: https://mirio-wb.vercel.app/sitemap.xml

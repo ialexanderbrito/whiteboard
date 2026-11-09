@@ -1,9 +1,106 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="pt-BR" prefix="og: https://ogp.me/ns#">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Mirio — Ideias visuais em tempo real</title>
+
+    <!-- Metatags Principais de SEO (Localizadas no topo para crawlers de WhatsApp, Facebook, Google e Bing) -->
+    <meta name="title" content="Mirio — Ideias visuais em tempo real" />
+    <meta name="description" content="Canvas infinito, retrospectivas de sprint e fluxogramas sincronizados a 60fps com cursores ao vivo para equipes de produto e design." />
+    <meta name="keywords" content="whiteboard colaborativo, miro, lousa virtual, canvas infinito, tempo real, retrospectiva de sprint, fluxogramas, firebase realtime, cursores ao vivo, produto e design" />
+    <meta name="author" content="Mirio" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+    <link rel="canonical" href="https://mirio-wb.vercel.app/" />
+
+    <!-- Open Graph / WhatsApp / Facebook / LinkedIn / Discord / Telegram -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://mirio-wb.vercel.app/" />
+    <meta property="og:site_name" content="Mirio" />
+    <meta property="og:title" content="Mirio — Ideias visuais em tempo real" />
+    <meta property="og:description" content="Canvas infinito, retrospectivas de sprint e fluxogramas sincronizados a 60fps com cursores ao vivo para equipes de produto e design." />
+    <meta property="og:image" content="https://mirio-wb.vercel.app/og.png" />
+    <meta property="og:image:secure_url" content="https://mirio-wb.vercel.app/og.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Mirio — Ideias visuais em tempo real" />
+    <meta property="og:locale" content="pt_BR" />
+
+    <!-- Fallback legado de imagem para WhatsApp e clientes clássicos -->
+    <link rel="image_src" href="https://mirio-wb.vercel.app/og.png" />
+
+    <!-- Twitter / X Cards -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:url" content="https://mirio-wb.vercel.app/" />
+    <meta name="twitter:title" content="Mirio — Ideias visuais em tempo real" />
+    <meta name="twitter:description" content="Canvas infinito, retrospectivas de sprint e fluxogramas sincronizados a 60fps com cursores ao vivo para equipes de produto e design." />
+    <meta name="twitter:image" content="https://mirio-wb.vercel.app/og.png" />
+    <meta name="twitter:image:alt" content="Mirio — Ideias visuais em tempo real" />
+
+    <!-- Geotagging & Cobertura Regional (GEO SEO) -->
+    <meta name="geo.region" content="BR" />
+    <meta name="geo.placename" content="Brasil" />
+    <meta name="geo.position" content="-23.550520;-46.633308" />
+    <meta name="ICBM" content="-23.550520, -46.633308" />
+    <meta name="target_country" content="br" />
+    <meta name="coverage" content="Worldwide" />
+    <meta name="distribution" content="Global" />
+    <meta name="rating" content="General" />
+    <meta http-equiv="content-language" content="pt-br" />
+    <meta name="language" content="Portuguese" />
+    <link rel="alternate" hreflang="pt-BR" href="https://mirio-wb.vercel.app/" />
+    <link rel="alternate" hreflang="x-default" href="https://mirio-wb.vercel.app/" />
+
+    <!-- Favicon & Touch Icons -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="shortcut icon" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/logo-icon-dark.png" />
+    <link rel="apple-touch-icon" href="/logo-icon-dark.png" />
+
+    <!-- Cores de Interface do Navegador (PWA / Mobile) -->
+    <meta name="theme-color" content="#09090b" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Mirio" />
+
+    <!-- Dados Estruturados Schema.org (JSON-LD) para SEO Rico -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "Mirio",
+      "url": "https://mirio-wb.vercel.app",
+      "image": "https://mirio-wb.vercel.app/og.png",
+      "screenshot": "https://mirio-wb.vercel.app/og.png",
+      "description": "Whiteboard colaborativo em tempo real para equipes de produto e design com canvas infinito e sincronização instantânea.",
+      "applicationCategory": "DesignApplication, CollaborationApplication",
+      "operatingSystem": "All",
+      "inLanguage": "pt-BR",
+      "countryOfOrigin": {
+        "@type": "Country",
+        "name": "Brazil"
+      },
+      "author": {
+        "@type": "Organization",
+        "name": "Mirio",
+        "url": "https://mirio-wb.vercel.app"
+      },
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "BRL"
+      },
+      "featureList": [
+        "Canvas infinito a 60 FPS",
+        "Cursores ao vivo via Firebase Realtime Database",
+        "Retrospectivas de sprint e sticky notes",
+        "Conectores e diagramas de fluxo",
+        "Colaboração multiplayer instantânea"
+      ]
+    }
+    </script>
 
     <!-- Previne flash branco de tema (FOUC) antes do carregamento do React -->
     <script>
@@ -20,73 +117,6 @@
           }
         } catch (e) {}
       })();
-    </script>
-    
-    <!-- Metatags Principais de SEO -->
-    <meta name="title" content="Mirio — Ideias visuais em tempo real" />
-    <meta name="description" content="Canvas infinito, retrospectivas de sprint e fluxogramas sincronizados a 60fps com cursores ao vivo para equipes de produto e design." />
-    <meta name="keywords" content="whiteboard colaborativo, miro, lousa virtual, canvas infinito, tempo real, retrospectiva de sprint, fluxogramas, firebase realtime, cursores ao vivo, produto e design" />
-    <meta name="author" content="Mirio" />
-    <meta name="robots" content="index, follow" />
-    <link rel="canonical" href="https://mirio-whiteboard.web.app/" />
-
-    <!-- Open Graph / Facebook / WhatsApp / LinkedIn -->
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://mirio-whiteboard.web.app/" />
-    <meta property="og:site_name" content="Mirio" />
-    <meta property="og:title" content="Mirio — Ideias visuais em tempo real" />
-    <meta property="og:description" content="Canvas infinito, retrospectivas de sprint e fluxogramas sincronizados a 60fps com cursores ao vivo para equipes de produto e design." />
-    <meta property="og:image" content="https://mirio-whiteboard.web.app/og.png" />
-    <meta property="og:image:secure_url" content="https://mirio-whiteboard.web.app/og.png" />
-    <meta property="og:image:type" content="image/png" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="Mirio — Ideias visuais em tempo real" />
-    <meta property="og:locale" content="pt_BR" />
-
-    <!-- Twitter Cards -->
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:url" content="https://mirio-whiteboard.web.app/" />
-    <meta name="twitter:title" content="Mirio — Ideias visuais em tempo real" />
-    <meta name="twitter:description" content="Canvas infinito, retrospectivas de sprint e fluxogramas sincronizados a 60fps com cursores ao vivo para equipes de produto e design." />
-    <meta name="twitter:image" content="https://mirio-whiteboard.web.app/og.png" />
-    <meta name="twitter:image:alt" content="Mirio — Ideias visuais em tempo real" />
-
-    <!-- Favicon & Touch Icons -->
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="icon" type="image/png" href="/logo-icon-dark.png" />
-    <link rel="apple-touch-icon" href="/logo-icon-dark.png" />
-
-    <!-- Cores de Interface do Navegador (PWA / Mobile) -->
-    <meta name="theme-color" content="#09090b" media="(prefers-color-scheme: dark)" />
-    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="Mirio" />
-
-    <!-- Dados Estruturados Schema.org (JSON-LD) para SEO Rico -->
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "WebApplication",
-      "name": "Mirio",
-      "url": "https://mirio-whiteboard.web.app",
-      "description": "Whiteboard colaborativo em tempo real para equipes de produto e design com canvas infinito e sincronização instantânea.",
-      "applicationCategory": "DesignApplication",
-      "operatingSystem": "Web Browser",
-      "offers": {
-        "@type": "Offer",
-        "price": "0",
-        "priceCurrency": "BRL"
-      },
-      "featureList": [
-        "Canvas infinito a 60 FPS",
-        "Cursores ao vivo via Firebase Realtime Database",
-        "Retrospectivas de sprint e sticky notes",
-        "Conectores e diagramas de fluxo",
-        "Colaboração multiplayer instantânea"
-      ]
-    }
     </script>
 
     <!-- Tipografia Oficial -->

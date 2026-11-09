@@ -8,7 +8,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, '..');
 
-test('SEO: index.html contains complete Open Graph and Twitter Card metadata', () => {
+test('SEO: index.html contains complete Open Graph, WhatsApp fallback and Twitter Card metadata', () => {
   const indexPath = path.join(projectRoot, 'index.html');
   assert.ok(fs.existsSync(indexPath), 'index.html deve existir');
 
@@ -20,19 +20,36 @@ test('SEO: index.html contains complete Open Graph and Twitter Card metadata', (
 
   // Open Graph
   assert.match(html, /<meta property="og:title" content="Mirio — Ideias visuais em tempo real" \/>/);
-  assert.match(html, /<meta property="og:image" content="https:\/\/mirio-whiteboard\.web\.app\/og\.png" \/>/);
+  assert.match(html, /<meta property="og:image" content="https:\/\/mirio-wb\.vercel\.app\/og\.png" \/>/);
+  assert.match(html, /<meta property="og:image:secure_url" content="https:\/\/mirio-wb\.vercel\.app\/og\.png" \/>/);
   assert.match(html, /<meta property="og:image:width" content="1200" \/>/);
   assert.match(html, /<meta property="og:image:height" content="630" \/>/);
-  assert.match(html, /<meta property="og:url" content="https:\/\/mirio-whiteboard\.web\.app\/" \/>/);
+  assert.match(html, /<meta property="og:url" content="https:\/\/mirio-wb\.vercel\.app\/" \/>/);
   assert.match(html, /<meta property="og:type" content="website" \/>/);
+
+  // WhatsApp Fallback
+  assert.match(html, /<link rel="image_src" href="https:\/\/mirio-wb\.vercel\.app\/og\.png" \/>/);
 
   // Twitter Cards
   assert.match(html, /<meta name="twitter:card" content="summary_large_image" \/>/);
-  assert.match(html, /<meta name="twitter:image" content="https:\/\/mirio-whiteboard\.web\.app\/og\.png" \/>/);
+  assert.match(html, /<meta name="twitter:image" content="https:\/\/mirio-wb\.vercel\.app\/og\.png" \/>/);
 
   // Canonical & JSON-LD
-  assert.match(html, /<link rel="canonical" href="https:\/\/mirio-whiteboard\.web\.app\/" \/>/);
-  assert.match(html, /"applicationCategory": "DesignApplication"/);
+  assert.match(html, /<link rel="canonical" href="https:\/\/mirio-wb\.vercel\.app\/" \/>/);
+  assert.match(html, /"applicationCategory": "DesignApplication, CollaborationApplication"/);
+});
+
+test('GEO: index.html contains complete GEO geotagging and internationalization metadata', () => {
+  const indexPath = path.join(projectRoot, 'index.html');
+  const html = fs.readFileSync(indexPath, 'utf8');
+
+  // Geotagging
+  assert.match(html, /<meta name="geo\.region" content="BR" \/>/);
+  assert.match(html, /<meta name="geo\.placename" content="Brasil" \/>/);
+  assert.match(html, /<meta name="geo\.position" content="[^"]*" \/>/);
+  assert.match(html, /<meta name="ICBM" content="[^"]*" \/>/);
+  assert.match(html, /<meta name="language" content="Portuguese" \/>/);
+  assert.match(html, /<link rel="alternate" hreflang="pt-BR" href="https:\/\/mirio-wb\.vercel\.app\/" \/>/);
 });
 
 test('Open Graph: public/og.png is valid, non-empty and has exact 1200x630 dimensions', () => {
