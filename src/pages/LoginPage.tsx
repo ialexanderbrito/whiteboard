@@ -287,7 +287,10 @@ export const LoginPage: React.FC = () => {
       {/* Rodapé Minimalista */}
       <footer className="relative z-10 flex h-12 w-full shrink-0 items-center justify-between px-4 sm:px-8 border-t border-border/40 text-xs text-muted-foreground font-mono">
         <span>MIRIO // REALTIME COLLABORATIVE WHITEBOARD</span>
-        <span className="hidden sm:inline">AUTENTICAÇÃO • WORKSPACE EM TEMPO REAL</span>
+        <span className="flex items-center gap-3">
+          <a href="/privacy" className="hover:text-foreground transition-colors">PRIVACIDADE</a>
+          <span className="hidden sm:inline">AUTENTICAÇÃO • WORKSPACE EM TEMPO REAL</span>
+        </span>
       </footer>
     </div>
   );
