@@ -35,6 +35,7 @@ import { SprintTemplatesModal } from '../components/whiteboard/SprintTemplatesMo
 import { EditProfileModal } from '../components/whiteboard/EditProfileModal';
 import { NotFoundPage } from './NotFoundPage';
 import { LoadingScreen } from '../components/layout/LoadingScreen';
+import { MobileReadOnlyDrawer } from '../components/whiteboard/MobileReadOnlyDrawer';
 
 // Modais pesados carregados sob demanda (Code-Splitting) para carregamento instantâneo do quadro
 const StickersModal = lazy(() => import('../components/whiteboard/StickersModal').then(m => ({ default: m.StickersModal })));
@@ -63,6 +64,26 @@ export const BoardPage: React.FC = () => {
   const [currentTool, setCurrentTool] = useState<ToolType>('select');
   const [selectedColor, setSelectedColor] = useState(STICKY_COLORS[0].value);
   const [selectedElementIds, setSelectedElementIds] = useState<string[]>([]);
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches
+  );
+  const [isMobileNoticeOpen, setIsMobileNoticeOpen] = useState(false);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(max-width: 767px)');
+    const handleViewportChange = (event: MediaQueryListEvent) => setIsMobile(event.matches);
+    setIsMobile(mediaQuery.matches);
+    mediaQuery.addEventListener('change', handleViewportChange);
+    return () => mediaQuery.removeEventListener('change', handleViewportChange);
+  }, []);
+
+  useEffect(() => {
+    if (isMobile) {
+      setIsMobileNoticeOpen(true);
+    } else {
+      setIsMobileNoticeOpen(false);
+    }
+  }, [isMobile]);
 
   // Configurações avançadas da caneta estilo Miro
   const [penMode, setPenMode] = useState<'pen' | 'highlighter' | 'eraser'>('pen');
@@ -494,8 +515,8 @@ export const BoardPage: React.FC = () => {
 
   const boardPermission = getUserBoardPermission(board, currentUser, isUnlocked);
   const isOwner = isBoardOwner(board, currentUser);
-  const isCommentOnly = !isOwner && boardPermission === 'comment';
-  const isReadOnly = !isOwner && boardPermission === 'view';
+  const isCommentOnly = !isMobile && !isOwner && boardPermission === 'comment';
+  const isReadOnly = isMobile || (!isOwner && boardPermission === 'view');
   const hasNoAccess = !isOwner && boardPermission === 'none' && !isUnlocked;
 
   // Registra que o usuário acessou o quadro através do link (se tiver permissão e não for o dono)
@@ -1288,8 +1309,32 @@ export const BoardPage: React.FC = () => {
 
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-background selection:bg-foreground selection:text-background">
+      {isMobile && !isPresentationMode && (
+        <div className="pointer-events-none fixed inset-x-0 top-0 z-40 flex items-center justify-between border-b border-border/70 bg-background/90 px-4 py-3 backdrop-blur-md">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-foreground">{board.title || 'Quadro sem título'}</p>
+            <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Somente visualização</p>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="pointer-events-auto shrink-0"
+            onClick={() => navigate('/')}
+          >
+            Voltar
+          </Button>
+        </div>
+      )}
+
+      <MobileReadOnlyDrawer
+        open={isMobileNoticeOpen && isMobile}
+        boardTitle={board.title || 'Quadro sem título'}
+        onOpenChange={setIsMobileNoticeOpen}
+        onBackToDashboard={() => navigate('/')}
+      />
+
       {/* Barra de Navegação Superior (Oculta no Modo Apresentação) */}
-      {!isPresentationMode && (
+      {!isPresentationMode && !isMobile && (
         <Navbar
           title={board?.title || 'Quadro sem título'}
           board={board}
@@ -1347,7 +1392,7 @@ export const BoardPage: React.FC = () => {
       )}
 
       {/* Container Central Flutuante: Timer no topo, Barra de Votação logo abaixo (Empilhados sem sobreposição) */}
-      <div className="fixed top-14 left-1/2 -translate-x-1/2 z-40 flex flex-col items-center gap-2 pointer-events-none max-w-[95vw]">
+      {!isMobile && <div className="fixed top-14 left-1/2 -translate-x-1/2 z-40 flex flex-col items-center gap-2 pointer-events-none max-w-[95vw]">
         {/* Timer Colaborativo Flutuante Sincronizado */}
         <BoardTimerWidget
           boardId={boardId || ''}
@@ -1366,13 +1411,13 @@ export const BoardPage: React.FC = () => {
             onToggleComplete={handleToggleVotingComplete}
           />
         )}
-      </div>
+      </div>}
 
       {/* Overlay de Reações Flutuantes Globais em Tempo Real */}
-      <GlobalReactionsOverlay boardId={boardId || ''} />
+      {!isMobile && <GlobalReactionsOverlay boardId={boardId || ''} />}
 
       {/* Toast Notificação de Início de Votação para todos na sala */}
-      {showVotingToast && votingData?.session && votingData.session.status === 'active' && (
+      {!isMobile && showVotingToast && votingData?.session && votingData.session.status === 'active' && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-top-4 duration-300 pointer-events-auto">
           <div className="flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-amber-500 text-white shadow-2xl border border-amber-600 font-medium text-xs select-none">
             <span className="text-lg">🗳️</span>
@@ -1394,7 +1439,7 @@ export const BoardPage: React.FC = () => {
       )}
 
       {/* Modal de Configuração de Nova Votação (Estilo Miro) */}
-      {isVotingSetupOpen && (
+      {!isMobile && isVotingSetupOpen && (
         <Suspense fallback={null}>
           <VotingSetupModal
             open={isVotingSetupOpen}
@@ -1409,7 +1454,7 @@ export const BoardPage: React.FC = () => {
       )}
 
       {/* Modal de Placar / Pódio dos Votos */}
-      {isLeaderboardOpen && (
+      {!isMobile && isLeaderboardOpen && (
         <Suspense fallback={null}>
           <VotingLeaderboardModal
             boardId={boardId || ''}
@@ -1425,7 +1470,7 @@ export const BoardPage: React.FC = () => {
       )}
 
       {/* Banner de Modo Seguir Usuário */}
-      {followingUserId && !isPresentationMode && (
+      {followingUserId && !isPresentationMode && !isMobile && (
         <FollowUserBanner
           followingUserName={followingUserName}
           onStopFollowing={handleStopFollowing}
@@ -1433,7 +1478,7 @@ export const BoardPage: React.FC = () => {
       )}
 
       {/* Barra de Ferramentas Estilo Miro (Oculta no Modo Apresentação) */}
-      {!isPresentationMode && (
+      {!isPresentationMode && !isMobile && (
         <Toolbar
           currentTool={currentTool}
           onSelectTool={setCurrentTool}
@@ -1503,7 +1548,7 @@ export const BoardPage: React.FC = () => {
       )}
 
       {/* Chat do Cursor Interativo (Figma Style) */}
-      {!isPresentationMode && (
+      {!isPresentationMode && !isMobile && (
         <CursorChat
           boardId={boardId || ''}
           currentUser={currentUser}
@@ -1516,7 +1561,7 @@ export const BoardPage: React.FC = () => {
       )}
 
       {/* Balão de Mensagem do Próprio Usuário Flutuando no Cursor Local */}
-      {myActiveMessage && !isCursorChatOpen && !isPresentationMode && (
+      {myActiveMessage && !isCursorChatOpen && !isPresentationMode && !isMobile && (
         <div
           className="fixed pointer-events-none z-50 animate-cursor-bubble origin-top-left w-max max-w-[320px]"
           style={{
@@ -1539,7 +1584,7 @@ export const BoardPage: React.FC = () => {
       )}
 
       {/* Modal de Stickers, Emojis e GIFs */}
-      {isStickersModalOpen && (
+      {!isMobile && isStickersModalOpen && (
         <Suspense fallback={null}>
           <StickersModal
             open={isStickersModalOpen}
@@ -1550,7 +1595,7 @@ export const BoardPage: React.FC = () => {
       )}
 
       {/* Modal de Atalhos do Teclado */}
-      {isShortcutsModalOpen && (
+      {!isMobile && isShortcutsModalOpen && (
         <Suspense fallback={null}>
           <KeyboardShortcutsModal
             open={isShortcutsModalOpen}
@@ -1560,7 +1605,7 @@ export const BoardPage: React.FC = () => {
       )}
 
       {/* Modal de Troca de Nome e Perfil (Convidado & Usuário) */}
-      {currentUser && (
+      {!isMobile && currentUser && (
         <EditProfileModal
           open={isEditProfileOpen}
           onOpenChange={setIsEditProfileOpen}
@@ -1570,7 +1615,7 @@ export const BoardPage: React.FC = () => {
       )}
 
       {/* Paleta de Comandos Global e Contextual (Cmd+K / Ctrl+K) */}
-      <CommandPalette
+      {!isMobile && <CommandPalette
         open={isCommandPaletteOpen}
         onOpenChange={setIsCommandPaletteOpen}
         boardContext={{
@@ -1612,10 +1657,10 @@ export const BoardPage: React.FC = () => {
           gridOpacity,
           onChangeGridOpacity: handleChangeGridOpacity,
         }}
-      />
+      />}
 
       {/* Modal de Templates de Sprint disparado via Command K */}
-      {isSprintTemplatesOpen && (
+      {!isMobile && isSprintTemplatesOpen && (
         <SprintTemplatesModal
           open={isSprintTemplatesOpen}
           onOpenChange={setIsSprintTemplatesOpen}
@@ -1624,7 +1669,7 @@ export const BoardPage: React.FC = () => {
       )}
 
       {/* Camada de Feixes e Ponteiros Laser ao Vivo (Colaborativo e Local) */}
-      <LaserTrailOverlay
+      {!isMobile && <LaserTrailOverlay
         stageX={stagePos.x}
         stageY={stagePos.y}
         scale={scale}
@@ -1634,7 +1679,7 @@ export const BoardPage: React.FC = () => {
         isLocalDrawingRef={isLocalLaserDrawingRef}
         localPointsRef={localLaserPointsRef}
         remoteUsers={remoteUsers}
-      />
+      />}
 
       {/* Camada de Cursores Remotos Voando na Tela */}
       {showRemoteCursors && (
