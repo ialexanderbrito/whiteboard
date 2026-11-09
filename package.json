@@ -39,7 +39,8 @@
     "react-konva": "^19.3.2",
     "react-router-dom": "^7.18.5",
     "tailwind-merge": "^3.7.0",
-    "tailwindcss": "^3.4.19"
+    "tailwindcss": "^3.4.19",
+    "vaul": "^1.1.2"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",
