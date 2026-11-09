@@ -31,17 +31,17 @@ export function getUserBoardPermission(
     return 'edit';
   }
 
-  // 2. Se o usuário foi expressamente removido pelo proprietário do quadro, bloqueia imediatamente o acesso
-  if (board.removedMemberIds && board.removedMemberIds.includes(user.uid)) {
-    return 'none';
-  }
-
-  // 3. Verifica se o usuário tem permissão específica atribuída por UID (inclui convidados sem Google)
+  // 2. Verifica se o usuário tem papel específico atribuído por UID em members
   if (board.members && board.members[user.uid]?.role) {
-    return board.members[user.uid].role!;
+    const memberRole = board.members[user.uid].role!;
+    if (memberRole === 'none') {
+      return 'none';
+    }
+    // Papel explícito ativo (edit, comment, view) concedido ao membro
+    return memberRole;
   }
 
-  // 4. Verifica se o usuário foi convidado explicitamente pelo e-mail
+  // 3. Verifica se o usuário foi convidado explicitamente pelo e-mail (re-convites por e-mail têm precedência)
   if (user.email && board.collaborators) {
     const userEmail = user.email.trim().toLowerCase();
     const collab = Object.values(board.collaborators).find(
@@ -52,7 +52,12 @@ export function getUserBoardPermission(
     }
   }
 
-  // 3. Se o quadro foi desbloqueado com senha válida e a permissão padrão era 'none',
+  // 4. Se o usuário foi expressamente removido pelo proprietário do quadro (e não foi re-adicionado)
+  if (board.removedMemberIds && board.removedMemberIds.includes(user.uid)) {
+    return 'none';
+  }
+
+  // 5. Se o quadro foi desbloqueado com senha válida e a permissão padrão era 'none',
   // concede permissão de edição por ter validado a senha do proprietário.
   if (isPasswordUnlocked && board.isPasswordProtected) {
     if (!board.defaultPermission || board.defaultPermission === 'none') {
@@ -61,7 +66,7 @@ export function getUserBoardPermission(
     return board.defaultPermission;
   }
 
-  // 4. Permissão configurada para qualquer pessoa com o link
+  // 6. Permissão configurada para qualquer pessoa com o link
   // Se ainda não estiver definida em quadros legados, o padrão é 'edit'
   return board.defaultPermission ?? 'edit';
 }

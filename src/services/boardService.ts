@@ -221,12 +221,19 @@ export const boardService = {
         const userEmailLower = user.email ? user.email.toLowerCase() : null;
 
         const filtered = allLocal.filter((b) => {
-          // Se o usuário foi expressamente removido pelo proprietário deste quadro ou bloqueado, nunca deve aparecer no dashboard dele
-          if (b.removedMemberIds && b.removedMemberIds.includes(user.uid)) {
-            return false;
-          }
-          if (b.members && b.members[user.uid]?.role === 'none') {
-            return false;
+          const isReinvited = (userEmailLower && (
+            (b.collaboratorEmails && b.collaboratorEmails.map((e) => String(e).toLowerCase()).includes(userEmailLower)) ||
+            (b.collaborators && Object.values(b.collaborators).some((c) => c?.email && String(c.email).toLowerCase() === userEmailLower))
+          )) || Boolean(b.members && b.members[user.uid] && b.members[user.uid].role !== 'none');
+
+          // Se o usuário foi expressamente removido pelo proprietário deste quadro e não foi re-adicionado, não exibe
+          if (!isReinvited) {
+            if (b.removedMemberIds && b.removedMemberIds.includes(user.uid)) {
+              return false;
+            }
+            if (b.members && b.members[user.uid]?.role === 'none') {
+              return false;
+            }
           }
 
           // 1. É o proprietário do quadro
@@ -321,12 +328,19 @@ export const boardService = {
             password: rawData.password || '',
           };
 
-          // Se o usuário foi expressamente removido pelo proprietário deste quadro ou bloqueado, nunca deve aparecer no dashboard dele
-          if (b.removedMemberIds && b.removedMemberIds.includes(user.uid)) {
-            return;
-          }
-          if (b.members && b.members[user.uid]?.role === 'none') {
-            return;
+          const isReinvited = (userEmailLower && (
+            (b.collaboratorEmails && b.collaboratorEmails.includes(userEmailLower)) ||
+            (b.collaborators && Object.values(b.collaborators).some((c) => c?.email && String(c.email).toLowerCase() === userEmailLower))
+          )) || Boolean(b.members && b.members[user.uid] && b.members[user.uid].role !== 'none');
+
+          // Se o usuário foi expressamente removido pelo proprietário deste quadro e não foi re-adicionado, não exibe
+          if (!isReinvited) {
+            if (b.removedMemberIds && b.removedMemberIds.includes(user.uid)) {
+              return;
+            }
+            if (b.members && b.members[user.uid]?.role === 'none') {
+              return;
+            }
           }
 
           // 1. É o proprietário do quadro
@@ -656,7 +670,7 @@ export const boardService = {
       try {
         const docRef = doc(db, 'boards', boardId);
         await updateDoc(docRef, {
-          [`members.${memberUid}`]: deleteField(),
+          [`members.${memberUid}.role`]: 'none',
           removedMemberIds: arrayUnion(memberUid),
           updatedAt: Date.now(),
         });
@@ -677,12 +691,63 @@ export const boardService = {
     const idx = local.findIndex((b) => b && (cleanBoardId(b.id) === boardId || b.id === `board_${boardId}`));
     if (idx !== -1) {
       const updatedMembers = { ...(local[idx].members || {}) };
-      delete updatedMembers[memberUid];
+      if (updatedMembers[memberUid]) {
+        updatedMembers[memberUid] = { ...updatedMembers[memberUid], role: 'none' };
+      } else {
+        delete updatedMembers[memberUid];
+      }
       const removedIds = Array.from(new Set([...(local[idx].removedMemberIds || []), memberUid]));
       local[idx] = {
         ...local[idx],
         members: updatedMembers,
         removedMemberIds: removedIds,
+        updatedAt: Date.now(),
+      };
+      localStorage.setItem(LOCAL_BOARDS_KEY, JSON.stringify(local));
+      notifyLocalSubscribers();
+    }
+  },
+
+  /**
+   * Re-adiciona / desbloqueia um membro previamente removido, restaurando seu acesso ao quadro.
+   */
+  async unremoveBoardMember(rawBoardId: string, memberUid: string, role: BoardPermission = 'edit'): Promise<void> {
+    const boardId = cleanBoardId(rawBoardId);
+    if (!boardId || !memberUid) return;
+
+    if (isFirebaseConfigured && db) {
+      try {
+        const docRef = doc(db, 'boards', boardId);
+        await updateDoc(docRef, {
+          [`members.${memberUid}.role`]: role,
+          removedMemberIds: arrayRemove(memberUid),
+          updatedAt: Date.now(),
+        });
+        return;
+      } catch (err) {
+        console.warn('Erro ao desbloquear membro no Firestore via updateDoc:', err);
+      }
+    }
+
+    // Armazenamento Local
+    let local: Board[] = [];
+    try {
+      local = JSON.parse(localStorage.getItem(LOCAL_BOARDS_KEY) || '[]');
+      if (!Array.isArray(local)) local = [];
+    } catch {
+      local = [];
+    }
+    const idx = local.findIndex((b) => b && (cleanBoardId(b.id) === boardId || b.id === `board_${boardId}`));
+    if (idx !== -1) {
+      const updatedMembers = { ...(local[idx].members || {}) };
+      if (updatedMembers[memberUid]) {
+        updatedMembers[memberUid] = { ...updatedMembers[memberUid], role };
+      }
+      const updatedRemoved = (local[idx].removedMemberIds || []).filter((id) => id !== memberUid);
+      local[idx] = {
+        ...local[idx],
+        members: updatedMembers,
+        removedMemberIds: updatedRemoved,
         updatedAt: Date.now(),
       };
       localStorage.setItem(LOCAL_BOARDS_KEY, JSON.stringify(local));
@@ -781,8 +846,14 @@ export const boardService = {
       if (local[idx].ownerId === user.uid) {
         return;
       }
-      // Se o usuário foi removido deste quadro pelo proprietário, não permite auto-registro
-      if (local[idx].removedMemberIds?.includes(user.uid) || local[idx].members?.[user.uid]?.role === 'none') {
+      // Se o usuário foi removido deste quadro pelo proprietário e não foi re-convidado, não permite auto-registro
+      const userEmailLower = user.email ? user.email.toLowerCase() : null;
+      const isReinvitedLocal = (userEmailLower && (
+        local[idx].collaboratorEmails?.includes(userEmailLower) ||
+        (local[idx].collaborators && Object.values(local[idx].collaborators).some((c) => c?.email?.toLowerCase() === userEmailLower))
+      )) || Boolean(local[idx].members?.[user.uid]?.role && local[idx].members[user.uid].role !== 'none');
+
+      if (!isReinvitedLocal && (local[idx].removedMemberIds?.includes(user.uid) || local[idx].members?.[user.uid]?.role === 'none')) {
         return;
       }
       const currentMembers = local[idx].members || {};
@@ -810,9 +881,22 @@ export const boardService = {
           if (boardData.ownerId === user.uid) {
             return;
           }
-          // Se o usuário foi removido deste quadro pelo proprietário, não permite auto-registro
-          if (boardData.removedMemberIds?.includes(user.uid) || boardData.members?.[user.uid]?.role === 'none') {
+          const userEmailLower = user.email ? user.email.toLowerCase() : null;
+          const isReinvitedFirestore = (userEmailLower && (
+            boardData.collaboratorEmails?.includes(userEmailLower) ||
+            (boardData.collaborators && Object.values(boardData.collaborators).some((c) => c?.email?.toLowerCase() === userEmailLower))
+          )) || Boolean(boardData.members?.[user.uid]?.role && boardData.members[user.uid].role !== 'none');
+
+          // Se o usuário foi removido deste quadro e não foi re-adicionado, não permite auto-registro
+          if (!isReinvitedFirestore && (boardData.removedMemberIds?.includes(user.uid) || boardData.members?.[user.uid]?.role === 'none')) {
             return;
+          }
+
+          // Se foi re-convidado, limpa seu UID de removedMemberIds no Firestore
+          if (isReinvitedFirestore && boardData.removedMemberIds?.includes(user.uid)) {
+            await updateDoc(boardRef, {
+              removedMemberIds: arrayRemove(user.uid)
+            }).catch(() => {});
           }
         } else {
           const legacySnap = await getDoc(doc(db, 'boards', `board_${boardId}`));

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { getUserBoardPermission, isBoardOwner } from '../src/utils/permissions.ts';
 
 /**
  * Função de visibilidade de quadros que replica a lógica do boardService
@@ -7,12 +8,23 @@ import assert from 'node:assert/strict';
 function isBoardVisibleToUser(board, user, visitedIds = []) {
   if (!user) return false;
 
-  // Se o usuário foi expressamente removido pelo proprietário deste quadro ou bloqueado
-  if (board.removedMemberIds && board.removedMemberIds.includes(user.uid)) {
-    return false;
-  }
-  if (board.members && board.members[user.uid]?.role === 'none') {
-    return false;
+  const userEmailLower = user.email ? user.email.toLowerCase() : null;
+  const isReinvited = Boolean(
+    (userEmailLower && (
+      (board.collaboratorEmails && board.collaboratorEmails.map((e) => String(e).toLowerCase()).includes(userEmailLower)) ||
+      (board.collaborators && Object.values(board.collaborators).some((c) => c?.email && String(c.email).toLowerCase() === userEmailLower))
+    )) ||
+    (board.members && board.members[user.uid] && board.members[user.uid].role !== 'none')
+  );
+
+  // Se o usuário foi expressamente removido pelo proprietário deste quadro e não foi re-adicionado, não exibe
+  if (!isReinvited) {
+    if (board.removedMemberIds && board.removedMemberIds.includes(user.uid)) {
+      return false;
+    }
+    if (board.members && board.members[user.uid]?.role === 'none') {
+      return false;
+    }
   }
 
   // 1. É o proprietário do quadro
@@ -20,7 +32,6 @@ function isBoardVisibleToUser(board, user, visitedIds = []) {
 
   // 2. Convidado por e-mail
   if (user.email) {
-    const userEmailLower = user.email.toLowerCase();
     if (board.collaboratorEmails && board.collaboratorEmails.map((e) => e.toLowerCase()).includes(userEmailLower)) {
       return true;
     }
@@ -244,4 +255,136 @@ test('Filtro de busca tolera quadros com título nulo ou indefinido sem lançar 
   assert.equal(filtered.length, 1);
   assert.equal(filtered[0].id, '3');
 });
+
+test('Usuário previamente removido que é re-convidado ou re-adicionado recupera visibilidade no dashboard', () => {
+  const removedUser = {
+    uid: 'guest_user_999',
+    displayName: 'Carlos Convidado',
+    email: 'carlos@example.com',
+    isAnonymous: false,
+  };
+
+  const boardWithRemoved = {
+    id: 'board_team_1',
+    title: 'Projeto Equipe',
+    ownerId: 'owner_alexander',
+    ownerName: 'Alexander',
+    defaultPermission: 'edit',
+    removedMemberIds: ['guest_user_999'],
+    members: {
+      guest_user_999: {
+        uid: 'guest_user_999',
+        name: 'Carlos Convidado',
+        email: 'carlos@example.com',
+        role: 'none',
+      },
+    },
+  };
+
+  // 1. Enquanto está removido e sem re-convite, não fica visível
+  assert.equal(isBoardVisibleToUser(boardWithRemoved, removedUser, ['board_team_1']), false);
+
+  // 2. Quando o dono re-adiciona o membro alterando o papel para 'edit'
+  const boardReAdded = {
+    ...boardWithRemoved,
+    members: {
+      guest_user_999: {
+        uid: 'guest_user_999',
+        name: 'Carlos Convidado',
+        email: 'carlos@example.com',
+        role: 'edit',
+      },
+    },
+  };
+  assert.equal(isBoardVisibleToUser(boardReAdded, removedUser, ['board_team_1']), true);
+
+  // 3. Quando o dono re-convida o usuário pelo e-mail
+  const boardReinvitedByEmail = {
+    ...boardWithRemoved,
+    members: {}, // uid sem role direto
+    collaboratorEmails: ['carlos@example.com'],
+    collaborators: {
+      carlos_hash: {
+        email: 'carlos@example.com',
+        role: 'view',
+        addedAt: Date.now(),
+      },
+    },
+  };
+  assert.equal(isBoardVisibleToUser(boardReinvitedByEmail, removedUser, ['board_team_1']), true);
+});
+
+test('getUserBoardPermission concede permissão para usuário re-adicionado mesmo se seu UID constava em removedMemberIds', () => {
+  const user = {
+    uid: 'guest_user_999',
+    displayName: 'Carlos Convidado',
+    email: 'carlos@example.com',
+    isAnonymous: false,
+  };
+
+  // Caso 1: Usuário removido tem permissão 'none'
+  const boardRemoved = {
+    id: 'board_test',
+    ownerId: 'owner_123',
+    defaultPermission: 'edit',
+    removedMemberIds: ['guest_user_999'],
+    members: {
+      guest_user_999: {
+        uid: 'guest_user_999',
+        name: 'Carlos Convidado',
+        role: 'none',
+      },
+    },
+  };
+  assert.equal(getUserBoardPermission(boardRemoved, user), 'none');
+
+  // Caso 2: Usuário re-adicionado diretamente em members com role 'edit'
+  const boardRestored = {
+    id: 'board_test',
+    ownerId: 'owner_123',
+    defaultPermission: 'edit',
+    removedMemberIds: ['guest_user_999'], // Mesmo com ID resíduo, o role explícito tem precedência
+    members: {
+      guest_user_999: {
+        uid: 'guest_user_999',
+        name: 'Carlos Convidado',
+        role: 'edit',
+      },
+    },
+  };
+  assert.equal(getUserBoardPermission(boardRestored, user), 'edit');
+
+  // Caso 3: Usuário re-convidado por e-mail em collaborators
+  const boardReinvited = {
+    id: 'board_test',
+    ownerId: 'owner_123',
+    defaultPermission: 'edit',
+    removedMemberIds: ['guest_user_999'],
+    collaborators: {
+      collab_1: {
+        email: 'carlos@example.com',
+        role: 'comment',
+        addedAt: Date.now(),
+      },
+    },
+  };
+  assert.equal(getUserBoardPermission(boardReinvited, user), 'comment');
+});
+
+test('isBoardOwner garante estritamente que apenas o criador original (ownerId === user.uid) é dono', () => {
+  const guestCreatedBoard = {
+    id: 'board_guest_abc',
+    ownerId: 'guest_uid_111',
+    ownerName: 'Visitante Inicial',
+    defaultPermission: 'edit',
+  };
+
+  const guestCreator = { uid: 'guest_uid_111', isAnonymous: true };
+  const googleInvitee = { uid: 'google_uid_222', email: 'google@gmail.com', isAnonymous: false };
+
+  assert.equal(isBoardOwner(guestCreatedBoard, guestCreator), true);
+  assert.equal(isBoardOwner(guestCreatedBoard, googleInvitee), false);
+  assert.equal(isBoardOwner(guestCreatedBoard, null), false);
+});
+
 
