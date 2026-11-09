@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { reactionService, type GlobalReactionEvent } from '@/services/reactionService';
 import { getAppleEmojiUrl } from '@/utils/appleEmoji';
+import { getReactionImageUrl, MIRIO_REACTION } from '@/utils/mirioReaction';
 
 interface ReactionParticle {
   id: string;
@@ -13,6 +14,7 @@ interface ReactionParticle {
   swayDurationMs: number;
   delayMs: number;
   sizePx: number;
+  startTopPx: number;
 }
 
 interface ReactionAuthorNotification {
@@ -39,6 +41,11 @@ export const GlobalReactionsOverlay: React.FC<GlobalReactionsOverlayProps> = ({ 
       const img = new Image();
       img.src = getAppleEmojiUrl(emoji);
     });
+    const mirioImage = getReactionImageUrl(MIRIO_REACTION);
+    if (mirioImage) {
+      const img = new Image();
+      img.src = mirioImage;
+    }
   }, []);
 
   // Limpeza de timers ao desmontar
@@ -56,6 +63,7 @@ export const GlobalReactionsOverlay: React.FC<GlobalReactionsOverlayProps> = ({ 
     const unsubscribe = reactionService.subscribeReactions(boardId, (event: GlobalReactionEvent) => {
       const windowWidth = typeof window !== 'undefined' ? window.innerWidth : 1200;
       const windowHeight = typeof window !== 'undefined' ? window.innerHeight : 800;
+      const reactionDurationMs = 10000;
 
       // 1. Notificação do autor da reação na parte inferior da tela
       if (event.userName && event.userName.trim() !== '') {
@@ -76,27 +84,23 @@ export const GlobalReactionsOverlay: React.FC<GlobalReactionsOverlayProps> = ({ 
 
       // 2. Dispersão das reações na TELA TODA (de baixo para cima)
       // Distribui 16 partículas ao longo de toda a largura do viewport (30px até a borda direita)
-      const particleCount = 16;
+      const particleCount = 86;
       const margin = 40;
       const availableWidth = Math.max(300, windowWidth - margin * 2);
-      const step = availableWidth / particleCount;
-      const travelDist = windowHeight + 140;
+      const travelDist = windowHeight * 2 + 180;
 
       const newBatch: ReactionParticle[] = Array.from({ length: particleCount }).map((_, i) => {
-        // Posição horizontal distribuída uniformemente por toda a tela com leve variação orgânica
-        const baseLaneX = margin + i * step;
-        const laneJitter = (Math.random() - 0.5) * (step * 0.85);
-        const startX = Math.max(24, Math.min(windowWidth - 64, baseLaneX + laneJitter));
+        // Cada balão nasce de um ponto independente para evitar linhas e colunas perceptíveis.
+        const startX = margin + Math.random() * availableWidth;
 
-        const durationMs = 2800 + Math.random() * 800; // 2.8s a 3.6s para subida suave e graciosa
+        const durationMs = reactionDurationMs;
         const swayDurationMs = 1100 + Math.random() * 500;
-        const swayXPx = 18 + Math.random() * 22;
-        const swayRotDeg = 5 + Math.random() * 9;
+        const swayXPx = 12 + Math.random() * 30;
+        const swayRotDeg = 4 + Math.random() * 12;
         
-        // Entrada em cascata/fluxo contínuo (stagger dinâmico)
-        const delayMs = Math.floor(Math.random() * 450);
-        // Variação de tamanho para gerar profundidade (alguns em primeiro plano, outros mais ao fundo)
-        const sizePx = 36 + Math.floor(Math.random() * 20);
+        const delayMs = Math.floor(Math.random() * 1200);
+        const sizePx = 26 + Math.floor(Math.random() * 30);
+        const startTopPx = windowHeight + 48 + Math.floor(Math.random() * 80);
 
         return {
           id: `${event.id}_${i}_${Math.random()}`,
@@ -109,6 +113,7 @@ export const GlobalReactionsOverlay: React.FC<GlobalReactionsOverlayProps> = ({ 
           swayDurationMs,
           delayMs,
           sizePx,
+          startTopPx,
         };
       });
 
@@ -119,7 +124,7 @@ export const GlobalReactionsOverlay: React.FC<GlobalReactionsOverlayProps> = ({ 
         const idsToRemove = new Set(newBatch.map((p) => p.id));
         setParticles((prev) => prev.filter((p) => !idsToRemove.has(p.id)));
         activeTimers.current.delete(batchTimer);
-      }, 4200);
+      }, reactionDurationMs + 5200);
       activeTimers.current.add(batchTimer);
     });
 
@@ -129,7 +134,14 @@ export const GlobalReactionsOverlay: React.FC<GlobalReactionsOverlayProps> = ({ 
   if (particles.length === 0 && !activeAuthor) return null;
 
   return (
-    <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden select-none">
+    <div
+      className="fixed inset-0 pointer-events-none z-50 overflow-hidden select-none"
+      style={{
+        perspective: '1500px',
+        perspectiveOrigin: '50% 100%',
+        contain: 'style layout paint',
+      }}
+    >
       {/* 1. Badge sutil do autor da reação na base inferior central da tela */}
       {activeAuthor && (
         <div
@@ -141,23 +153,33 @@ export const GlobalReactionsOverlay: React.FC<GlobalReactionsOverlayProps> = ({ 
         >
           <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-card/95 text-foreground border border-border/80 shadow-[0_8px_30px_rgba(0,0,0,0.2)] backdrop-blur-xl text-xs font-semibold whitespace-nowrap">
             <span className="text-muted-foreground font-medium">{activeAuthor.userName} reagiu com</span>
-            <span className="text-base leading-none">{activeAuthor.emoji}</span>
+            {getReactionImageUrl(activeAuthor.emoji) ? (
+              <img
+                src={getReactionImageUrl(activeAuthor.emoji) || undefined}
+                alt="Reação especial"
+                className="size-5 object-contain"
+              />
+            ) : (
+              <span className="text-base leading-none">{activeAuthor.emoji}</span>
+            )}
           </div>
         </div>
       )}
 
       {/* 2. Erupção de Partículas Flutuantes na Tela Toda (De baixo para cima) */}
       {particles.map((p) => {
-        const appleUrl = getAppleEmojiUrl(p.emoji);
+        const reactionImageUrl = getReactionImageUrl(p.emoji);
+        const appleUrl = reactionImageUrl || getAppleEmojiUrl(p.emoji);
 
         return (
           /* Tier 1: Eixo Vertical Contínuo (Sobe de bottom: -40px até o topo da viewport) */
           <div
             key={p.id}
-            className="absolute bottom-[-40px] will-change-transform pointer-events-none"
+            className="absolute will-change-transform pointer-events-none"
             style={
               {
                 left: `${p.startX}px`,
+                top: `${p.startTopPx}px`,
                 '--rise-travel': `-${p.travelYPx}px`,
                 animation: `reaction-rise ${p.durationMs}ms cubic-bezier(0.12, 0.72, 0.28, 1) ${p.delayMs}ms forwards`,
               } as React.CSSProperties
@@ -185,7 +207,7 @@ export const GlobalReactionsOverlay: React.FC<GlobalReactionsOverlayProps> = ({ 
               >
                 <img
                   src={appleUrl}
-                  alt={p.emoji}
+                  alt={reactionImageUrl ? 'Reação especial' : p.emoji}
                   className="w-full h-full object-contain pointer-events-none select-none"
                   loading="eager"
                   onError={(e) => {

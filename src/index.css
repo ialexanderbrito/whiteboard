@@ -241,10 +241,10 @@ html, body {
     transform: translate3d(0, 0, 0);
     opacity: 0;
   }
-  6% {
+  8% {
     opacity: 1;
   }
-  82% {
+  86% {
     opacity: 1;
   }
   100% {
@@ -385,5 +385,4 @@ html, body {
     transform: none;
   }
 }
-
 
