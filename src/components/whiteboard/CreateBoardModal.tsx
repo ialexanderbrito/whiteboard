@@ -7,8 +7,6 @@ import {
   Check, 
   Eye, 
   EyeOff, 
-  Plus, 
-  Trash2, 
   Globe, 
   MessageSquare,
   ShieldAlert,
@@ -25,15 +23,13 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import type { BoardCollaborator, BoardPermission, CurrentUser } from '../../types/board';
+import type { BoardPermission, CurrentUser } from '../../types/board';
 import type { CreateBoardOptions } from '../../services/boardService';
 
 interface CreateBoardModalProps {
@@ -75,7 +71,7 @@ const PERMISSION_OPTIONS: { id: BoardPermission; label: string; desc: string; ic
   {
     id: 'none',
     label: 'Sem acesso / Privado',
-    desc: 'Restrito exclusivamente a convidados diretos por e-mail',
+    desc: 'Restrito; compartilhe depois pelas configurações do quadro',
     icon: ShieldAlert,
   },
 ];
@@ -93,11 +89,6 @@ export const CreateBoardModal: React.FC<CreateBoardModalProps> = ({
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
-  // Colaboradores adicionados antes da criação
-  const [collaboratorEmail, setCollaboratorEmail] = useState('');
-  const [collaboratorRole, setCollaboratorRole] = useState<BoardPermission>('edit');
-  const [collaborators, setCollaborators] = useState<Record<string, BoardCollaborator>>({});
-
   // ID pré-gerado para permitir copiar o link antecipadamente se desejar
   const [pregeneratedId, setPregeneratedId] = useState('');
   const [copiedLink, setCopiedLink] = useState(false);
@@ -111,9 +102,6 @@ export const CreateBoardModal: React.FC<CreateBoardModalProps> = ({
       setDefaultPermission('edit');
       setIsPasswordProtected(false);
       setPassword('');
-      setCollaborators({});
-      setCollaboratorEmail('');
-      setCollaboratorRole('edit');
       setCopiedLink(false);
     }
   }, [open]);
@@ -131,43 +119,15 @@ export const CreateBoardModal: React.FC<CreateBoardModalProps> = ({
     }
   };
 
-  const handleAddCollaborator = () => {
-    const email = collaboratorEmail.trim().toLowerCase();
-    if (!email || !email.includes('@')) return;
-
-    const emailKey = email.replace(/[.#$[\]]/g, '_');
-    setCollaborators((prev) => ({
-      ...prev,
-      [emailKey]: {
-        email,
-        role: collaboratorRole,
-        addedAt: Date.now(),
-      },
-    }));
-    setCollaboratorEmail('');
-  };
-
-  const handleRemoveCollaborator = (emailKey: string) => {
-    setCollaborators((prev) => {
-      const next = { ...prev };
-      delete next[emailKey];
-      return next;
-    });
-  };
-
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (isCreating) return;
 
     const finalTitle = boardTitle.trim() || 'Novo Quadro de Ideias';
-    const collaboratorEmails = Object.values(collaborators).map((c) => c.email.toLowerCase());
-
     await onCreateBoard({
       boardId: pregeneratedId,
       title: finalTitle,
       defaultPermission,
-      collaborators,
-      collaboratorEmails,
       isPasswordProtected,
       password: isPasswordProtected ? password.trim() : '',
     });
@@ -313,104 +273,7 @@ export const CreateBoardModal: React.FC<CreateBoardModalProps> = ({
             </DropdownMenu>
           </div>
 
-          {/* 4. Convidar Pessoas Específicas por E-mail */}
-          <div className="space-y-2 pt-1 border-t border-border">
-            <label className="text-xs font-semibold text-foreground block">
-              Convidar Pessoas (Opcional)
-            </label>
-
-            <div className="flex items-center gap-1.5">
-              <Input
-                type="email"
-                placeholder="email@empresa.com"
-                value={collaboratorEmail}
-                onChange={(e) => setCollaboratorEmail(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleAddCollaborator();
-                  }
-                }}
-                className="h-8 text-xs flex-1"
-              />
-
-              {/* Seletor do Papel do Convidado */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-8 text-xs px-2 gap-1 shrink-0">
-                    <span>
-                      {collaboratorRole === 'edit'
-                        ? 'Editar'
-                        : collaboratorRole === 'comment'
-                        ? 'Comentar'
-                        : 'Leitura'}
-                    </span>
-                    <ChevronDown className="size-3 opacity-60" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="text-xs w-36">
-                  <DropdownMenuItem onClick={() => setCollaboratorRole('edit')} className="cursor-pointer">
-                    Pode editar
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setCollaboratorRole('comment')} className="cursor-pointer">
-                    Pode comentar
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setCollaboratorRole('view')} className="cursor-pointer">
-                    Apenas leitura
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={handleAddCollaborator}
-                disabled={!collaboratorEmail.trim() || !collaboratorEmail.includes('@')}
-                className="h-8 px-2.5 text-xs gap-1 shrink-0 active:scale-[0.97]"
-              >
-                <Plus className="size-3.5" />
-                <span>Adicionar</span>
-              </Button>
-            </div>
-
-            {/* Lista de Colaboradores Adicionados */}
-            {Object.keys(collaborators).length > 0 && (
-              <div className="space-y-1 max-h-28 overflow-y-auto pt-1">
-                {Object.entries(collaborators).map(([key, c]) => (
-                  <div
-                    key={key}
-                    className="flex items-center justify-between py-1 px-2.5 rounded-md bg-muted/30 border border-border/50 text-xs"
-                  >
-                    <div className="flex items-center gap-2 truncate pr-2">
-                      <Avatar className="size-5 text-[9px]">
-                        <AvatarFallback className="bg-primary/10 text-primary font-bold">
-                          {c.email.substring(0, 2).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <span className="truncate text-foreground text-xs">{c.email}</span>
-                    </div>
-
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 font-normal">
-                        {c.role === 'edit' ? 'Editor' : c.role === 'comment' ? 'Comentarista' : 'Leitor'}
-                      </Badge>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveCollaborator(key)}
-                        className="text-muted-foreground hover:text-destructive p-0.5 transition-colors"
-                        title="Remover convite"
-                      >
-                        <Trash2 className="size-3" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* 5. Proteção por Senha (Opcional) */}
+          {/* 4. Proteção por Senha (Opcional) */}
           <div className="p-3 rounded-lg border border-border bg-muted/15 space-y-2.5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">

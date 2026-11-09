@@ -439,6 +439,12 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     scaleRef.current = scale;
   }, [scale]);
 
+  useEffect(() => {
+    if (!isMiddlePanning.current) {
+      middlePanCurrentPos.current = stagePos;
+    }
+  }, [stagePos.x, stagePos.y]);
+
   // Mantém a camada de GIFs perfeitamente sincronizada nas coordenadas do mundo em tempo real
   useEffect(() => {
     if (gifOverlayRef.current) {
@@ -1137,16 +1143,29 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     };
   };
 
-  // Zoom no ponto do mouse com scroll
+  // Touchpad usa scroll para navegar; Ctrl/Cmd + scroll mantém o zoom no ponto do cursor.
   const handleWheel = (e: Konva.KonvaEventObject<WheelEvent>) => {
     e.evt.preventDefault();
     const stage = stageRef.current;
     if (!stage) return;
 
-    const oldScale = scale;
     const pointer = stage.getPointerPosition();
     if (!pointer) return;
 
+    if (!e.evt.ctrlKey && !e.evt.metaKey) {
+      const factor = e.evt.deltaMode === 1 ? 16 : 1;
+      const currentPos = middlePanCurrentPos.current || stagePos;
+      applyStagePan(
+        {
+          x: currentPos.x - e.evt.deltaX * factor,
+          y: currentPos.y - e.evt.deltaY * factor,
+        },
+        scale
+      );
+      return;
+    }
+
+    const oldScale = scale;
     const mousePointTo = {
       x: (pointer.x - stagePos.x) / oldScale,
       y: (pointer.y - stagePos.y) / oldScale,
@@ -2156,14 +2175,10 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
 
   const isDraggableStage = currentTool === 'pan' || isSpacePressed;
 
-  // Ordenação de elementos para renderização (molduras no fundo)
+  // A ordem visual é controlada pelo zIndex persistido, inclusive para molduras.
   const sortedElements = React.useMemo(() => {
     const listToRender = liveErasedElements || elements;
-    return [...listToRender].sort((a, b) => {
-      if (a.type === 'frame' && b.type !== 'frame') return -1;
-      if (a.type !== 'frame' && b.type === 'frame') return 1;
-      return a.zIndex - b.zIndex;
-    });
+    return [...listToRender].sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0));
   }, [liveErasedElements, elements]);
 
   // Post-it selecionado único (para barra de reações flutuante em HTML com z-index 50)
@@ -2623,6 +2638,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         }}
         onDuplicateElement={handleDuplicateElement}
         onDuplicateElements={handleBatchDuplicate}
+        onReorderLayer={handleReorderLayer}
         onCopyElements={handleCopy}
         onCutElements={handleCut}
         onStartEditing={(elem) => {

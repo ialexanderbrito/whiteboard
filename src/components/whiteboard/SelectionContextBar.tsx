@@ -31,7 +31,11 @@ import {
   AlignEndHorizontal,
   AlignHorizontalDistributeCenter,
   AlignVerticalDistributeCenter,
-  Pipette
+  Pipette,
+  BringToFront,
+  SendToBack,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 import type { CanvasElement } from '../../types/element';
 import { 
@@ -78,6 +82,7 @@ interface SelectionContextBarProps {
   onCopyElements?: (elements: CanvasElement[]) => void;
   onCutElements?: (elements: CanvasElement[]) => void;
   onStartEditing?: (element: CanvasElement) => void;
+  onReorderLayer?: (action: 'bringToFront' | 'sendToBack' | 'bringForward' | 'sendBackward') => void;
   scale: number;
   stagePos: { x: number; y: number };
   onToggleVote?: (elementId: string) => void;
@@ -238,6 +243,7 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
   onCopyElements,
   onCutElements,
   onStartEditing,
+  onReorderLayer,
   scale,
   stagePos,
   onAddVote,
@@ -863,6 +869,35 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
                 </span>
                 <kbd className="text-[10px] text-muted-foreground font-mono">{modKey}+D</kbd>
               </DropdownMenuItem>
+
+              {onReorderLayer && (
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger className="flex items-center justify-between text-xs cursor-pointer py-1.5">
+                    <span className="flex items-center gap-2">
+                      <Layers className="size-3.5 text-muted-foreground" />
+                      <span>Organizar camada</span>
+                    </span>
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="w-44">
+                    <DropdownMenuItem onClick={() => onReorderLayer('bringToFront')} className="gap-2 text-xs cursor-pointer">
+                      <BringToFront className="size-3.5" />
+                      Trazer para frente
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => onReorderLayer('bringForward')} className="gap-2 text-xs cursor-pointer">
+                      <ArrowUp className="size-3.5" />
+                      Avançar uma camada
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => onReorderLayer('sendBackward')} className="gap-2 text-xs cursor-pointer">
+                      <ArrowDown className="size-3.5" />
+                      Recuar uma camada
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => onReorderLayer('sendToBack')} className="gap-2 text-xs cursor-pointer">
+                      <SendToBack className="size-3.5" />
+                      Enviar para trás
+                    </DropdownMenuItem>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+              )}
 
               {onCopyElements && (
                 <DropdownMenuItem
@@ -2634,6 +2669,35 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
             }}
             onCloseAutoFocus={(e) => e.preventDefault()}
           >
+            {onReorderLayer && (
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger className="flex items-center justify-between text-xs cursor-pointer py-1.5">
+                  <span className="flex items-center gap-2">
+                    <Layers className="size-3.5 text-muted-foreground" />
+                    <span>Organizar camada</span>
+                  </span>
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="w-44">
+                  <DropdownMenuItem onClick={() => onReorderLayer('bringToFront')} className="gap-2 text-xs cursor-pointer">
+                    <BringToFront className="size-3.5" />
+                    Trazer para frente
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onReorderLayer('bringForward')} className="gap-2 text-xs cursor-pointer">
+                    <ArrowUp className="size-3.5" />
+                    Avançar uma camada
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onReorderLayer('sendBackward')} className="gap-2 text-xs cursor-pointer">
+                    <ArrowDown className="size-3.5" />
+                    Recuar uma camada
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onReorderLayer('sendToBack')} className="gap-2 text-xs cursor-pointer">
+                    <SendToBack className="size-3.5" />
+                    Enviar para trás
+                  </DropdownMenuItem>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            )}
+
             {(isSticky || isText || isFrame || isShape) && onStartEditing && (
               <DropdownMenuItem
                 onClick={() => onStartEditing(primaryElement)}

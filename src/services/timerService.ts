@@ -212,7 +212,6 @@ export const timerService = {
         await setDoc(
           boardDocRef, 
           { 
-            title: 'Quadro Colaborativo', 
             timer: cleanState 
           }, 
           { merge: true }
