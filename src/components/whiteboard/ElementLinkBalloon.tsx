@@ -1,8 +1,13 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Globe, ExternalLink, Copy, Check, Trash2, Edit3 } from 'lucide-react';
 import type { CanvasElement } from '../../types/element';
 import { extractAllLinks, getDomainFromUrl } from '../../utils/textLinks';
 import { Button } from '@/components/ui/button';
+import {
+  getViewport,
+  subscribeViewport,
+  type ViewportState,
+} from '../../utils/viewport';
 
 interface ElementLinkBalloonProps {
   element: CanvasElement;
@@ -26,19 +31,56 @@ export const ElementLinkBalloon: React.FC<ElementLinkBalloonProps> = ({
   onRemoveLink,
 }) => {
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
+  const balloonRef = useRef<HTMLDivElement>(null);
+
+  // Posiciona direto no DOM: pan/zoom não deve re-renderizar o balão nem seus botões.
+  const placeBalloon = useCallback((viewport: ViewportState) => {
+    const node = balloonRef.current;
+    if (!node) return;
+
+    const elemWidth = (element.width || (element.radius ? element.radius * 2 : 180)) * viewport.scale;
+    const textHeight = (element.fontSize || 20) * 1.2;
+    const elemHeight = (
+      element.height ||
+      (element.type === 'text' ? textHeight : element.radius ? element.radius * 2 : 180)
+    ) * viewport.scale;
+
+    const rawX = element.type === 'circle' && element.radius ? element.x - element.radius : element.x;
+    const rawY = element.type === 'circle' && element.radius ? element.y - element.radius : element.y;
+
+    const screenX = rawX * viewport.scale + viewport.x;
+    const screenY = rawY * viewport.scale + viewport.y;
+
+    const isSticky = element.type === 'sticky';
+    const isNearBottom =
+      screenY + elemHeight + (isSticky ? 90 : 60) >
+      (typeof window !== 'undefined' ? window.innerHeight : 800);
+    const balloonTop = isNearBottom
+      ? Math.max(60, screenY - 48)
+      : isSticky
+      ? screenY + elemHeight + 46
+      : screenY + elemHeight + 10;
+
+    node.style.left = `${screenX + elemWidth / 2}px`;
+    node.style.top = `${balloonTop}px`;
+  }, [element]);
+
+  useEffect(() => {
+    placeBalloon(getViewport());
+    return subscribeViewport(placeBalloon);
+  }, [placeBalloon]);
 
   const links = extractAllLinks(element.text, element.linkUrl, element.links);
   if (links.length === 0) return null;
 
-  // Calcula posicionamento na tela com base no elemento, escala e zoom
+  // Posição inicial a partir do viewport já comprometido (evita salto no primeiro paint).
   const elemWidth = (element.width || (element.radius ? element.radius * 2 : 180)) * scale;
   const textHeight = (element.fontSize || 20) * 1.2;
   const elemHeight = (
     element.height ||
     (element.type === 'text' ? textHeight : element.radius ? element.radius * 2 : 180)
   ) * scale;
-  
-  // Para círculos centralizados
+
   const rawX = element.type === 'circle' && element.radius ? element.x - element.radius : element.x;
   const rawY = element.type === 'circle' && element.radius ? element.y - element.radius : element.y;
 
@@ -73,6 +115,7 @@ export const ElementLinkBalloon: React.FC<ElementLinkBalloonProps> = ({
 
   return (
     <div
+      ref={balloonRef}
       className="absolute z-40 transform -translate-x-1/2 pointer-events-auto select-none animate-in fade-in-0 zoom-in-95 duration-150"
       style={{
         left: `${balloonCenterX}px`,

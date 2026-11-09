@@ -1,12 +1,10 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { UserPresence } from '../../types/board';
 import { Pen, StickyNote, Eraser, Type, Square, Hand, Laser } from 'lucide-react';
+import { getViewport, subscribeViewport } from '../../utils/viewport';
 
 interface RemoteCursorsProps {
   remoteUsers: UserPresence[];
-  stageX: number;
-  stageY: number;
-  scale: number;
 }
 
 // Ícone miniatura representando a ferramenta ativa do colega
@@ -40,18 +38,19 @@ const getToolMiniIcon = (tool?: string | null) => {
 
 interface CursorItemProps {
   user: UserPresence;
-  targetX: number;
-  targetY: number;
+  /** Cursor position in board (world) coordinates. */
+  worldX: number;
+  worldY: number;
 }
 
 const RemoteCursorItem: React.FC<CursorItemProps> = React.memo(({
   user,
-  targetX,
-  targetY,
+  worldX,
+  worldY,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const currentPos = useRef({ x: targetX, y: targetY });
-  const targetPos = useRef({ x: targetX, y: targetY });
+  const currentPos = useRef({ x: worldX, y: worldY });
+  const targetPos = useRef({ x: worldX, y: worldY });
   const tilt = useRef(0);
   const rafId = useRef<number | null>(null);
   const isRunning = useRef(false);
@@ -63,14 +62,14 @@ const RemoteCursorItem: React.FC<CursorItemProps> = React.memo(({
 
   // Atualiza coordenadas-alvo
   useEffect(() => {
-    targetPos.current = { x: targetX, y: targetY };
+    targetPos.current = { x: worldX, y: worldY };
     lastTargetUpdate.current = Date.now();
 
     // Inicia loop de física e interpolação se não estiver rodando
     if (!isRunning.current) {
       startLoop();
     }
-  }, [targetX, targetY]);
+  }, [worldX, worldY]);
 
   // Efeito de pulso de clique (quando o usuário remoto clica no board)
   useEffect(() => {
@@ -160,6 +159,11 @@ const RemoteCursorItem: React.FC<CursorItemProps> = React.memo(({
         transform: `translate3d(${currentPos.current.x}px, ${currentPos.current.y}px, 0)`,
       }}
     >
+      {/* Counter-scale: o wrapper do board aplica o zoom; o cursor permanece do mesmo tamanho. */}
+      <div
+        className="origin-top-left"
+        style={{ transform: 'scale(var(--mirio-cursor-inv-scale, 1))' }}
+      >
       {/* Ondas concêntricas de clique (Click Ripple) */}
       {clickRipples.map((ripple) => (
         <span
@@ -243,6 +247,7 @@ const RemoteCursorItem: React.FC<CursorItemProps> = React.memo(({
           )}
         </div>
       )}
+      </div>
     </div>
   );
 });
@@ -251,33 +256,46 @@ RemoteCursorItem.displayName = 'RemoteCursorItem';
 
 export const RemoteCursors: React.FC<RemoteCursorsProps> = React.memo(({
   remoteUsers,
-  stageX,
-  stageY,
-  scale,
 }) => {
+  const worldLayerRef = useRef<HTMLDivElement>(null);
+
+  // O pan/zoom move apenas este wrapper (world -> screen). Os cursores ficam em
+  // coordenadas do quadro e são contra-escalados, sem re-render do React.
+  useLayoutEffect(() => {
+    const place = (viewport: { x: number; y: number; scale: number }) => {
+      const node = worldLayerRef.current;
+      if (!node) return;
+      node.style.transform = `translate3d(${viewport.x}px, ${viewport.y}px, 0) scale(${viewport.scale})`;
+      node.style.setProperty('--mirio-cursor-inv-scale', String(1 / viewport.scale));
+    };
+    place(getViewport());
+    return subscribeViewport(place);
+  }, []);
+
   return (
     <div className="absolute inset-0 pointer-events-none overflow-hidden z-20">
-      {remoteUsers.map((user, index) => {
-        if (!user.cursor) return null;
+      <div
+        ref={worldLayerRef}
+        className="absolute top-0 left-0 origin-top-left will-change-transform"
+      >
+        {remoteUsers.map((user, index) => {
+          if (!user.cursor) return null;
 
-        // Se o usuário remoto estiver usando a ferramenta laser, o feixe neon e o ponto focal
-        // com o nome dele já são desenhados com brilho em LaserTrailOverlay.
-        // Ocultamos a seta comum para evitar sobreposição dupla de cursores.
-        if (user.activeTool === 'laser') return null;
+          // Se o usuário remoto estiver usando a ferramenta laser, o feixe neon e o ponto focal
+          // com o nome dele já são desenhados com brilho em LaserTrailOverlay.
+          // Ocultamos a seta comum para evitar sobreposição dupla de cursores.
+          if (user.activeTool === 'laser') return null;
 
-        // Converte coordenadas do canvas (world) para a tela (screen)
-        const screenX = Math.round(user.cursor.x * scale + stageX);
-        const screenY = Math.round(user.cursor.y * scale + stageY);
-
-        return (
-          <RemoteCursorItem
-            key={user.userId || `remote-cursor-${index}`}
-            user={user}
-            targetX={screenX}
-            targetY={screenY}
-          />
-        );
-      })}
+          return (
+            <RemoteCursorItem
+              key={user.userId || `remote-cursor-${index}`}
+              user={user}
+              worldX={user.cursor.x}
+              worldY={user.cursor.y}
+            />
+          );
+        })}
+      </div>
     </div>
   );
 });

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback, useLayoutEffect } from 'react';
 import { 
   Trash2, 
   Copy, 
@@ -55,6 +55,11 @@ import {
   removeLinkFromElement
 } from '../../utils/textLinks';
 import { Button } from '@/components/ui/button';
+import {
+  getViewport,
+  subscribeViewport,
+  type ViewportState,
+} from '../../utils/viewport';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -276,16 +281,39 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
     return extractAllLinks(primaryElement.text, primaryElement.linkUrl, primaryElement.links);
   }, [primaryElement, primaryElement?.text, primaryElement?.linkUrl, primaryElement?.links]);
 
+  // Posição flutuante na tela logo acima da seleção (acompanha pan/zoom ao vivo).
+  // O deslocamento é escrito direto no DOM durante a navegação: um setState por
+  // frame re-renderizaria esta barra (e seus dezenas de controles) a cada wheel.
+  const minX = selectedElements.length > 0 ? Math.min(...selectedElements.map((e) => e.x)) : 0;
+  const minY = selectedElements.length > 0 ? Math.min(...selectedElements.map((e) => e.y)) : 0;
+  const barRef = useRef<HTMLDivElement>(null);
+  const barAnchorRef = useRef({ minX, minY });
+
+  const placeBar = useCallback((viewport: ViewportState) => {
+    const node = barRef.current;
+    if (!node) return;
+    const anchor = barAnchorRef.current;
+    const screenX = anchor.minX * viewport.scale + viewport.x;
+    const screenY = anchor.minY * viewport.scale + viewport.y;
+    node.style.left = `${Math.max(16, Math.min(window.innerWidth - 440, screenX))}px`;
+    node.style.top = `${Math.max(68, screenY - 48)}px`;
+  }, []);
+
+  useEffect(() => {
+    placeBar(getViewport());
+    return subscribeViewport(placeBar);
+  }, [placeBar]);
+
+  useLayoutEffect(() => {
+    barAnchorRef.current = { minX, minY };
+    placeBar(getViewport());
+  }, [minX, minY, placeBar]);
+
   if (selectedElements.length === 0) return null;
 
   const allLocked = selectedElements.every((e) => e.locked);
   const someLocked = selectedElements.some((e) => e.locked);
 
-  // Calcula bounding box geral de todos os selecionados
-  const minX = Math.min(...selectedElements.map((e) => e.x));
-  const minY = Math.min(...selectedElements.map((e) => e.y));
-
-  // Posição flutuante na tela logo acima da seleção
   const screenX = minX * scale + stagePos.x;
   const screenY = minY * scale + stagePos.y;
 
@@ -412,6 +440,7 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
   if (isMultiSelect) {
     return (
       <div
+        ref={barRef}
         className="absolute z-40 flex items-center gap-1.5 bg-popover/95 text-popover-foreground backdrop-blur-md px-2.5 py-1 rounded-lg shadow-sm border border-border select-none"
         style={{
           left: `${barLeft}px`,
@@ -1521,6 +1550,7 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
 
   return (
     <div
+      ref={barRef}
       className="absolute z-40 flex items-center gap-1 bg-popover/95 text-popover-foreground backdrop-blur-md px-1.5 py-1 rounded-xl shadow-md border border-border select-none"
       style={{
         left: `${barLeft}px`,

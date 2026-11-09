@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { 
   MousePointer, 
   StickyNote, 
@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import type { ToolType } from '../../types/element';
 import { STICKY_COLORS, SHAPE_QUICK_SWATCHES } from '../../utils/colors';
+import { subscribeCursorReadout } from '../../utils/cursorReadout';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface ToolbarProps {
@@ -64,8 +65,6 @@ interface ToolbarProps {
   onSelectEraserMode?: (mode: 'whole' | 'partial') => void;
   eraserSize?: number;
   onSelectEraserSize?: (size: number) => void;
-  // Coordenadas dinâmicas
-  cursorPos?: { x: number; y: number };
   // Chat do Cursor
   isCursorChatOpen?: boolean;
   onToggleCursorChat?: () => void;
@@ -110,6 +109,23 @@ const SHAPE_OPTIONS = [
   { id: 'star' as ToolType, label: 'Estrela', icon: Star },
 ];
 
+/**
+ * Reads the live cursor position straight from the DOM channel so mouse
+ * movement never re-renders the board or this toolbar.
+ */
+const CursorCoordinates: React.FC = () => {
+  const ref = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    return subscribeCursorReadout(({ x, y }) => {
+      const node = ref.current;
+      if (node) node.textContent = `${x}, ${y}`;
+    });
+  }, []);
+
+  return <span ref={ref}>0, 0</span>;
+};
+
 export const Toolbar: React.FC<ToolbarProps> = React.memo(({
   currentTool,
   onSelectTool,
@@ -137,7 +153,6 @@ export const Toolbar: React.FC<ToolbarProps> = React.memo(({
   onSelectEraserMode,
   eraserSize = 20,
   onSelectEraserSize,
-  cursorPos = { x: 0, y: 0 },
   isCursorChatOpen = false,
   onToggleCursorChat,
   readOnly = false,
@@ -894,7 +909,7 @@ export const Toolbar: React.FC<ToolbarProps> = React.memo(({
 
         {/* Coordenadas X e Y compactas (apenas em telas grandes) */}
         <div className="hidden xl:flex text-[10px] font-mono text-muted-foreground/75 px-1 items-center gap-1 select-none">
-          <span>{cursorPos.x}, {cursorPos.y}</span>
+          <CursorCoordinates />
         </div>
 
         {/* Divisor vertical */}

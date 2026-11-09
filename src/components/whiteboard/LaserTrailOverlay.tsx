@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import type { UserPresence, CurrentUser } from '../../types/board';
 import type { ToolType } from '../../types/element';
+import { getViewport } from '../../utils/viewport';
 
 export interface LaserPoint {
   x: number;
@@ -9,9 +10,6 @@ export interface LaserPoint {
 }
 
 interface LaserTrailOverlayProps {
-  stageX: number;
-  stageY: number;
-  scale: number;
   currentTool: ToolType;
   currentUser?: CurrentUser | null;
   localLaserPosRef: React.RefObject<{ x: number; y: number } | null>;
@@ -26,9 +24,6 @@ const TRAIL_DURATION_MS = 1000; // 1s de cauda dinâmica ágil (Miro/FigJam/Keyn
 const BASE_STROKE_WIDTH = 5.5; // Espessura base do feixe
 
 export const LaserTrailOverlay: React.FC<LaserTrailOverlayProps> = ({
-  stageX,
-  stageY,
-  scale,
   currentTool,
   localLaserPosRef,
   isLocalDrawingRef,
@@ -37,6 +32,25 @@ export const LaserTrailOverlay: React.FC<LaserTrailOverlayProps> = ({
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafId = useRef<number | null>(null);
+  const currentToolRef = useRef(currentTool);
+  const remoteUsersRef = useRef(remoteUsers);
+
+  useEffect(() => {
+    currentToolRef.current = currentTool;
+  }, [currentTool]);
+
+  useEffect(() => {
+    remoteUsersRef.current = remoteUsers;
+  }, [remoteUsers]);
+
+  // Boolean (not the array) so remote cursor updates don't restart the loop,
+  // but a colleague entering/leaving laser mode does.
+  const hasRemoteLaser = remoteUsers.some(
+    (user) =>
+      user.activeTool === 'laser' ||
+      Boolean(user.laser?.isDrawing) ||
+      Boolean(user.laser?.points?.length)
+  );
 
   // Mapeamento persistente de rastros de usuários remotos: userId -> LaserPoint[]
   const remoteTrailsRef = useRef<Map<string, LaserPoint[]>>(new Map());
@@ -94,11 +108,21 @@ export const LaserTrailOverlay: React.FC<LaserTrailOverlayProps> = ({
     if (!ctx) return;
 
     let isRunning = true;
+    const idleFramesToStop = 8;
+    let idleFrames = 0;
+
+    const hasActiveLaser = () => {
+      if (currentToolRef.current === 'laser') return true;
+      return remoteUsersRef.current.some(
+        (user) => user.activeTool === 'laser' || Boolean(user.laser?.isDrawing)
+      );
+    };
 
     const render = () => {
       if (!isRunning) return;
 
       const now = Date.now();
+      const { x: stageX, y: stageY, scale } = getViewport();
       const dpr = window.devicePixelRatio || 1;
       const width = window.innerWidth;
       const height = window.innerHeight;
@@ -301,15 +325,19 @@ export const LaserTrailOverlay: React.FC<LaserTrailOverlayProps> = ({
 
       // A. Desenha os rastros e ponteiros dos colegas remotos (Vermelho Laser + Tag de Identificação)
       const remoteTrails = remoteTrailsRef.current;
-      remoteUsers.forEach((user) => {
+      const users = remoteUsersRef.current;
+      let drewAnything = false;
+      users.forEach((user) => {
         const trail = remoteTrails.get(user.userId);
         if (trail && trail.length > 0) {
           const valid = trail.filter((p) => now - p.timestamp <= TRAIL_DURATION_MS);
           remoteTrails.set(user.userId, valid);
+          if (valid.length > 0) drewAnything = true;
           drawLaserTrail(valid);
         }
 
         if (user.activeTool === 'laser' && user.cursor) {
+          drewAnything = true;
           drawLaserPointerDot(
             user.cursor.x, 
             user.cursor.y, 
@@ -325,30 +353,46 @@ export const LaserTrailOverlay: React.FC<LaserTrailOverlayProps> = ({
       if (localPoints && localPoints.length > 0) {
         const validLocal = localPoints.filter((p) => now - p.timestamp <= TRAIL_DURATION_MS);
         localPointsRef.current = validLocal;
+        if (validLocal.length > 0) drewAnything = true;
         drawLaserTrail(validLocal);
       }
 
       // C. Desenha o ponto focal do laser do usuário local
       const localLaserPos = localLaserPosRef.current;
       const isLocalDrawing = Boolean(isLocalDrawingRef.current);
-      if (currentTool === 'laser' && localLaserPos) {
+      if (currentToolRef.current === 'laser' && localLaserPos) {
+        drewAnything = true;
         drawLaserPointerDot(localLaserPos.x, localLaserPos.y, isLocalDrawing);
       }
 
       ctx.restore();
 
+      if (!drewAnything && !hasActiveLaser()) {
+        idleFrames += 1;
+        if (idleFrames >= idleFramesToStop) {
+          isRunning = false;
+          rafId.current = null;
+          return;
+        }
+      } else {
+        idleFrames = 0;
+      }
+
       rafId.current = requestAnimationFrame(render);
     };
 
-    rafId.current = requestAnimationFrame(render);
+    if (currentTool === 'laser' || hasRemoteLaser) {
+      rafId.current = requestAnimationFrame(render);
+    }
 
     return () => {
       isRunning = false;
       if (rafId.current) {
         cancelAnimationFrame(rafId.current);
+        rafId.current = null;
       }
     };
-  }, [stageX, stageY, scale, currentTool, remoteUsers, localLaserPosRef, isLocalDrawingRef, localPointsRef]);
+  }, [currentTool, hasRemoteLaser, localLaserPosRef, isLocalDrawingRef, localPointsRef]);
 
   return (
     <canvas

@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect, useCallback } from 'react';
+import React, { useRef, useState, useEffect, useLayoutEffect, useCallback } from 'react';
 import { Stage, Layer, Transformer, Rect, Circle, Line, Star, Group, Text } from 'react-konva';
 import type Konva from 'konva';
 import type { CanvasElement, ToolType, ElementType } from '../../types/element';
@@ -22,9 +22,7 @@ import { eraseStrokePartially } from '../../utils/partialEraser';
 import { getCustomCanvasCursor } from '../../utils/canvasCursors';
 import { getContrastTextColor } from '../../utils/colors';
 import { calculateShapeDragBounds, getDefaultShapeBounds } from '../../utils/shapeSizing';
-import { getAppleEmojiUrl } from '../../utils/appleEmoji';
 import { playReactionPopSound } from '../../utils/audioChime';
-import { MIRIO_REACTION, getReactionImageUrl } from '../../utils/mirioReaction';
 import { votingService, type BoardVotingData } from '../../services/votingService';
 import { stripMarkdownLinks, removeLinkFromElement, addLinkToElement, normalizeUrl } from '../../utils/textLinks';
 import {
@@ -34,8 +32,9 @@ import {
   fileToDataUrl,
   getImageDimensions,
 } from '../../utils/clipboard';
-
-const QUICK_EMOJIS = ['👍', '❤️', '🔥', '🎉', '🚀', '💡', '🤔', '👀'];
+import { applyWorldTransform, publishViewport } from '../../utils/viewport';
+import { boundsIntersect, getElementWorldBounds } from '../../utils/elementBounds';
+import { StickyReactionBar } from './StickyReactionBar';
 
 interface WhiteboardCanvasProps {
   boardId: string;
@@ -241,7 +240,6 @@ const cleanGifUrl = (src?: string): string => {
 };
 
 export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
-  boardId,
   currentUser,
   elements,
   remoteUsers,
@@ -298,8 +296,25 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
   const stageRef = useRef<Konva.Stage>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
   const gifOverlayRef = useRef<HTMLDivElement>(null);
+  const votingOverlayRef = useRef<HTMLDivElement>(null);
+  const worldOverlayRefs = useRef<Array<React.RefObject<HTMLDivElement | null>>>([]);
   const eraserCursorRef = useRef<HTMLDivElement>(null);
   const middlePanCurrentPos = useRef<{ x: number; y: number } | null>(null);
+  const stagePosRef = useRef(stagePos);
+  const isLiveNavigating = useRef(false);
+  const viewportCommitTimer = useRef<number | null>(null);
+  const elementsRef = useRef(elements);
+  const selectedIdsRef = useRef(selectedIds);
+  const currentUserRef = useRef(currentUser);
+  const readOnlyRef = useRef(readOnly);
+  const canCommentOnlyRef = useRef(canCommentOnly);
+  const onStageChangeRef = useRef(onStageChange);
+  elementsRef.current = elements;
+  selectedIdsRef.current = selectedIds;
+  currentUserRef.current = currentUser;
+  readOnlyRef.current = readOnly;
+  canCommentOnlyRef.current = canCommentOnly;
+  onStageChangeRef.current = onStageChange;
 
   // Controle de atalho dinâmico para Apontador Laser (Tap-to-switch e Hold-to-laser temporário)
   const previousToolBeforeLaser = useRef<ToolType>('select');
@@ -436,48 +451,70 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
   } | null>(null);
   const [isMiddlePanningState, setIsMiddlePanningState] = useState(false);
   const scaleRef = useRef(scale);
-  const rafPanId = useRef<number | null>(null);
+  worldOverlayRefs.current = [gifOverlayRef, votingOverlayRef];
 
-  useEffect(() => {
+  const syncWorldOverlays = (pos: { x: number; y: number }, currentScale: number) => {
+    const viewport = { x: pos.x, y: pos.y, scale: currentScale };
+    publishViewport(viewport);
+    worldOverlayRefs.current.forEach((ref) => applyWorldTransform(ref.current, viewport));
+  };
+
+  const commitViewportToReact = (pos: { x: number; y: number }, currentScale: number, immediate = false) => {
+    const runCommit = () => {
+      viewportCommitTimer.current = null;
+      isLiveNavigating.current = false;
+      onStageChangeRef.current(pos, currentScale);
+    };
+    if (immediate) {
+      if (viewportCommitTimer.current !== null) {
+        window.clearTimeout(viewportCommitTimer.current);
+        viewportCommitTimer.current = null;
+      }
+      runCommit();
+      return;
+    }
+    if (viewportCommitTimer.current !== null) {
+      window.clearTimeout(viewportCommitTimer.current);
+    }
+    viewportCommitTimer.current = window.setTimeout(runCommit, 120);
+  };
+
+  // Função acelerada para movimentar o palco e garantir que os GIFs e overlays acompanhem com 0ms de latência
+  const applyStagePan = (newPos: { x: number; y: number }, currentScale: number, commit: 'idle' | 'immediate' = 'idle') => {
+    isLiveNavigating.current = true;
+    middlePanCurrentPos.current = newPos;
+    stagePosRef.current = newPos;
+    scaleRef.current = currentScale;
+
+    if (stageRef.current) {
+      stageRef.current.position(newPos);
+      stageRef.current.scale({ x: currentScale, y: currentScale });
+      stageRef.current.batchDraw();
+    }
+
+    syncWorldOverlays(newPos, currentScale);
+    commitViewportToReact(newPos, currentScale, commit === 'immediate');
+  };
+
+  // The Stage is uncontrolled during navigation: props are only applied when
+  // React state actually changes, so an unrelated re-render can never snap the
+  // camera back to a stale committed position.
+  useLayoutEffect(() => {
+    if (isLiveNavigating.current) return;
     scaleRef.current = scale;
-  }, [scale]);
+    stagePosRef.current = stagePos;
+    if (stageRef.current) {
+      stageRef.current.position(stagePos);
+      stageRef.current.scale({ x: scale, y: scale });
+    }
+    syncWorldOverlays(stagePos, scale);
+  }, [scale, stagePos]);
 
   useEffect(() => {
     if (!isMiddlePanning.current) {
       middlePanCurrentPos.current = stagePos;
     }
-  }, [stagePos.x, stagePos.y]);
-
-  // Mantém a camada de GIFs perfeitamente sincronizada nas coordenadas do mundo em tempo real
-  useEffect(() => {
-    if (gifOverlayRef.current) {
-      gifOverlayRef.current.style.transform = `translate(${stagePos.x}px, ${stagePos.y}px) scale(${scale})`;
-    }
-  }, [stagePos.x, stagePos.y, scale]);
-
-  // Função acelerada para movimentar o palco e garantir que os GIFs e overlays acompanhem com 0ms de latência
-  const applyStagePan = (newPos: { x: number; y: number }, currentScale: number) => {
-    middlePanCurrentPos.current = newPos;
-
-    // 1. Atualiza visualmente o Konva Stage
-    if (stageRef.current) {
-      stageRef.current.position(newPos);
-      stageRef.current.batchDraw();
-    }
-
-    // 2. Atualiza instantaneamente a posição da camada de GIFs (fica 100% ancorado no canvas do mundo)
-    if (gifOverlayRef.current) {
-      gifOverlayRef.current.style.transform = `translate(${newPos.x}px, ${newPos.y}px) scale(${currentScale})`;
-    }
-
-    // 3. Sincroniza via requestAnimationFrame com o React para manter grade e outros overlays alinhados
-    if (rafPanId.current === null) {
-      rafPanId.current = requestAnimationFrame(() => {
-        rafPanId.current = null;
-        onStageChange(newPos, currentScale);
-      });
-    }
-  };
+  }, [stagePos]);
 
   // Efeito para garantir arraste suave e seguro com o botão do meio do mouse (scroll wheel)
   useEffect(() => {
@@ -495,12 +532,8 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
 
     const handleWindowMouseUp = (e: MouseEvent) => {
       if (e.button === 1 || isMiddlePanning.current) {
-        if (rafPanId.current !== null) {
-          cancelAnimationFrame(rafPanId.current);
-          rafPanId.current = null;
-        }
         if (middlePanCurrentPos.current) {
-          onStageChange(middlePanCurrentPos.current, scaleRef.current);
+          applyStagePan(middlePanCurrentPos.current, scaleRef.current, 'immediate');
           middlePanCurrentPos.current = null;
         }
         isMiddlePanning.current = false;
@@ -523,13 +556,21 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       window.removeEventListener('mouseup', handleWindowMouseUp);
       window.removeEventListener('auxclick', handleAuxClick);
     };
-  }, [onStageChange]);
+  }, []);
 
   // Elementos selecionados atualmente
   const selectedElements = React.useMemo(() => {
     const listToUse = liveErasedElements || elements;
     return listToUse.filter((e) => selectedIds.includes(e.id));
   }, [liveErasedElements, elements, selectedIds]);
+
+  const elementsById = React.useMemo(() => {
+    const map = new Map<string, CanvasElement>();
+    for (const el of liveErasedElements || elements) {
+      map.set(el.id, el);
+    }
+    return map;
+  }, [liveErasedElements, elements]);
 
   // Mapa de colega remoto para o elemento que ele está selecionando (estável: não quebra quando colegas apenas movem o mouse)
   const remoteSelectionKey = remoteUsers
@@ -581,7 +622,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
   // Alternar reação de emoji em post-its
   const handleToggleReactionInternal = useCallback(
     async (elementId: string, emoji: string) => {
-      const elem = elements.find((e) => e.id === elementId);
+      const elem = elementsRef.current.find((e) => e.id === elementId);
       if (elem) {
         playReactionPopSound();
       }
@@ -597,10 +638,10 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       const currentUsers = reactions[emoji] || [];
 
       let updatedUsers: string[];
-      if (currentUsers.includes(currentUser.uid)) {
-        updatedUsers = currentUsers.filter((uid) => uid !== currentUser.uid);
+      if (currentUsers.includes(currentUserRef.current.uid)) {
+        updatedUsers = currentUsers.filter((uid) => uid !== currentUserRef.current.uid);
       } else {
-        updatedUsers = [...currentUsers, currentUser.uid];
+        updatedUsers = [...currentUsers, currentUserRef.current.uid];
       }
 
       if (updatedUsers.length > 0) {
@@ -611,7 +652,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
 
       await onUpdateElement(elementId, { reactions });
     },
-    [elements, currentUser.uid, currentUser.displayName, scale, stagePos, boardId, onToggleReaction, onUpdateElement]
+    [onToggleReaction, onUpdateElement]
   );
 
   // Duplicar elemento individual
@@ -705,12 +746,12 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
                 ? customTargetCenter.x
                 : mouseWorldPosRef.current && isMouseOverCanvasRef.current
                   ? mouseWorldPosRef.current.x
-                  : Math.round((-stagePos.x + window.innerWidth / 2) / scale);
+                  : Math.round((-stagePosRef.current.x + window.innerWidth / 2) / scaleRef.current);
               const targetY = customTargetCenter
                 ? customTargetCenter.y
                 : mouseWorldPosRef.current && isMouseOverCanvasRef.current
                   ? mouseWorldPosRef.current.y
-                  : Math.round((-stagePos.y + window.innerHeight / 2) / scale);
+                  : Math.round((-stagePosRef.current.y + window.innerHeight / 2) / scaleRef.current);
 
               const now = Date.now();
               const imageElement: CanvasElement = {
@@ -763,12 +804,12 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
               ? customTargetCenter.x
               : mouseWorldPosRef.current && isMouseOverCanvasRef.current
                 ? mouseWorldPosRef.current.x
-                : Math.round((-stagePos.x + window.innerWidth / 2) / scale);
+                : Math.round((-stagePosRef.current.x + window.innerWidth / 2) / scaleRef.current);
             const targetY = customTargetCenter
               ? customTargetCenter.y
               : mouseWorldPosRef.current && isMouseOverCanvasRef.current
                 ? mouseWorldPosRef.current.y
-                : Math.round((-stagePos.y + window.innerHeight / 2) / scale);
+                : Math.round((-stagePosRef.current.y + window.innerHeight / 2) / scaleRef.current);
 
             const stickyElem: CanvasElement = {
               id: 'elem_' + Math.random().toString(36).substring(2, 11),
@@ -854,9 +895,6 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     [
       readOnly,
       canCommentOnly,
-      stagePos.x,
-      stagePos.y,
-      scale,
       elements.length,
       currentUser.uid,
       currentUser.displayName,
@@ -1140,9 +1178,11 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     if (!stage) return { x: 0, y: 0 };
     const pointer = stage.getPointerPosition();
     if (!pointer) return { x: 0, y: 0 };
+    const pos = stagePosRef.current;
+    const currentScale = scaleRef.current;
     return {
-      x: (pointer.x - stagePos.x) / scale,
-      y: (pointer.y - stagePos.y) / scale,
+      x: (pointer.x - pos.x) / currentScale,
+      y: (pointer.y - pos.y) / currentScale,
     };
   };
 
@@ -1163,21 +1203,22 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
 
     if (!shouldZoom) {
       const factor = e.evt.deltaMode === 1 ? 16 : 1;
-      const currentPos = middlePanCurrentPos.current || stagePos;
+      const currentPos = middlePanCurrentPos.current || stagePosRef.current;
       applyStagePan(
         {
           x: currentPos.x - e.evt.deltaX * factor,
           y: currentPos.y - e.evt.deltaY * factor,
         },
-        scale
+        scaleRef.current
       );
       return;
     }
 
-    const oldScale = scale;
+    const oldScale = scaleRef.current;
+    const currentPos = stagePosRef.current;
     const mousePointTo = {
-      x: (pointer.x - stagePos.x) / oldScale,
-      y: (pointer.y - stagePos.y) / oldScale,
+      x: (pointer.x - currentPos.x) / oldScale,
+      y: (pointer.y - currentPos.y) / oldScale,
     };
 
     const scaleBy = 1.08;
@@ -1190,11 +1231,11 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       y: pointer.y - mousePointTo.y * newScale,
     };
 
-    onStageChange(newPos, newScale);
+    applyStagePan(newPos, newScale);
   };
 
   // Seleção e alternância de seleção com Ctrl / Cmd
-  const handleItemSelect = (
+  const handleItemSelect = useCallback((
     elemId: string,
     e: Konva.KonvaEventObject<MouseEvent | TouchEvent>
   ) => {
@@ -1243,10 +1284,19 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         onSelectionChange([elemId]);
       }
     }
-  };
+  }, [
+    currentTool,
+    isEraserActive,
+    eraserMode,
+    liveErasedElements,
+    elements,
+    selectedIds,
+    onDeleteElement,
+    onSelectionChange,
+  ]);
 
   // Atualização de elemento com suporte automático a delta em lote
-  const handleElementChange = (elemId: string, updates: Partial<CanvasElement>) => {
+  const handleElementChange = useCallback((elemId: string, updates: Partial<CanvasElement>) => {
     // Se o elemento é parte de uma multisseleção e houve movimento x/y
     if (
       updates.x !== undefined &&
@@ -1254,14 +1304,14 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       selectedIds.includes(elemId) &&
       selectedIds.length > 1
     ) {
-      const originElem = elements.find((e) => e.id === elemId);
+      const originElem = elementsById.get(elemId) || elements.find((e) => e.id === elemId);
       if (originElem) {
         const dx = updates.x - originElem.x;
         const dy = updates.y - originElem.y;
 
         const batchUpdates = selectedIds
           .map((id) => {
-            const item = elements.find((e) => e.id === id);
+            const item = elementsById.get(id) || elements.find((e) => e.id === id);
             if (!item || item.locked) return null;
             if (id === elemId) {
               return { id, updates };
@@ -1286,7 +1336,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     }
 
     onUpdateElement(elemId, updates);
-  };
+  }, [selectedIds, elements, elementsById, onBatchUpdateElements, onUpdateElement]);
 
   // Processamento contínuo da Borracha Parcial (corta e divide traços de caneta em tempo real)
   const processPartialEraseAt = useCallback(
@@ -1487,8 +1537,8 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       middlePanStart.current = {
         clientX: e.evt.clientX,
         clientY: e.evt.clientY,
-        stageX: stagePos.x,
-        stageY: stagePos.y,
+        stageX: stagePosRef.current.x,
+        stageY: stagePosRef.current.y,
       };
       setIsMiddlePanningState(true);
       return;
@@ -1755,7 +1805,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         x: Math.round(middlePanStart.current.stageX + dx),
         y: Math.round(middlePanStart.current.stageY + dy),
       };
-      applyStagePan(newPos, scale);
+      applyStagePan(newPos, scaleRef.current);
       return;
     }
 
@@ -1920,7 +1970,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
 
     if (e.evt.button === 1 || isMiddlePanning.current) {
       if (middlePanCurrentPos.current) {
-        onStageChange(middlePanCurrentPos.current, scale);
+        applyStagePan(middlePanCurrentPos.current, scaleRef.current, 'immediate');
         middlePanCurrentPos.current = null;
       }
       isMiddlePanning.current = false;
@@ -1950,45 +2000,9 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       setMarqueeBox(null);
 
       if (width > 6 && height > 6) {
+        const marqueeBounds = { x: x1, y: y1, w: width, h: height };
         const hits = elements
-          .filter((el) => {
-            let elX = el.x;
-            let elY = el.y;
-            let elW = el.width || 120;
-            let elH = el.height || 120;
-
-            if (el.type === 'circle') {
-              const r = el.radius || (el.width ? el.width / 2 : 60);
-              elX = el.x - r;
-              elY = el.y - r;
-              elW = r * 2;
-              elH = r * 2;
-            } else if (
-              (el.type === 'pen' || el.type === 'arrow') &&
-              el.points &&
-              el.points.length >= 2
-            ) {
-              if (el.type === 'pen') {
-                const xs = el.points.filter((_, i) => i % 2 === 0);
-                const ys = el.points.filter((_, i) => i % 2 === 1);
-                elX = Math.min(...xs);
-                elY = Math.min(...ys);
-                elW = Math.max(...xs) - elX || 10;
-                elH = Math.max(...ys) - elY || 10;
-              } else {
-                elX = Math.min(el.x, el.x + (el.points[2] || 0));
-                elY = Math.min(el.y, el.y + (el.points[3] || 0));
-                elW = Math.abs(el.points[2] || 0) || 10;
-                elH = Math.abs(el.points[3] || 0) || 10;
-              }
-            }
-
-            const elRight = elX + elW;
-            const elBottom = elY + elH;
-
-            // Teste de intersecção AABB
-            return !(elX > x2 || elRight < x1 || elY > y2 || elBottom < y1);
-          })
+          .filter((el) => boundsIntersect(getElementWorldBounds(el), marqueeBounds))
           .map((el) => el.id);
 
         if (e.evt && (e.evt.ctrlKey || e.evt.metaKey || e.evt.shiftKey)) {
@@ -2184,22 +2198,294 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
 
   const isDraggableStage = currentTool === 'pan' || isSpacePressed;
 
+  // Opens the inline editor using the current element/permissions instead of
+  // capturing them in a per-render closure. This lets item callbacks stay
+  // stable, so unchanged elements are skipped by React.memo.
+  const openInlineEditor = useCallback((
+    id: string,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    text: string,
+    fill?: string,
+    fontSize?: number,
+    textColor?: string
+  ) => {
+    const elem = elementsRef.current.find((e) => e.id === id);
+    if (!elem) return;
+
+    const user = currentUserRef.current;
+    const canEdit =
+      !readOnlyRef.current &&
+      (canCommentOnlyRef.current ? elem.updatedBy === user.uid && elem.type === 'sticky' : true);
+    if (!canEdit) return;
+
+    const cleanText = stripMarkdownLinks(text || '');
+
+    if (elem.type === 'frame') {
+      setInlineEditing({
+        elementId: id,
+        type: 'frame',
+        worldX: x,
+        worldY: y,
+        width,
+        height: 32,
+        text: cleanText,
+        fill: '#334155',
+        textColor: '#ffffff',
+      });
+      return;
+    }
+
+    if (elem.type === 'sticky') {
+      const stickyFill = fill || elem.fill || '#fff9b1';
+      setInlineEditing({
+        elementId: id,
+        type: 'sticky',
+        worldX: x,
+        worldY: y,
+        width,
+        height,
+        text: cleanText,
+        fill: stickyFill,
+        fontSize: elem.fontSize || 14,
+        textAlign: elem.textAlign || 'left',
+        textColor: elem.textColor || getContrastTextColor(stickyFill, '#0f172a', '#ffffff'),
+      });
+      return;
+    }
+
+    if (['rect', 'circle', 'diamond', 'triangle', 'star'].includes(elem.type)) {
+      const shapeFill = elem.fill || '#ffffff';
+      setInlineEditing({
+        elementId: id,
+        type: elem.type,
+        worldX: x,
+        worldY: y,
+        width,
+        height,
+        text: cleanText,
+        fill: elem.fill || 'transparent',
+        fontSize: elem.fontSize || 14,
+        textAlign: elem.textAlign || 'center',
+        textColor: elem.textColor || getContrastTextColor(shapeFill, '#0f172a', '#ffffff'),
+      });
+      return;
+    }
+
+    if (elem.type === 'text') {
+      setInlineEditing({
+        elementId: id,
+        type: 'text',
+        worldX: x,
+        worldY: y,
+        width,
+        height,
+        text: cleanText,
+        fill: fill || 'transparent',
+        fontSize: fontSize || 20,
+        textAlign: elem.textAlign || 'left',
+        textColor: textColor || '#0f172a',
+      });
+    }
+  }, []);
+
+  const handleItemSelectRef = useRef(handleItemSelect);
+  const handleElementChangeRef = useRef(handleElementChange);
+  handleItemSelectRef.current = handleItemSelect;
+  handleElementChangeRef.current = handleElementChange;
+
+  interface ItemHandlers {
+    onSelect: (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => void;
+    onChange: (updates: Partial<CanvasElement>) => void;
+    onStartEditing: (
+      id: string,
+      x: number,
+      y: number,
+      width: number,
+      height: number,
+      text: string,
+      fill?: string,
+      fontSize?: number,
+      textColor?: string
+    ) => void;
+  }
+
+  const itemHandlersRef = useRef<Map<string, ItemHandlers>>(new Map());
+  const getItemHandlers = useCallback((id: string): ItemHandlers => {
+    let handlers = itemHandlersRef.current.get(id);
+    if (!handlers) {
+      handlers = {
+        onSelect: (e) => handleItemSelectRef.current(id, e),
+        onChange: (updates) => handleElementChangeRef.current(id, updates),
+        onStartEditing: (elementId, x, y, width, height, text, fill, fontSize, textColor) =>
+          openInlineEditor(elementId, x, y, width, height, text, fill, fontSize, textColor),
+      };
+      itemHandlersRef.current.set(id, handlers);
+    }
+    return handlers;
+  }, [openInlineEditor]);
+
   // A ordem visual é controlada pelo zIndex persistido, inclusive para molduras.
   const sortedElements = React.useMemo(() => {
     const listToRender = liveErasedElements || elements;
     return [...listToRender].sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0));
   }, [liveErasedElements, elements]);
 
+  // Keep the element subtree stable while only the camera moves. This lets Konva
+  // update the stage transform without recreating every React-Konva child.
+  const renderedElements = React.useMemo(
+    () =>
+      sortedElements.map((elem) => {
+        const isSelected = selectedIds.includes(elem.id);
+        const remoteSelector = remoteSelectionMap[elem.id];
+        const isOwnElement = elem.updatedBy === currentUser.uid;
+        const canDragItem =
+          currentTool === 'select' &&
+          !readOnly &&
+          (canCommentOnly ? isOwnElement && elem.type === 'sticky' : !elem.locked);
+        const canEditItem = !readOnly && (canCommentOnly ? isOwnElement && elem.type === 'sticky' : true);
+        const handlers = getItemHandlers(elem.id);
+
+        if (elem.type === 'frame') {
+          return (
+            <FrameItem
+              key={elem.id}
+              element={elem}
+              isSelected={isSelected}
+              userSelectionColor={userSelectionColor}
+              remoteSelector={remoteSelector}
+              draggable={canDragItem}
+              canEdit={canEditItem}
+              onSelect={handlers.onSelect}
+              onChange={handlers.onChange}
+              onStartEditing={handlers.onStartEditing}
+            />
+          );
+        }
+
+        if (elem.type === 'sticker' || elem.type === 'gif') {
+          return (
+            <StickerItem
+              key={elem.id}
+              element={elem}
+              isSelected={isSelected}
+              userSelectionColor={userSelectionColor}
+              remoteSelector={remoteSelector}
+              draggable={canDragItem}
+              onSelect={handlers.onSelect}
+              onChange={handlers.onChange}
+            />
+          );
+        }
+
+        if (elem.type === 'sticky') {
+          return (
+            <StickyNoteItem
+              key={elem.id}
+              element={elem}
+              currentUserId={currentUser.uid}
+              isSelected={isSelected}
+              userSelectionColor={userSelectionColor}
+              remoteSelector={remoteSelector}
+              draggable={canDragItem}
+              canEdit={canEditItem}
+              onSelect={handlers.onSelect}
+              onChange={handlers.onChange}
+              onToggleReaction={handleToggleReactionInternal}
+              onStartEditing={handlers.onStartEditing}
+            />
+          );
+        }
+
+        if (['rect', 'circle', 'diamond', 'triangle', 'star'].includes(elem.type)) {
+          return (
+            <ShapeItem
+              key={elem.id}
+              element={elem}
+              isSelected={isSelected}
+              userSelectionColor={userSelectionColor}
+              remoteSelector={remoteSelector}
+              draggable={canDragItem}
+              canEdit={canEditItem}
+              onSelect={handlers.onSelect}
+              onChange={handlers.onChange}
+              onStartEditing={handlers.onStartEditing}
+            />
+          );
+        }
+
+        if (elem.type === 'arrow' || elem.type === 'line') {
+          return (
+            <ArrowItem
+              key={elem.id}
+              element={elem}
+              isSelected={isSelected}
+              userSelectionColor={userSelectionColor}
+              remoteSelector={remoteSelector}
+              draggable={canDragItem}
+              onSelect={handlers.onSelect}
+              onChange={handlers.onChange}
+            />
+          );
+        }
+
+        if (elem.type === 'pen') {
+          return (
+            <FreeDrawItem
+              key={elem.id}
+              element={elem}
+              isSelected={isSelected}
+              userSelectionColor={userSelectionColor}
+              remoteSelector={remoteSelector}
+              draggable={canDragItem}
+              onSelect={handlers.onSelect}
+              onChange={handlers.onChange}
+            />
+          );
+        }
+
+        if (elem.type === 'text') {
+          return (
+            <TextItem
+              key={elem.id}
+              element={elem}
+              isSelected={isSelected}
+              userSelectionColor={userSelectionColor}
+              isEditing={inlineEditing?.elementId === elem.id}
+              remoteSelector={remoteSelector}
+              draggable={canDragItem}
+              canEdit={canEditItem}
+              onSelect={handlers.onSelect}
+              onChange={handlers.onChange}
+              onStartEditing={handlers.onStartEditing}
+            />
+          );
+        }
+
+        return null;
+      }),
+    [
+      sortedElements,
+      selectedIds,
+      remoteSelectionMap,
+      currentUser.uid,
+      currentTool,
+      readOnly,
+      canCommentOnly,
+      userSelectionColor,
+      inlineEditing?.elementId,
+      handleToggleReactionInternal,
+      getItemHandlers,
+    ]
+  );
+
   // Post-it selecionado único (para barra de reações flutuante em HTML com z-index 50)
   const selectedSticky =
     selectedElements.length === 1 && selectedElements[0].type === 'sticky'
       ? selectedElements[0]
       : null;
-
-  const selectedStickyScreenX = selectedSticky ? selectedSticky.x * scale + stagePos.x : 0;
-  const selectedStickyScreenY = selectedSticky ? selectedSticky.y * scale + stagePos.y : 0;
-  const selectedStickyWidth = selectedSticky ? (selectedSticky.width || 180) * scale : 0;
-  const selectedStickyHeight = selectedSticky ? (selectedSticky.height || 180) * scale : 0;
 
   // Cursor customizado de alta precisão de acordo com a ferramenta ativa
   const canvasCursor = React.useMemo(() => {
@@ -2233,10 +2519,10 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
 
     const stage = stageRef.current;
     if (!stage) return;
-    const pointer = stage.getPointerPosition() || { x: clientX - stagePos.x, y: clientY - stagePos.y };
+    const pointer = stage.getPointerPosition() || { x: clientX - stagePosRef.current.x, y: clientY - stagePosRef.current.y };
     const worldPos = {
-      x: (pointer.x - stagePos.x) / scale,
-      y: (pointer.y - stagePos.y) / scale,
+      x: (pointer.x - stagePosRef.current.x) / scaleRef.current,
+      y: (pointer.y - stagePosRef.current.y) / scaleRef.current,
     };
 
     // Detecta se o clique foi em um elemento do canvas
@@ -2739,41 +3025,11 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
 
       {/* Barra Flutuante de Reações Apple Emoji para o Post-it Selecionado (z-index 50: NUNCA fica por baixo de post-its vizinhos) */}
       {selectedSticky && onToggleReaction && (
-        <div
-          className="absolute z-50 flex items-center gap-1 bg-white/95 dark:bg-card/95 text-foreground backdrop-blur-md px-2 py-1 rounded-full shadow-lg border border-border/80 animate-in fade-in-0 zoom-in-95 duration-150 pointer-events-auto select-none"
-          style={{
-            left: `${selectedStickyScreenX + selectedStickyWidth / 2}px`,
-            top: `${selectedStickyScreenY + selectedStickyHeight + 10}px`,
-            transform: 'translateX(-50%)',
-          }}
-        >
-          {[...QUICK_EMOJIS, ...(mirioReactionUnlocked ? [MIRIO_REACTION] : [])].map((emoji) => {
-            const imageUrl = getReactionImageUrl(emoji) || getAppleEmojiUrl(emoji);
-            return (
-              <button
-                key={emoji}
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleReaction(selectedSticky.id, emoji);
-                  playReactionPopSound();
-                }}
-                className="size-7 rounded-full hover:bg-muted/80 transition-[transform,background-color] duration-150 ease-out hover:scale-120 active:scale-[0.93] flex items-center justify-center cursor-pointer"
-                title={emoji === MIRIO_REACTION ? 'Reagir com Mirio' : `Reagir com ${emoji}`}
-              >
-                <img
-                  src={imageUrl}
-                  alt={emoji === MIRIO_REACTION ? 'Reação Mirio' : emoji}
-                  className="size-5 select-none pointer-events-none drop-shadow-xs object-contain"
-                  loading="eager"
-                  onError={(e) => {
-                    (e.target as HTMLElement).style.display = 'none';
-                  }}
-                />
-              </button>
-            );
-          })}
-        </div>
+        <StickyReactionBar
+          sticky={selectedSticky}
+          onToggleReaction={onToggleReaction}
+          mirioReactionUnlocked={mirioReactionUnlocked}
+        />
       )}
 
       {/* GIFs Animados a 60fps Nativo em Overlay HTML 100% Sincronizado no Pan e Zoom */}
@@ -2781,7 +3037,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         ref={gifOverlayRef}
         className="absolute inset-0 pointer-events-none overflow-visible"
         style={{
-          transform: `translate(${stagePos.x}px, ${stagePos.y}px) scale(${scale})`,
+          transform: `translate3d(${stagePos.x}px, ${stagePos.y}px, 0) scale(${scale})`,
           transformOrigin: '0 0',
         }}
       >
@@ -2820,9 +3076,10 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
 
           return (
             <div
+              ref={votingOverlayRef}
               className="absolute inset-0 pointer-events-none overflow-visible"
               style={{
-                transform: `translate(${stagePos.x}px, ${stagePos.y}px) scale(${scale})`,
+                transform: `translate3d(${stagePos.x}px, ${stagePos.y}px, 0) scale(${scale})`,
                 transformOrigin: '0 0',
                 zIndex: 45,
               }}
@@ -2906,9 +3163,10 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         if (session && session.status === 'ended') {
           return (
             <div
+              ref={votingOverlayRef}
               className="absolute inset-0 pointer-events-none overflow-visible"
               style={{
-                transform: `translate(${stagePos.x}px, ${stagePos.y}px) scale(${scale})`,
+                transform: `translate3d(${stagePos.x}px, ${stagePos.y}px, 0) scale(${scale})`,
                 transformOrigin: '0 0',
                 zIndex: 45,
               }}
@@ -2944,9 +3202,10 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         if (votingData?.votesByUser && Object.keys(votingData.votesByUser).length > 0) {
           return (
             <div
+              ref={votingOverlayRef}
               className="absolute inset-0 pointer-events-none overflow-visible"
               style={{
-                transform: `translate(${stagePos.x}px, ${stagePos.y}px) scale(${scale})`,
+                transform: `translate3d(${stagePos.x}px, ${stagePos.y}px, 0) scale(${scale})`,
                 transformOrigin: '0 0',
                 zIndex: 45,
               }}
@@ -2999,10 +3258,6 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         ref={stageRef}
         width={window.innerWidth}
         height={window.innerHeight}
-        x={stagePos.x}
-        y={stagePos.y}
-        scaleX={scale}
-        scaleY={scale}
         draggable={isDraggableStage}
         onDragStart={(e) => {
           if (isMiddlePanning.current) {
@@ -3025,15 +3280,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           if (e.target === stageRef.current) {
             const sx = e.target.x();
             const sy = e.target.y();
-            if (gifOverlayRef.current) {
-              gifOverlayRef.current.style.transform = `translate(${sx}px, ${sy}px) scale(${scale})`;
-            }
-            if (rafPanId.current === null) {
-              rafPanId.current = requestAnimationFrame(() => {
-                rafPanId.current = null;
-                onStageChange({ x: sx, y: sy }, scale);
-              });
-            }
+            applyStagePan({ x: sx, y: sy }, scaleRef.current);
             return;
           }
           const targetId = e.target.id();
@@ -3076,11 +3323,11 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         }}
         onDragEnd={(e) => {
           if (e.target === stageRef.current) {
-            if (rafPanId.current !== null) {
-              cancelAnimationFrame(rafPanId.current);
-              rafPanId.current = null;
-            }
-            onStageChange({ x: e.target.x(), y: e.target.y() }, scale);
+            applyStagePan(
+              { x: Math.round(e.target.x()), y: Math.round(e.target.y()) },
+              scaleRef.current,
+              'immediate'
+            );
           }
         }}
         onWheel={handleWheel}
@@ -3100,195 +3347,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       >
         <Layer id="elements-layer">
           {/* Renderização de todos os elementos no canvas Konva */}
-          {sortedElements.map((elem) => {
-            const isSelected = selectedIds.includes(elem.id);
-            const remoteSelector = remoteSelectionMap[elem.id];
-            const isOwnElement = elem.updatedBy === currentUser.uid;
-            const canDragItem = currentTool === 'select' && !readOnly && (canCommentOnly ? (isOwnElement && elem.type === 'sticky') : !elem.locked);
-            const canEditItem = !readOnly && (canCommentOnly ? (isOwnElement && elem.type === 'sticky') : true);
-
-            if (elem.type === 'frame') {
-              return (
-                <FrameItem
-                  key={elem.id}
-                  element={elem}
-                  isSelected={isSelected}
-                  userSelectionColor={userSelectionColor}
-                  remoteSelector={remoteSelector}
-                  draggable={canDragItem}
-                  canEdit={canEditItem}
-                  onSelect={(e) => handleItemSelect(elem.id, e)}
-                  onChange={(updates) => handleElementChange(elem.id, updates)}
-                  onStartEditing={(id, x, y, width, _height, text) => {
-                    if (!canEditItem) return;
-                    setInlineEditing({
-                      elementId: id,
-                      type: 'frame',
-                      worldX: x,
-                      worldY: y,
-                      width,
-                      height: 32,
-                      text: stripMarkdownLinks(text || ''),
-                      fill: '#334155',
-                      textColor: '#ffffff',
-                    });
-                  }}
-                />
-              );
-            }
-
-            if (elem.type === 'sticker' || elem.type === 'gif') {
-              return (
-                <StickerItem
-                  key={elem.id}
-                  element={elem}
-                  isSelected={isSelected}
-                  userSelectionColor={userSelectionColor}
-                  remoteSelector={remoteSelector}
-                  draggable={canDragItem}
-                  onSelect={(e) => handleItemSelect(elem.id, e)}
-                  onChange={(updates) => handleElementChange(elem.id, updates)}
-                />
-              );
-            }
-
-            if (elem.type === 'sticky') {
-              return (
-                <StickyNoteItem
-                  key={elem.id}
-                  element={elem}
-                  currentUserId={currentUser.uid}
-                  isSelected={isSelected}
-                  userSelectionColor={userSelectionColor}
-                  remoteSelector={remoteSelector}
-                  draggable={canDragItem}
-                  canEdit={canEditItem}
-                  onSelect={(e) => handleItemSelect(elem.id, e)}
-                  onChange={(updates) => handleElementChange(elem.id, updates)}
-                  onToggleReaction={handleToggleReactionInternal}
-                  onStartEditing={(id, x, y, width, height, text, fill) => {
-                    if (!canEditItem) return;
-                    setInlineEditing({
-                      elementId: id,
-                      type: 'sticky',
-                      worldX: x,
-                      worldY: y,
-                      width,
-                      height,
-                      text: stripMarkdownLinks(text || ''),
-                      fill,
-                      fontSize: elem.fontSize || 14,
-                      textAlign: elem.textAlign || 'left',
-                      textColor: elem.textColor || getContrastTextColor(fill, '#0f172a', '#ffffff'),
-                    });
-                  }}
-                />
-              );
-            }
-
-            if (
-              elem.type === 'rect' ||
-              elem.type === 'circle' ||
-              elem.type === 'diamond' ||
-              elem.type === 'triangle' ||
-              elem.type === 'star'
-            ) {
-              return (
-                <ShapeItem
-                  key={elem.id}
-                  element={elem}
-                  isSelected={isSelected}
-                  userSelectionColor={userSelectionColor}
-                  remoteSelector={remoteSelector}
-                  draggable={canDragItem}
-                  canEdit={canEditItem}
-                  onSelect={(e) => handleItemSelect(elem.id, e)}
-                  onChange={(updates) => handleElementChange(elem.id, updates)}
-                  onStartEditing={(id, x, y, width, height, text) => {
-                    if (!canEditItem) return;
-                    setInlineEditing({
-                      elementId: id,
-                      type: elem.type,
-                      worldX: x,
-                      worldY: y,
-                      width,
-                      height,
-                      text: stripMarkdownLinks(text || ''),
-                      fill: elem.fill || 'transparent',
-                      fontSize: elem.fontSize || 14,
-                      textAlign: elem.textAlign || 'center',
-                      textColor: elem.textColor || getContrastTextColor(elem.fill || '#ffffff', '#0f172a', '#ffffff'),
-                    });
-                  }}
-                />
-              );
-            }
-
-            if (elem.type === 'arrow' || elem.type === 'line') {
-              return (
-                <ArrowItem
-                  key={elem.id}
-                  element={elem}
-                  isSelected={isSelected}
-                  userSelectionColor={userSelectionColor}
-                  remoteSelector={remoteSelector}
-                  draggable={canDragItem}
-                  onSelect={(e) => handleItemSelect(elem.id, e)}
-                  onChange={(updates) => handleElementChange(elem.id, updates)}
-                />
-              );
-            }
-
-            if (elem.type === 'pen') {
-              return (
-                <FreeDrawItem
-                  key={elem.id}
-                  element={elem}
-                  isSelected={isSelected}
-                  userSelectionColor={userSelectionColor}
-                  remoteSelector={remoteSelector}
-                  draggable={canDragItem}
-                  onSelect={(e) => handleItemSelect(elem.id, e)}
-                  onChange={(updates) => handleElementChange(elem.id, updates)}
-                />
-              );
-            }
-
-            if (elem.type === 'text') {
-              return (
-                <TextItem
-                  key={elem.id}
-                  element={elem}
-                  isSelected={isSelected}
-                  userSelectionColor={userSelectionColor}
-                  isEditing={inlineEditing?.elementId === elem.id}
-                  remoteSelector={remoteSelector}
-                  draggable={canDragItem}
-                  canEdit={canEditItem}
-                  onSelect={(e) => handleItemSelect(elem.id, e)}
-                  onChange={(updates) => handleElementChange(elem.id, updates)}
-                  onStartEditing={(id, x, y, width, height, text, fill, fontSize, textColor) => {
-                    if (!canEditItem) return;
-                    setInlineEditing({
-                      elementId: id,
-                      type: 'text',
-                      worldX: x,
-                      worldY: y,
-                      width,
-                      height,
-                      text: stripMarkdownLinks(text || ''),
-                      fill: fill || 'transparent',
-                      fontSize: fontSize || 20,
-                      textAlign: elem.textAlign || 'left',
-                      textColor: textColor || '#0f172a',
-                    });
-                  }}
-                />
-              );
-            }
-
-            return null;
-          })}
+          {renderedElements /* stable while pan/zoom changes */}
         </Layer>
 
         {/* Camada Dinâmica 2: Elemento sendo desenhado no momento e Marquee (isolada para não repintar o canvas de elementos estáticos a cada pixel) */}

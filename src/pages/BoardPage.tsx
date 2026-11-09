@@ -38,6 +38,7 @@ import { LoadingScreen } from '../components/layout/LoadingScreen';
 import { MobileReadOnlyDrawer } from '../components/whiteboard/MobileReadOnlyDrawer';
 import { reactionService } from '../services/reactionService';
 import { MIRIO_REACTION, isMirioReactionUnlocked, unlockMirioReaction } from '../utils/mirioReaction';
+import { publishCursorReadout } from '../utils/cursorReadout';
 
 // Modais pesados carregados sob demanda (Code-Splitting) para carregamento instantâneo do quadro
 const StickersModal = lazy(() => import('../components/whiteboard/StickersModal').then(m => ({ default: m.StickersModal })));
@@ -62,6 +63,10 @@ export const BoardPage: React.FC = () => {
   const [boardLoading, setBoardLoading] = useState<boolean>(true);
   const [boardNotFound, setBoardNotFound] = useState<boolean>(false);
   const [elements, setElements] = useState<CanvasElement[]>([]);
+  // Espelho síncrono da lista para callbacks estáveis (evita recriar handlers
+  // e re-renderizar todos os itens a cada alteração de elemento).
+  const elementsRef = useRef(elements);
+  elementsRef.current = elements;
   const [remoteUsers, setRemoteUsers] = useState<UserPresence[]>([]);
   const [currentTool, setCurrentTool] = useState<ToolType>('select');
   const [selectedColor, setSelectedColor] = useState(STICKY_COLORS[0].value);
@@ -148,9 +153,6 @@ export const BoardPage: React.FC = () => {
   // Pilhas de Histórico Desfazer / Refazer (Ctrl+Z / Ctrl+Y)
   const [historyPast, setHistoryPast] = useState<CanvasElement[][]>([]);
   const [historyFuture, setHistoryFuture] = useState<CanvasElement[][]>([]);
-
-  // Coordenadas mundiais do cursor em tempo real
-  const [cursorPos, setCursorPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
   // Rastreia a posição atual do mouse sem provocar re-render desnecessário
   const currentMousePosRef = useRef<{ x: number; y: number }>({
@@ -517,13 +519,14 @@ export const BoardPage: React.FC = () => {
 
   // Registra um instantâneo no histórico antes de alterar elementos
   const recordSnapshot = useCallback(() => {
+    const snapshot = elementsRef.current;
     setHistoryPast((prev) => {
-      const next = [...prev, elements];
+      const next = [...prev, snapshot];
       if (next.length > 30) return next.slice(next.length - 30);
       return next;
     });
     setHistoryFuture([]);
-  }, [elements]);
+  }, []);
 
   // Carrega e escuta metadados do quadro em tempo real
   useEffect(() => {
@@ -816,7 +819,9 @@ export const BoardPage: React.FC = () => {
     const now = performance.now();
     if (now - lastPosUpdateRef.current >= 250) {
       lastPosUpdateRef.current = now;
-      setCursorPos({ x: Math.round(x), y: Math.round(y) });
+      // A leitura das coordenadas é atualizada direto no DOM pela Toolbar,
+      // sem re-renderizar o quadro inteiro a cada movimento do mouse.
+      publishCursorReadout({ x: Math.round(x), y: Math.round(y) });
     }
   }, [currentTool]);
 
@@ -1005,11 +1010,11 @@ export const BoardPage: React.FC = () => {
   }, [boardId, currentUser, isReadOnly, isCommentOnly, recordSnapshot]);
 
   // Atualização individual
-  const handleUpdateElement = async (id: string, updates: Partial<CanvasElement>) => {
+  const handleUpdateElement = useCallback(async (id: string, updates: Partial<CanvasElement>) => {
     if (!boardId || !currentUser || isReadOnly) return;
     // Comentarista só pode alterar notas criadas por ele mesmo
     if (isCommentOnly) {
-      const existing = elements.find((e) => e.id === id);
+      const existing = elementsRef.current.find((e) => e.id === id);
       if (!existing || existing.updatedBy !== currentUser.uid) return;
     }
 
@@ -1023,16 +1028,16 @@ export const BoardPage: React.FC = () => {
       prev.map((el) => (el.id === id ? { ...el, ...enrichedUpdates, updatedAt: Date.now() } : el))
     );
     await elementService.updateElement(boardId, id, enrichedUpdates);
-  };
+  }, [boardId, currentUser, isReadOnly, isCommentOnly, recordSnapshot]);
 
   // Atualização em lote (ex.: mover múltiplos elementos juntos)
-  const handleBatchUpdateElements = async (
+  const handleBatchUpdateElements = useCallback(async (
     updatesList: { id: string; updates: Partial<CanvasElement> }[]
   ) => {
     if (!boardId || !currentUser || updatesList.length === 0 || isReadOnly) return;
     const allowedUpdates = isCommentOnly
       ? updatesList.filter((u) => {
-          const existing = elements.find((e) => e.id === u.id);
+          const existing = elementsRef.current.find((e) => e.id === u.id);
           return existing && existing.updatedBy === currentUser.uid;
         })
       : updatesList;
@@ -1068,7 +1073,7 @@ export const BoardPage: React.FC = () => {
         },
       }))
     );
-  };
+  }, [boardId, currentUser, isReadOnly, isCommentOnly, recordSnapshot]);
 
   // Alinhamento em lote dos elementos atualmente selecionados
   const handleAlignSelectedElements = (type: AlignmentType) => {
@@ -1081,10 +1086,10 @@ export const BoardPage: React.FC = () => {
   };
 
   // Deleção individual
-  const handleDeleteElement = async (id: string) => {
+  const handleDeleteElement = useCallback(async (id: string) => {
     if (!boardId || !currentUser || isReadOnly) return;
     if (isCommentOnly) {
-      const existing = elements.find((e) => e.id === id);
+      const existing = elementsRef.current.find((e) => e.id === id);
       if (!existing || existing.updatedBy !== currentUser.uid) return;
     }
 
@@ -1093,14 +1098,14 @@ export const BoardPage: React.FC = () => {
     await elementService.deleteElement(boardId, id);
     setSelectedElementIds((prev) => prev.filter((item) => item !== id));
     presenceControls.current?.updateSelection(null);
-  };
+  }, [boardId, currentUser, isReadOnly, isCommentOnly, recordSnapshot]);
 
   // Deleção em lote
-  const handleBatchDeleteElements = async (ids: string[]) => {
+  const handleBatchDeleteElements = useCallback(async (ids: string[]) => {
     if (!boardId || !currentUser || ids.length === 0 || isReadOnly) return;
     const allowedIds = isCommentOnly
       ? ids.filter((id) => {
-          const existing = elements.find((e) => e.id === id);
+          const existing = elementsRef.current.find((e) => e.id === id);
           return existing && existing.updatedBy === currentUser.uid;
         })
       : ids;
@@ -1113,7 +1118,7 @@ export const BoardPage: React.FC = () => {
     await elementService.batchDeleteElements(boardId, allowedIds);
     setSelectedElementIds([]);
     presenceControls.current?.updateSelection(null);
-  };
+  }, [boardId, currentUser, isReadOnly, isCommentOnly, recordSnapshot]);
 
   // Deleção de itens selecionados pela barra lateral
   const handleDeleteSelected = () => {
@@ -1123,7 +1128,7 @@ export const BoardPage: React.FC = () => {
   };
 
   // Duplicação em lote
-  const handleBatchDuplicateElements = async (elemsToDup: CanvasElement[]) => {
+  const handleBatchDuplicateElements = useCallback(async (elemsToDup: CanvasElement[]) => {
     if (!boardId || !currentUser || elemsToDup.length === 0 || isReadOnly || isCommentOnly) return;
     recordSnapshot();
     const now = Date.now();
@@ -1134,7 +1139,7 @@ export const BoardPage: React.FC = () => {
         id: 'elem_' + Math.random().toString(36).substring(2, 11) + idx,
         x: elem.x + 30,
         y: elem.y + 30,
-        zIndex: elements.length + idx + 1,
+        zIndex: elementsRef.current.length + idx + 1,
         updatedBy: currentUser.uid,
         updatedByName: currentUser.displayName,
         updatedAt: now,
@@ -1144,22 +1149,22 @@ export const BoardPage: React.FC = () => {
     setElements((prev) => [...prev, ...duplicates]);
     await elementService.batchAddElements(boardId, duplicates);
     setSelectedElementIds(duplicates.map((d) => d.id));
-  };
+  }, [boardId, currentUser, isReadOnly, isCommentOnly, recordSnapshot]);
 
   // Adição de múltiplos elementos (ex: colar em lote ou templates)
-  const handleBatchAddElements = async (newElements: CanvasElement[]) => {
+  const handleBatchAddElements = useCallback(async (newElements: CanvasElement[]) => {
     if (!boardId || !currentUser || newElements.length === 0 || isReadOnly || isCommentOnly) return;
     recordSnapshot();
     setElements((prev) => [...prev, ...newElements]);
     await elementService.batchAddElements(boardId, newElements);
     setSelectedElementIds(newElements.map((el) => el.id));
-  };
+  }, [boardId, currentUser, isReadOnly, isCommentOnly, recordSnapshot]);
 
   // Alternar reação de emoji em post-its
   const handleToggleReaction = useCallback(
     async (elementId: string, emoji: string) => {
       if (!boardId || !currentUser) return;
-      const elem = elements.find((e) => e.id === elementId);
+      const elem = elementsRef.current.find((e) => e.id === elementId);
       if (!elem) return;
 
       const reactions = { ...(elem.reactions || {}) };
@@ -1184,7 +1189,7 @@ export const BoardPage: React.FC = () => {
       );
       await elementService.updateElement(boardId, elementId, { reactions });
     },
-    [boardId, currentUser, elements]
+    [boardId, currentUser]
   );
 
   // Início de sessão de borracha parcial: grava snapshot de histórico antes da remoção
@@ -1584,7 +1589,6 @@ export const BoardPage: React.FC = () => {
           onSelectEraserMode={setEraserMode}
           eraserSize={eraserSize}
           onSelectEraserSize={setEraserSize}
-          cursorPos={cursorPos}
           isCursorChatOpen={isCursorChatOpen}
           onToggleCursorChat={() => {
             setIsCursorChatOpen((prev) => {
@@ -1724,9 +1728,6 @@ export const BoardPage: React.FC = () => {
 
       {/* Camada de Feixes e Ponteiros Laser ao Vivo (Colaborativo e Local) */}
       {!isMobile && <LaserTrailOverlay
-        stageX={stagePos.x}
-        stageY={stagePos.y}
-        scale={scale}
         currentTool={currentTool}
         currentUser={currentUser}
         localLaserPosRef={localLaserPosRef}
@@ -1739,9 +1740,6 @@ export const BoardPage: React.FC = () => {
       {showRemoteCursors && (
         <RemoteCursors
           remoteUsers={remoteUsers}
-          stageX={stagePos.x}
-          stageY={stagePos.y}
-          scale={scale}
         />
       )}
 
