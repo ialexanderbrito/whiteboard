@@ -58,6 +58,7 @@ interface NavbarProps {
   onToggleGrid?: (show?: boolean) => void;
   showRemoteCursors?: boolean;
   onToggleRemoteCursors?: (show?: boolean) => void;
+  mirioReactionUnlocked?: boolean;
 }
 
 export const Navbar: React.FC<NavbarProps> = React.memo(({
@@ -94,6 +95,7 @@ export const Navbar: React.FC<NavbarProps> = React.memo(({
   onToggleGrid,
   showRemoteCursors,
   onToggleRemoteCursors,
+  mirioReactionUnlocked = false,
 }) => {
   const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -353,6 +355,7 @@ export const Navbar: React.FC<NavbarProps> = React.memo(({
           onToggleGrid={onToggleGrid}
           showRemoteCursors={showRemoteCursors}
           onToggleRemoteCursors={onToggleRemoteCursors}
+          mirioReactionUnlocked={mirioReactionUnlocked}
         />
 
         {/* Botão de Compartilhar (Proprietários podem compartilhar seu quadro) */}

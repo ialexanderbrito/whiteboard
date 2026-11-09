@@ -34,6 +34,7 @@ import { useTheme } from '@/context/ThemeContext';
 import { reactionService } from '@/services/reactionService';
 import { getAppleEmojiUrl } from '@/utils/appleEmoji';
 import { playReactionPopSound } from '@/utils/audioChime';
+import { MIRIO_REACTION, getReactionImageUrl } from '@/utils/mirioReaction';
 
 interface FacilitationMenuProps {
   boardId: string;
@@ -58,6 +59,7 @@ interface FacilitationMenuProps {
   onToggleGrid?: (show?: boolean) => void;
   showRemoteCursors?: boolean;
   onToggleRemoteCursors?: (show?: boolean) => void;
+  mirioReactionUnlocked?: boolean;
 }
 
 const QUICK_GLOBAL_REACTIONS = [
@@ -90,6 +92,7 @@ export const FacilitationMenu: React.FC<FacilitationMenuProps> = ({
   onToggleGrid,
   showRemoteCursors = true,
   onToggleRemoteCursors,
+  mirioReactionUnlocked = false,
 }) => {
   const [open, setOpen] = useState(false);
   const { theme, setTheme } = useTheme();
@@ -155,8 +158,8 @@ export const FacilitationMenu: React.FC<FacilitationMenuProps> = ({
                 Reações Rápidas
               </span>
               <div className="flex items-center justify-between p-1 bg-muted/40 rounded-xl border border-border/60">
-                {QUICK_GLOBAL_REACTIONS.map((r) => {
-                  const appleUrl = getAppleEmojiUrl(r.emoji);
+                {[...QUICK_GLOBAL_REACTIONS, ...(mirioReactionUnlocked ? [{ emoji: MIRIO_REACTION, label: 'Mirio' }] : [])].map((r) => {
+                  const imageUrl = getReactionImageUrl(r.emoji) || getAppleEmojiUrl(r.emoji);
                   return (
                     <button
                       key={r.emoji}
@@ -166,9 +169,9 @@ export const FacilitationMenu: React.FC<FacilitationMenuProps> = ({
                       title={`Enviar reação ${r.label}`}
                     >
                       <img
-                        src={appleUrl}
+                        src={imageUrl}
                         alt={r.label}
-                        className="size-5 select-none pointer-events-none drop-shadow-xs"
+                        className="size-5 select-none pointer-events-none drop-shadow-xs object-contain"
                         loading="eager"
                       />
                     </button>

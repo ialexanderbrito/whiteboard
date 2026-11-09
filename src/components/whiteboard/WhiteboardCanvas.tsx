@@ -24,6 +24,7 @@ import { getContrastTextColor } from '../../utils/colors';
 import { calculateShapeDragBounds, getDefaultShapeBounds } from '../../utils/shapeSizing';
 import { getAppleEmojiUrl } from '../../utils/appleEmoji';
 import { playReactionPopSound } from '../../utils/audioChime';
+import { MIRIO_REACTION, getReactionImageUrl } from '../../utils/mirioReaction';
 import { votingService, type BoardVotingData } from '../../services/votingService';
 import { stripMarkdownLinks, removeLinkFromElement, addLinkToElement, normalizeUrl } from '../../utils/textLinks';
 import {
@@ -87,6 +88,7 @@ interface WhiteboardCanvasProps {
   gridOpacity?: number;
   showGrid?: boolean;
   onToggleGrid?: () => void;
+  mirioReactionUnlocked?: boolean;
   onLaserMove?: (worldPos: { x: number; y: number }, isDrawing: boolean) => void;
   onLaserDown?: (worldPos: { x: number; y: number }) => void;
   onLaserUp?: () => void;
@@ -285,6 +287,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
   gridOpacity,
   showGrid = true,
   onToggleGrid,
+  mirioReactionUnlocked = false,
   onLaserMove,
   onLaserDown,
   onLaserUp,
@@ -2744,8 +2747,8 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
             transform: 'translateX(-50%)',
           }}
         >
-          {QUICK_EMOJIS.map((emoji) => {
-            const appleUrl = getAppleEmojiUrl(emoji);
+          {[...QUICK_EMOJIS, ...(mirioReactionUnlocked ? [MIRIO_REACTION] : [])].map((emoji) => {
+            const imageUrl = getReactionImageUrl(emoji) || getAppleEmojiUrl(emoji);
             return (
               <button
                 key={emoji}
@@ -2756,12 +2759,12 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
                   playReactionPopSound();
                 }}
                 className="size-7 rounded-full hover:bg-muted/80 transition-[transform,background-color] duration-150 ease-out hover:scale-120 active:scale-[0.93] flex items-center justify-center cursor-pointer"
-                title={`Reagir com ${emoji}`}
+                title={emoji === MIRIO_REACTION ? 'Reagir com Mirio' : `Reagir com ${emoji}`}
               >
                 <img
-                  src={appleUrl}
-                  alt={emoji}
-                  className="size-5 select-none pointer-events-none drop-shadow-xs"
+                  src={imageUrl}
+                  alt={emoji === MIRIO_REACTION ? 'Reação Mirio' : emoji}
+                  className="size-5 select-none pointer-events-none drop-shadow-xs object-contain"
                   loading="eager"
                   onError={(e) => {
                     (e.target as HTMLElement).style.display = 'none';

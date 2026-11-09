@@ -36,6 +36,8 @@ import { EditProfileModal } from '../components/whiteboard/EditProfileModal';
 import { NotFoundPage } from './NotFoundPage';
 import { LoadingScreen } from '../components/layout/LoadingScreen';
 import { MobileReadOnlyDrawer } from '../components/whiteboard/MobileReadOnlyDrawer';
+import { reactionService } from '../services/reactionService';
+import { MIRIO_REACTION, isMirioReactionUnlocked, unlockMirioReaction } from '../utils/mirioReaction';
 
 // Modais pesados carregados sob demanda (Code-Splitting) para carregamento instantâneo do quadro
 const StickersModal = lazy(() => import('../components/whiteboard/StickersModal').then(m => ({ default: m.StickersModal })));
@@ -68,6 +70,57 @@ export const BoardPage: React.FC = () => {
     typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches
   );
   const [isMobileNoticeOpen, setIsMobileNoticeOpen] = useState(false);
+  const [mirioReactionUnlocked, setMirioReactionUnlocked] = useState(isMirioReactionUnlocked);
+
+  useEffect(() => {
+    const konamiCode = [
+      'ArrowUp',
+      'ArrowUp',
+      'ArrowDown',
+      'ArrowDown',
+      'ArrowLeft',
+      'ArrowRight',
+      'ArrowLeft',
+      'ArrowRight',
+      'b',
+      'a',
+    ];
+    let keyBuffer: string[] = [];
+
+    const handleUnlockKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName || '')) {
+        return;
+      }
+
+      const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+      keyBuffer = [...keyBuffer, key].slice(-konamiCode.length);
+      const isSimpleCode = keyBuffer.slice(-5).join('') === 'mirio';
+      const isKonamiCode =
+        keyBuffer.length === konamiCode.length &&
+        keyBuffer.every((value, index) => value === konamiCode[index]);
+
+      if (isSimpleCode || isKonamiCode) {
+        unlockMirioReaction();
+        setMirioReactionUnlocked(true);
+        keyBuffer = [];
+      }
+    };
+
+    const handleUnlockedEvent = () => {
+      setMirioReactionUnlocked(true);
+      if (boardId && currentUser) {
+        void reactionService.triggerReaction(boardId, MIRIO_REACTION, currentUser.displayName);
+      }
+    };
+
+    window.addEventListener('keydown', handleUnlockKeyDown);
+    window.addEventListener('mirio-reaction-unlocked', handleUnlockedEvent);
+    return () => {
+      window.removeEventListener('keydown', handleUnlockKeyDown);
+      window.removeEventListener('mirio-reaction-unlocked', handleUnlockedEvent);
+    };
+  }, [boardId, currentUser]);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia('(max-width: 767px)');
@@ -1372,6 +1425,7 @@ export const BoardPage: React.FC = () => {
           onToggleGrid={handleToggleGrid}
           showRemoteCursors={showRemoteCursors}
           onToggleRemoteCursors={handleToggleRemoteCursors}
+          mirioReactionUnlocked={mirioReactionUnlocked}
         />
       )}
 
@@ -1744,6 +1798,7 @@ export const BoardPage: React.FC = () => {
         gridOpacity={gridOpacity}
         showGrid={showGrid}
         onToggleGrid={handleToggleGrid}
+        mirioReactionUnlocked={mirioReactionUnlocked}
       />
     </div>
   );
