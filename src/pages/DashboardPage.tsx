@@ -14,7 +14,11 @@ import {
   List,
   MoreHorizontal,
   UserPen,
-  Palette
+  Palette,
+  Pencil,
+  Lock,
+  KeyRound,
+  Users
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { boardService } from '../services/boardService';
@@ -55,6 +59,14 @@ import { ThemeToggle } from '@/components/layout/ThemeToggle';
 import { BuyMeACoffeeModal } from '@/components/layout/BuyMeACoffeeModal';
 import { MirioLogo } from '@/components/layout/MirioLogo';
 import { CreateBoardModal } from '@/components/whiteboard/CreateBoardModal';
+import { BoardPasswordSettingsModal } from '@/components/whiteboard/BoardPasswordSettingsModal';
+import { BoardPermissionsModal } from '@/components/whiteboard/BoardPermissionsModal';
+import { 
+  AdaptiveBoardSkeleton, 
+  getAdaptiveSnapshot, 
+  saveAdaptiveSnapshot 
+} from '@/components/whiteboard/AdaptiveBoardSkeleton';
+import { Skeleton } from '@/components/ui/skeleton';
 import { cleanBoardId, type CreateBoardOptions } from '@/services/boardService';
 import { isBoardOwner } from '@/utils/permissions';
 import { CommandPalette } from '@/components/command/CommandPalette';
@@ -67,7 +79,13 @@ export const DashboardPage: React.FC = () => {
   const { isDark, toggleTheme } = useTheme();
   const [boards, setBoards] = useState<Board[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
+
+  // Carrega o estado adaptativo salvo da última interação (modo de visão e quantidade prévia de quadros)
+  const initialAdaptive = getAdaptiveSnapshot(currentUser?.uid);
+  const [viewMode, setViewMode] = useState<'grid' | 'table'>(initialAdaptive.viewMode);
+  const [cachedBoardCount, setCachedBoardCount] = useState<number>(initialAdaptive.count);
+  const [isLoading, setIsLoading] = useState(true);
+
   const [isCreating, setIsCreating] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
@@ -85,13 +103,38 @@ export const DashboardPage: React.FC = () => {
   const [boardToDelete, setBoardToDelete] = useState<Board | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // Estados para modais de configurações dedicados
+  const [passwordModalBoard, setPasswordModalBoard] = useState<Board | null>(null);
+  const [permissionsModalBoard, setPermissionsModalBoard] = useState<Board | null>(null);
+
+  // Estados para edição inline do título
+  const [inlineEditingBoardId, setInlineEditingBoardId] = useState<string | null>(null);
+  const [inlineTitleValue, setInlineTitleValue] = useState('');
+
+  const handleToggleViewMode = (mode: 'grid' | 'table') => {
+    setViewMode(mode);
+    saveAdaptiveSnapshot({ viewMode: mode }, currentUser?.uid);
+  };
+
   useEffect(() => {
     if (!currentUser) return;
+    const startTime = Date.now();
     const unsubscribe = boardService.subscribeBoards(currentUser, (list) => {
-      setBoards(list);
+      // Suave tempo mínimo (250ms) para que o skeleton adaptativo transicione sem piscar
+      const elapsed = Date.now() - startTime;
+      const remaining = Math.max(0, 250 - elapsed);
+
+      setTimeout(() => {
+        setBoards(list);
+        setIsLoading(false);
+        if (list.length > 0) {
+          setCachedBoardCount(list.length);
+          saveAdaptiveSnapshot({ count: list.length, viewMode }, currentUser.uid);
+        }
+      }, remaining);
     });
     return () => unsubscribe();
-  }, [currentUser]);
+  }, [currentUser, viewMode]);
 
   const handleConfirmCreateBoard = async (options: CreateBoardOptions) => {
     if (!currentUser || isCreating) return;
@@ -120,7 +163,12 @@ export const DashboardPage: React.FC = () => {
     const targetId = boardToDelete.id;
 
     // Atualização otimista imediata na interface
-    setBoards((prev) => prev.filter((b) => b.id !== targetId));
+    setBoards((prev) => {
+      const next = prev.filter((b) => b.id !== targetId);
+      setCachedBoardCount(next.length);
+      saveAdaptiveSnapshot({ count: next.length, viewMode }, currentUser?.uid);
+      return next;
+    });
 
     try {
       await boardService.deleteBoard(targetId);
@@ -145,6 +193,72 @@ export const DashboardPage: React.FC = () => {
     navigator.clipboard.writeText(url);
     setCopiedId(rawBoardId);
     setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const handleStartRename = (e: React.MouseEvent, board: Board) => {
+    e.stopPropagation();
+    setInlineEditingBoardId(board.id);
+    setInlineTitleValue(board.title);
+  };
+
+  const handleSaveRename = async (boardId: string) => {
+    const trimmed = inlineTitleValue.trim();
+    if (!trimmed) {
+      setInlineEditingBoardId(null);
+      return;
+    }
+
+    // Atualização otimista imediata
+    setBoards((prev) =>
+      prev.map((b) => (b.id === boardId ? { ...b, title: trimmed, updatedAt: Date.now() } : b))
+    );
+    setInlineEditingBoardId(null);
+
+    try {
+      await boardService.updateBoardTitle(boardId, trimmed);
+    } catch (err) {
+      console.error('Erro ao renomear quadro:', err);
+      const fresh = await boardService.getBoard(boardId);
+      if (fresh) {
+        setBoards((prev) => prev.map((b) => (b.id === boardId ? fresh : b)));
+      }
+    }
+  };
+
+  const handleCancelRename = () => {
+    setInlineEditingBoardId(null);
+  };
+
+  const handleUpdateBoardSettings = async (
+    boardId: string,
+    updates: Partial<Pick<Board, 'title' | 'defaultPermission' | 'collaborators' | 'collaboratorEmails' | 'members' | 'removedMemberIds' | 'isPasswordProtected' | 'password'>>
+  ) => {
+    // Atualização otimista
+    setBoards((prev) =>
+      prev.map((b) => (b.id === boardId ? { ...b, ...updates, updatedAt: Date.now() } : b))
+    );
+
+    setPasswordModalBoard((prev) => (prev && prev.id === boardId ? { ...prev, ...updates } : prev));
+    setPermissionsModalBoard((prev) => (prev && prev.id === boardId ? { ...prev, ...updates } : prev));
+
+    try {
+      await boardService.updateBoardSettings(boardId, updates);
+    } catch (err) {
+      console.error('Erro ao atualizar configurações do quadro:', err);
+      const fresh = await boardService.getBoard(boardId);
+      if (fresh) {
+        setBoards((prev) => prev.map((b) => (b.id === boardId ? fresh : b)));
+        setPasswordModalBoard((prev) => (prev && prev.id === boardId ? fresh : prev));
+        setPermissionsModalBoard((prev) => (prev && prev.id === boardId ? fresh : prev));
+      }
+    }
+  };
+
+  const handleSavePasswordSettings = async (
+    boardId: string,
+    settings: { isPasswordProtected: boolean; password?: string }
+  ) => {
+    await handleUpdateBoardSettings(boardId, settings);
   };
 
   const filteredBoards = boards.filter((b) => {
@@ -208,9 +322,13 @@ export const DashboardPage: React.FC = () => {
                       {(currentUser?.displayName || 'U').charAt(0).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
-                  <span className="text-xs font-medium text-foreground max-w-[100px] truncate hidden md:inline">
-                    {currentUser?.displayName}
-                  </span>
+                  {currentUser ? (
+                    <span className="text-xs font-medium text-foreground max-w-[100px] truncate hidden md:inline">
+                      {currentUser.displayName}
+                    </span>
+                  ) : (
+                    <Skeleton className="h-3 w-16 hidden md:inline-block rounded" />
+                  )}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-52">
@@ -274,8 +392,12 @@ export const DashboardPage: React.FC = () => {
               <h1 className="text-lg font-semibold tracking-tight text-foreground">
                 Quadros de Ideias
               </h1>
-              <Badge variant="secondary" className="text-xs font-mono">
-                {boards.length}
+              <Badge variant="secondary" className="text-xs font-mono min-w-6 flex items-center justify-center">
+                {isLoading ? (
+                  <Skeleton className="h-3 w-3.5 rounded-xs" />
+                ) : (
+                  boards.length
+                )}
               </Badge>
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">
@@ -303,13 +425,13 @@ export const DashboardPage: React.FC = () => {
               </button>
             </div>
 
-            {/* Alternador de Visualização Grid / Tabela */}
+            {/* Alternador de Visualização Grid / Tabela com Persistência Imediata */}
             <div className="flex items-center border border-border rounded-md p-0.5 bg-muted/30">
               <Button
                 variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
                 size="icon-sm"
-                onClick={() => setViewMode('grid')}
-                className="size-7 rounded-sm"
+                onClick={() => handleToggleViewMode('grid')}
+                className="size-7 rounded-sm active:scale-[0.97] transition-transform cursor-pointer"
                 title="Visualização em Grade"
               >
                 <LayoutGrid className="size-3.5" />
@@ -317,8 +439,8 @@ export const DashboardPage: React.FC = () => {
               <Button
                 variant={viewMode === 'table' ? 'secondary' : 'ghost'}
                 size="icon-sm"
-                onClick={() => setViewMode('table')}
-                className="size-7 rounded-sm"
+                onClick={() => handleToggleViewMode('table')}
+                className="size-7 rounded-sm active:scale-[0.97] transition-transform cursor-pointer"
                 title="Visualização em Lista"
               >
                 <List className="size-3.5" />
@@ -337,8 +459,10 @@ export const DashboardPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Lista / Grade de Quadros */}
-        {boards.length === 0 ? (
+        {/* Lista / Grade de Quadros com Skeleton Adaptativo ao Último Estado da Tela */}
+        {isLoading ? (
+          <AdaptiveBoardSkeleton viewMode={viewMode} count={cachedBoardCount} />
+        ) : boards.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border p-12 text-center max-w-md mx-auto my-auto bg-card/50">
             <div className="size-10 rounded-md border border-border bg-muted/60 flex items-center justify-center mx-auto mb-3 text-muted-foreground">
               <Layers className="size-5" />
@@ -405,18 +529,57 @@ export const DashboardPage: React.FC = () => {
 
                     {/* Menu de Ações no Canto do Card (Apenas para o proprietário; convidados não podem apagar nem compartilhar) */}
                     {canManage && (
-                      <div className="absolute top-2 right-2">
+                      <div className="absolute top-2 right-2 z-10">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
                             <Button
                               variant="ghost"
                               size="icon-sm"
-                              className="size-7 rounded-md bg-background/80 backdrop-blur-xs text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity border border-border/40 cursor-pointer"
+                              className="size-7 rounded-md bg-background/80 backdrop-blur-xs text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity border border-border/40 active:scale-[0.97] cursor-pointer"
+                              title="Mais opções do quadro"
                             >
                               <MoreHorizontal className="size-3.5" />
                             </Button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-40">
+                          <DropdownMenuContent align="end" className="w-52 animate-in zoom-in-95 duration-150">
+                            <DropdownMenuItem
+                              onClick={(e) => handleStartRename(e, b)}
+                              className="gap-2 text-xs cursor-pointer"
+                            >
+                              <Pencil className="size-3.5 text-muted-foreground" />
+                              <span>Renomear</span>
+                            </DropdownMenuItem>
+
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPermissionsModalBoard(b);
+                              }}
+                              className="gap-2 text-xs cursor-pointer"
+                            >
+                              <Users className="size-3.5 text-muted-foreground" />
+                              <span>Permissões de Acesso</span>
+                            </DropdownMenuItem>
+
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPasswordModalBoard(b);
+                              }}
+                              className="gap-2 text-xs cursor-pointer"
+                            >
+                              <KeyRound className="size-3.5 text-muted-foreground" />
+                              <span>Proteção por Senha</span>
+                              {b.isPasswordProtected && (
+                                <span className="ml-auto flex items-center gap-1 text-[10px] text-amber-500 font-medium">
+                                  <Lock className="size-2.5" />
+                                  Ativa
+                                </span>
+                              )}
+                            </DropdownMenuItem>
+
+                            <DropdownMenuSeparator />
+
                             <DropdownMenuItem
                               onClick={(e) => handleCopyLink(e, b.id)}
                               className="gap-2 text-xs cursor-pointer"
@@ -424,15 +587,16 @@ export const DashboardPage: React.FC = () => {
                               {copiedId === b.id ? (
                                 <>
                                   <Check className="size-3.5 text-emerald-500" />
-                                  <span className="text-emerald-500 font-medium">Copiado</span>
+                                  <span className="text-emerald-500 font-medium">Link copiado!</span>
                                 </>
                               ) : (
                                 <>
-                                  <Share2 className="size-3.5" />
+                                  <Share2 className="size-3.5 text-muted-foreground" />
                                   <span>Copiar link</span>
                                 </>
                               )}
                             </DropdownMenuItem>
+
                             <DropdownMenuItem
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -440,10 +604,12 @@ export const DashboardPage: React.FC = () => {
                               }}
                               className="gap-2 text-xs cursor-pointer"
                             >
-                              <ExternalLink className="size-3.5" />
+                              <ExternalLink className="size-3.5 text-muted-foreground" />
                               <span>Abrir quadro</span>
                             </DropdownMenuItem>
+
                             <DropdownMenuSeparator />
+
                             <DropdownMenuItem
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -463,12 +629,64 @@ export const DashboardPage: React.FC = () => {
                   {/* Conteúdo do Card */}
                   <CardContent className="p-3.5 flex flex-col justify-between gap-3">
                     <div>
-                      <h4 className="text-xs font-semibold text-foreground truncate group-hover:text-primary transition-colors">
-                        {b.title}
-                      </h4>
+                      {inlineEditingBoardId === b.id ? (
+                        <div 
+                          className="flex items-center gap-1.5"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <Input
+                            type="text"
+                            value={inlineTitleValue}
+                            onChange={(e) => setInlineTitleValue(e.target.value)}
+                            autoFocus
+                            onFocus={(e) => e.target.select()}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleSaveRename(b.id);
+                              } else if (e.key === 'Escape') {
+                                e.preventDefault();
+                                handleCancelRename();
+                              }
+                            }}
+                            onBlur={() => handleSaveRename(b.id)}
+                            className="h-7 text-xs font-semibold px-2 py-0 border-primary focus-visible:ring-1"
+                          />
+                          <Button
+                            type="button"
+                            size="icon-sm"
+                            variant="ghost"
+                            onClick={() => handleSaveRename(b.id)}
+                            className="size-7 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10 shrink-0 active:scale-[0.97] transition-transform cursor-pointer"
+                            title="Salvar nome"
+                          >
+                            <Check className="size-3.5" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="flex items-start justify-between gap-1.5">
+                          <h4 className="text-xs font-semibold text-foreground truncate group-hover:text-primary transition-colors flex-1">
+                            {b.title}
+                          </h4>
+                          {b.isPasswordProtected && (
+                            <span 
+                              className="shrink-0 flex items-center text-amber-500 bg-amber-500/10 border border-amber-500/20 rounded p-0.5" 
+                              title="Protegido por senha"
+                            >
+                              <Lock className="size-2.5" />
+                            </span>
+                          )}
+                        </div>
+                      )}
                       <p className="text-[11px] text-muted-foreground flex items-center gap-1 mt-1">
                         <Clock className="size-3" />
                         <span>{formatDate(b.updatedAt)}</span>
+                        {b.defaultPermission === 'none' && (
+                          <>
+                            <span>•</span>
+                            <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">Privado</span>
+                          </>
+                        )}
                       </p>
                     </div>
 
@@ -548,7 +766,58 @@ export const DashboardPage: React.FC = () => {
                           <div className="size-6 rounded border border-border bg-muted/60 flex items-center justify-center text-muted-foreground shrink-0">
                             <Layers className="size-3" />
                           </div>
-                          <span className="font-semibold text-foreground truncate max-w-xs">{b.title}</span>
+                          {inlineEditingBoardId === b.id ? (
+                            <div 
+                              className="flex items-center gap-1.5 flex-1 max-w-sm"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <Input
+                                type="text"
+                                value={inlineTitleValue}
+                                onChange={(e) => setInlineTitleValue(e.target.value)}
+                                autoFocus
+                                onFocus={(e) => e.target.select()}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    handleSaveRename(b.id);
+                                  } else if (e.key === 'Escape') {
+                                    e.preventDefault();
+                                    handleCancelRename();
+                                  }
+                                }}
+                                onBlur={() => handleSaveRename(b.id)}
+                                className="h-7 text-xs font-semibold px-2 py-0 border-primary focus-visible:ring-1"
+                              />
+                              <Button
+                                type="button"
+                                size="icon-sm"
+                                variant="ghost"
+                                onClick={() => handleSaveRename(b.id)}
+                                className="size-7 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10 shrink-0 active:scale-[0.97] transition-transform cursor-pointer"
+                                title="Salvar nome"
+                              >
+                                <Check className="size-3.5" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5 truncate max-w-xs">
+                              <span className="font-semibold text-foreground truncate">{b.title}</span>
+                              {b.isPasswordProtected && (
+                                <span 
+                                  title="Protegido por senha" 
+                                  className="text-amber-500 bg-amber-500/10 border border-amber-500/20 rounded p-0.5 shrink-0"
+                                >
+                                  <Lock className="size-2.5" />
+                                </span>
+                              )}
+                              {b.defaultPermission === 'none' && (
+                                <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 font-normal text-amber-600 dark:text-amber-400 border-amber-500/30">
+                                  Privado
+                                </Badge>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
@@ -569,45 +838,96 @@ export const DashboardPage: React.FC = () => {
                         {formatDate(b.updatedAt)}
                       </TableCell>
                       <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
                           {canManage && (
-                            <>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={(e) => handleCopyLink(e, b.id)}
-                                className="h-7 px-2 text-xs gap-1 text-muted-foreground hover:text-foreground cursor-pointer"
-                              >
-                                {copiedId === b.id ? (
-                                  <>
-                                    <Check className="size-3 text-emerald-500" />
-                                    <span className="text-emerald-500">Copiado</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Share2 className="size-3" />
-                                    <span className="hidden sm:inline">Compartilhar</span>
-                                  </>
-                                )}
-                              </Button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  className="size-7 rounded-md text-muted-foreground hover:text-foreground active:scale-[0.97] transition-transform cursor-pointer"
+                                  title="Mais opções do quadro"
+                                >
+                                  <MoreHorizontal className="size-3.5" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-52 animate-in zoom-in-95 duration-150">
+                                <DropdownMenuItem
+                                  onClick={(e) => handleStartRename(e, b)}
+                                  className="gap-2 text-xs cursor-pointer"
+                                >
+                                  <Pencil className="size-3.5 text-muted-foreground" />
+                                  <span>Renomear</span>
+                                </DropdownMenuItem>
 
-                              <Button
-                                variant="ghost"
-                                size="icon-sm"
-                                onClick={() => setBoardToDelete(b)}
-                                className="size-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer"
-                                title="Excluir quadro"
-                              >
-                                <Trash2 className="size-3.5" />
-                              </Button>
-                            </>
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setPermissionsModalBoard(b);
+                                  }}
+                                  className="gap-2 text-xs cursor-pointer"
+                                >
+                                  <Users className="size-3.5 text-muted-foreground" />
+                                  <span>Permissões de Acesso</span>
+                                </DropdownMenuItem>
+
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setPasswordModalBoard(b);
+                                  }}
+                                  className="gap-2 text-xs cursor-pointer"
+                                >
+                                  <KeyRound className="size-3.5 text-muted-foreground" />
+                                  <span>Proteção por Senha</span>
+                                  {b.isPasswordProtected && (
+                                    <span className="ml-auto flex items-center gap-1 text-[10px] text-amber-500 font-medium">
+                                      <Lock className="size-2.5" />
+                                      Ativa
+                                    </span>
+                                  )}
+                                </DropdownMenuItem>
+
+                                <DropdownMenuSeparator />
+
+                                <DropdownMenuItem
+                                  onClick={(e) => handleCopyLink(e, b.id)}
+                                  className="gap-2 text-xs cursor-pointer"
+                                >
+                                  {copiedId === b.id ? (
+                                    <>
+                                      <Check className="size-3.5 text-emerald-500" />
+                                      <span className="text-emerald-500 font-medium">Link copiado!</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Share2 className="size-3.5 text-muted-foreground" />
+                                      <span>Copiar link</span>
+                                    </>
+                                  )}
+                                </DropdownMenuItem>
+
+                                <DropdownMenuSeparator />
+
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setBoardToDelete(b);
+                                  }}
+                                  className="text-destructive focus:bg-destructive/10 focus:text-destructive gap-2 text-xs cursor-pointer"
+                                >
+                                  <Trash2 className="size-3.5" />
+                                  <span>Excluir quadro</span>
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           )}
 
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => navigate(`/b/${cleanBoardId(b.id)}`)}
-                            className="h-7 px-2.5 text-xs gap-1 text-primary hover:text-primary hover:bg-primary/10 font-medium cursor-pointer"
+                            className="h-7 px-2.5 text-xs gap-1 text-primary hover:text-primary hover:bg-primary/10 font-medium active:scale-[0.97] transition-transform cursor-pointer"
                             title="Entrar no quadro"
                           >
                             <span>Entrar</span>
@@ -685,7 +1005,10 @@ export const DashboardPage: React.FC = () => {
           isAnonymous: currentUser?.isAnonymous,
           onCreateBoard: () => setIsCreateModalOpen(true),
           onOpenEditProfile: () => setIsEditProfileOpen(true),
-          onToggleViewMode: () => setViewMode((prev) => (prev === 'grid' ? 'table' : 'grid')),
+          onToggleViewMode: () => {
+            const next = viewMode === 'grid' ? 'table' : 'grid';
+            handleToggleViewMode(next);
+          },
           viewMode,
           onOpenShortcuts: () => setIsShortcutsModalOpen(true),
           onToggleTheme: toggleTheme,
@@ -709,6 +1032,25 @@ export const DashboardPage: React.FC = () => {
         open={isShortcutsModalOpen}
         onOpenChange={setIsShortcutsModalOpen}
       />
+
+      {/* Modal Focado de Proteção por Senha do Quadro */}
+      <BoardPasswordSettingsModal
+        open={Boolean(passwordModalBoard)}
+        onOpenChange={(open) => !open && setPasswordModalBoard(null)}
+        board={passwordModalBoard}
+        onSavePasswordSettings={handleSavePasswordSettings}
+      />
+
+      {/* Modal Focado de Permissões de Acesso e Colaboradores */}
+      {currentUser && (
+        <BoardPermissionsModal
+          open={Boolean(permissionsModalBoard)}
+          onOpenChange={(open) => !open && setPermissionsModalBoard(null)}
+          board={permissionsModalBoard}
+          currentUser={currentUser}
+          onUpdateBoardSettings={handleUpdateBoardSettings}
+        />
+      )}
     </div>
   );
 };

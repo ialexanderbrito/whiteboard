@@ -300,7 +300,7 @@ export const FacilitationMenu: React.FC<FacilitationMenuProps> = ({
                   }`}
                   title="Tema Claro"
                 >
-                  <Sun className="size-3.5 text-amber-500" />
+                  <Sun className="size-3.5" />
                   <span>Claro</span>
                 </button>
                 <button
@@ -313,7 +313,7 @@ export const FacilitationMenu: React.FC<FacilitationMenuProps> = ({
                   }`}
                   title="Tema Escuro"
                 >
-                  <Moon className="size-3.5 text-sky-400" />
+                  <Moon className="size-3.5" />
                   <span>Escuro</span>
                 </button>
                 <button
@@ -326,7 +326,7 @@ export const FacilitationMenu: React.FC<FacilitationMenuProps> = ({
                   }`}
                   title="Tema do Sistema"
                 >
-                  <Monitor className="size-3.5 text-muted-foreground" />
+                  <Monitor className="size-3.5" />
                   <span>Sistema</span>
                 </button>
               </div>
