@@ -23,6 +23,7 @@ import { ShareModal } from '@/components/whiteboard/ShareModal';
 import { FacilitationMenu } from '@/components/whiteboard/FacilitationMenu';
 import type { GridType, GridSize } from '@/components/whiteboard/CanvasGrid';
 import { isBoardOwner } from '../../utils/permissions';
+import { APP_VERSION } from '../../config/version';
 
 interface NavbarProps {
   title: string;
@@ -131,6 +132,9 @@ export const Navbar: React.FC<NavbarProps> = React.memo(({
         {/* Marca Mirio Oficial (Compacta / Transparente) */}
         <div className="flex items-center gap-1.5 pr-2 border-r border-border">
           <MirioLogo variant="compact" className="h-5 w-auto" />
+          <span className="text-[9px] font-mono text-muted-foreground/70" title={`Versão ${APP_VERSION}`}>
+            v{APP_VERSION}
+          </span>
         </div>
 
         {/* Título Editável (ou estático em modo somente leitura ou comentário) */}
