@@ -142,12 +142,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return;
         }
 
-        // Em ambientes fora do Firebase Hosting (como a Vercel, onde mirio-wb.vercel.app difere do
-        // authDomain mirio-whiteboard.firebaseapp.com), o redirecionamento (signInWithRedirect)
-        // perde o contexto da sessão devido ao bloqueio estrito de cookies de terceiros / storage partitioning
-        // nos navegadores modernos (Chrome CHIPS, Safari ITP), resultando em um loop infinito de redirecionamentos.
-        // Portanto, nunca forçamos redirecionamento automático aqui; deixamos o erro auth/popup-blocked subir
-        // para orientar o usuário a permitir a janela pop-up na barra de endereços do navegador.
+        // Se popup bloqueado (ad blocker, configuração do navegador, webview),
+        // redireciona para o fluxo de login do Google via navegação completa.
+        // Funciona sem loop porque o authDomain aponta para o próprio domínio da app
+        // (via proxy /__/auth/* no vercel.json), evitando cookies de terceiros.
+        if (
+          error?.code === 'auth/popup-blocked' ||
+          error?.code === 'auth/cancelled-popup-request'
+        ) {
+          console.warn('Popup bloqueado. Redirecionando via signInWithRedirect...');
+          return signInWithRedirect(auth!, googleProvider!);
+        }
+
         throw err;
       });
   };

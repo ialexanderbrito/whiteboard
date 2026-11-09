@@ -8,7 +8,7 @@ test('formatAuthError: properly formats popup-blocked to informative friendly me
   const error = { code: 'auth/popup-blocked', message: 'Firebase: Error (auth/popup-blocked).' };
   const formatted = formatAuthError(error);
   assert.ok(formatted.includes('bloqueou o pop-up'), 'Must explain that popup was blocked');
-  assert.ok(formatted.includes('Permita pop-ups'), 'Must inform user how to allow popups');
+  assert.ok(formatted.includes('Redirecionando'), 'Must inform user that redirection is taking place');
   assert.ok(!formatted.includes('Firebase: Error'), 'Must not leak ugly raw Firebase error code');
 });
 
