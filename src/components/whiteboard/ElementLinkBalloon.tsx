@@ -32,7 +32,11 @@ export const ElementLinkBalloon: React.FC<ElementLinkBalloonProps> = ({
 
   // Calcula posicionamento na tela com base no elemento, escala e zoom
   const elemWidth = (element.width || (element.radius ? element.radius * 2 : 180)) * scale;
-  const elemHeight = (element.height || (element.radius ? element.radius * 2 : 180)) * scale;
+  const textHeight = (element.fontSize || 20) * 1.2;
+  const elemHeight = (
+    element.height ||
+    (element.type === 'text' ? textHeight : element.radius ? element.radius * 2 : 180)
+  ) * scale;
   
   // Para círculos centralizados
   const rawX = element.type === 'circle' && element.radius ? element.x - element.radius : element.x;
