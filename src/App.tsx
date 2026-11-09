@@ -11,6 +11,7 @@ import { DashboardPage } from './pages/DashboardPage';
 const LoginPage = lazy(() => import('./pages/LoginPage').then(m => ({ default: m.LoginPage })));
 const BoardPage = lazy(() => import('./pages/BoardPage').then(m => ({ default: m.BoardPage })));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage').then(m => ({ default: m.NotFoundPage })));
+const PrivacyPage = lazy(() => import('./pages/PrivacyPage').then(m => ({ default: m.PrivacyPage })));
 
 const PageLoader = () => <LoadingScreen />;
 
@@ -63,6 +64,7 @@ export const App: React.FC = () => {
                 <Route path="/login" element={<LegacyLoginRedirect />} />
                 <Route path="/board/:boardId" element={<LegacyBoardRedirect />} />
                 <Route path="/b/:boardId" element={<BoardPage />} />
+                <Route path="/privacy" element={<PrivacyPage />} />
                 <Route path="/404" element={<NotFoundPage />} />
                 <Route path="*" element={<NotFoundPage />} />
               </Routes>
