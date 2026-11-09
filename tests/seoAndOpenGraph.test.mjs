@@ -69,6 +69,24 @@ test('Open Graph: public/og.png is valid, non-empty and has exact 1200x630 dimen
   assert.equal(height, 630, 'Altura deve ser exatamente 630px');
 });
 
+test('Favicon: public/favicon.svg and raster fallbacks exist and represent Mirio logo', () => {
+  const svgPath = path.join(projectRoot, 'public', 'favicon.svg');
+  assert.ok(fs.existsSync(svgPath), 'public/favicon.svg deve existir');
+
+  const svgContent = fs.readFileSync(svgPath, 'utf8');
+  assert.ok(svgContent.includes('image/png;base64'), 'favicon.svg deve incorporar a logo oficial em alta resolução');
+  assert.ok(svgContent.includes('prefers-color-scheme: dark'), 'favicon.svg deve suportar tema claro e escuro');
+
+  const icoPath = path.join(projectRoot, 'public', 'favicon.ico');
+  assert.ok(fs.existsSync(icoPath), 'public/favicon.ico deve existir');
+
+  const png32Path = path.join(projectRoot, 'public', 'favicon-32x32.png');
+  assert.ok(fs.existsSync(png32Path), 'public/favicon-32x32.png deve existir');
+
+  const appleTouchPath = path.join(projectRoot, 'public', 'apple-touch-icon.png');
+  assert.ok(fs.existsSync(appleTouchPath), 'public/apple-touch-icon.png deve existir');
+});
+
 test('Generator: scripts/generate-og.mjs exists and npm script is configured', () => {
   const scriptPath = path.join(projectRoot, 'scripts', 'generate-og.mjs');
   assert.ok(fs.existsSync(scriptPath), 'scripts/generate-og.mjs deve existir');
