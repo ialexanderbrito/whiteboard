@@ -19,23 +19,6 @@ const firebaseConfig: Record<string, string> = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
-// Em hospedagens fora do Firebase Hosting (ex: Vercel, Netlify), o authDomain deve apontar
-// para o próprio domínio da aplicação. O vercel.json faz proxy de /__/auth/* para o
-// firebaseapp.com, garantindo que signInWithRedirect funcione com cookies first-party
-// (sem bloqueio por Storage Partitioning / CHIPS / Safari ITP).
-// Ref: https://firebase.google.com/docs/auth/web/redirect-best-practices
-if (typeof window !== 'undefined') {
-  const hostname = window.location.hostname;
-  if (
-    hostname !== 'localhost' &&
-    hostname !== '127.0.0.1' &&
-    !hostname.endsWith('.firebaseapp.com') &&
-    !hostname.endsWith('.web.app')
-  ) {
-    firebaseConfig.authDomain = window.location.host;
-  }
-}
-
 export const isFirebaseConfigured = Boolean(
   firebaseConfig.apiKey &&
   firebaseConfig.projectId &&
