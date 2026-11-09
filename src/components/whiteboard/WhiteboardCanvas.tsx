@@ -1143,7 +1143,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     };
   };
 
-  // Touchpad usa scroll para navegar; Ctrl/Cmd + scroll mantém o zoom no ponto do cursor.
+  // O scroll contínuo do touchpad navega; a roda discreta do mouse faz zoom no cursor.
   const handleWheel = (e: Konva.KonvaEventObject<WheelEvent>) => {
     e.evt.preventDefault();
     const stage = stageRef.current;
@@ -1152,7 +1152,13 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     const pointer = stage.getPointerPosition();
     if (!pointer) return;
 
-    if (!e.evt.ctrlKey && !e.evt.metaKey) {
+    const isMouseWheel =
+      e.evt.deltaMode === 1 ||
+      Math.abs(e.evt.deltaY) >= 40 ||
+      Math.abs(e.evt.deltaX) >= 40;
+    const shouldZoom = e.evt.ctrlKey || e.evt.metaKey || isMouseWheel;
+
+    if (!shouldZoom) {
       const factor = e.evt.deltaMode === 1 ? 16 : 1;
       const currentPos = middlePanCurrentPos.current || stagePos;
       applyStagePan(
