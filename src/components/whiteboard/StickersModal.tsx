@@ -54,10 +54,14 @@ export const StickersModal: React.FC<StickersModalProps> = ({
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Chave pública Giphy ou variável de ambiente personalizada
-  const apiKey = (import.meta.env.VITE_GIPHY_API_KEY as string) || '[REDACTED_GIPHY_API_KEY]';
+  const apiKey = import.meta.env.VITE_GIPHY_API_KEY as string;
 
   const fetchGifs = async (query: string) => {
+    if (!apiKey) {
+      setSearchResults(CURATED_GIFS);
+      return;
+    }
+
     setIsSearching(true);
     try {
       const res = await fetch(
