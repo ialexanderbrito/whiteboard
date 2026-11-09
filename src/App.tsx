@@ -5,10 +5,10 @@ import { ThemeProvider } from './context/ThemeContext';
 import { TooltipProvider } from './components/ui/tooltip';
 
 import { LoadingScreen } from './components/layout/LoadingScreen';
+import { DashboardPage } from './pages/DashboardPage';
 
 // Divisão de código sob demanda (Lazy Loading) para carregamento inicial ultra-rápido
 const LoginPage = lazy(() => import('./pages/LoginPage').then(m => ({ default: m.LoginPage })));
-const DashboardPage = lazy(() => import('./pages/DashboardPage').then(m => ({ default: m.DashboardPage })));
 const BoardPage = lazy(() => import('./pages/BoardPage').then(m => ({ default: m.BoardPage })));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage').then(m => ({ default: m.NotFoundPage })));
 
@@ -21,14 +21,16 @@ const LegacyBoardRedirect: React.FC = () => {
   return <Navigate to={`/b/${cleanId}`} replace />;
 };
 
-// Rota raiz ("/"): exibe o Dashboard para usuários logados ou a tela de login diretamente na raiz se não autenticado
+// Rota raiz ("/"): exibe o Dashboard com Skeleton adaptativo imediatamente sem travar no LoadingScreen global
 const RootRoute: React.FC = () => {
   const { currentUser, loading } = useAuth();
   const [searchParams] = useSearchParams();
   const redirect = searchParams.get('redirect') || (typeof window !== 'undefined' ? sessionStorage.getItem('mirio_auth_redirect') : null);
 
+  // Se a autenticação estiver carregando, renderiza o DashboardPage imediatamente
+  // para que o Skeleton Screen Adaptativo apareça na tela sem o LoadingScreen global de tela cheia
   if (loading) {
-    return <PageLoader />;
+    return <DashboardPage />;
   }
 
   if (currentUser) {

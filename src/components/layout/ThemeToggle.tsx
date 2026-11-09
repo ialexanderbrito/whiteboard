@@ -30,11 +30,11 @@ export const ThemeToggle: React.FC<{ className?: string }> = ({ className }) => 
           title="Alternar tema (Claro, Escuro ou Sistema)"
         >
           {theme === 'system' ? (
-            <Monitor className="size-4 text-muted-foreground hover:text-foreground transition-transform duration-200" />
+            <Monitor className="size-4 text-foreground transition-transform duration-200" />
           ) : resolvedTheme === 'dark' ? (
-            <Moon className="size-4 text-sky-400 transition-transform duration-200 hover:-rotate-12" />
+            <Moon className="size-4 text-foreground transition-transform duration-200 hover:-rotate-12" />
           ) : (
-            <Sun className="size-4 text-amber-500 transition-transform duration-200 hover:rotate-45" />
+            <Sun className="size-4 text-foreground transition-transform duration-200 hover:rotate-45" />
           )}
           <span className="sr-only">Alternar tema</span>
         </Button>
@@ -54,18 +54,10 @@ export const ThemeToggle: React.FC<{ className?: string }> = ({ className }) => 
                 }`}
               >
                 <div className="flex items-center gap-2">
-                  <Icon
-                    className={`size-3.5 ${
-                      opt.id === 'light'
-                        ? 'text-amber-500'
-                        : opt.id === 'dark'
-                        ? 'text-sky-400'
-                        : 'text-muted-foreground'
-                    }`}
-                  />
+                  <Icon className="size-3.5" />
                   <span>{opt.label}</span>
                 </div>
-                {isSelected && <Check className="size-3.5 text-primary" />}
+                {isSelected && <Check className="size-3.5 text-foreground" />}
               </DropdownMenuItem>
             );
           })}
