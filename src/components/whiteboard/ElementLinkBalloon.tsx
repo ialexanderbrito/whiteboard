@@ -16,6 +16,8 @@ interface ElementLinkBalloonProps {
   canEdit?: boolean;
   onEditLink?: (url: string) => void;
   onRemoveLink?: (url: string) => void;
+  /** Distância (px) da base do post-it, usada para empilhar acima dos controles flutuantes. */
+  stickyBottomOffset?: number;
 }
 
 /**
@@ -29,6 +31,7 @@ export const ElementLinkBalloon: React.FC<ElementLinkBalloonProps> = ({
   canEdit = true,
   onEditLink,
   onRemoveLink,
+  stickyBottomOffset = 46,
 }) => {
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
   const balloonRef = useRef<HTMLDivElement>(null);
@@ -53,17 +56,17 @@ export const ElementLinkBalloon: React.FC<ElementLinkBalloonProps> = ({
 
     const isSticky = element.type === 'sticky';
     const isNearBottom =
-      screenY + elemHeight + (isSticky ? 90 : 60) >
+      screenY + elemHeight + (isSticky ? stickyBottomOffset + 44 : 60) >
       (typeof window !== 'undefined' ? window.innerHeight : 800);
     const balloonTop = isNearBottom
       ? Math.max(60, screenY - 48)
       : isSticky
-      ? screenY + elemHeight + 46
+      ? screenY + elemHeight + stickyBottomOffset
       : screenY + elemHeight + 10;
 
     node.style.left = `${screenX + elemWidth / 2}px`;
     node.style.top = `${balloonTop}px`;
-  }, [element]);
+  }, [element, stickyBottomOffset]);
 
   useEffect(() => {
     placeBalloon(getViewport());
@@ -88,11 +91,11 @@ export const ElementLinkBalloon: React.FC<ElementLinkBalloonProps> = ({
   const screenY = rawY * scale + stagePos.y;
 
   const isSticky = element.type === 'sticky';
-  const isNearBottom = screenY + elemHeight + (isSticky ? 90 : 60) > (typeof window !== 'undefined' ? window.innerHeight : 800);
+  const isNearBottom = screenY + elemHeight + (isSticky ? stickyBottomOffset + 44 : 60) > (typeof window !== 'undefined' ? window.innerHeight : 800);
   const balloonTop = isNearBottom
     ? Math.max(60, screenY - 48)
     : isSticky
-    ? screenY + elemHeight + 46
+    ? screenY + elemHeight + stickyBottomOffset
     : screenY + elemHeight + 10;
   const balloonCenterX = screenX + elemWidth / 2;
 

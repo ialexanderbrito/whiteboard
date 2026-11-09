@@ -11,6 +11,8 @@ interface StickyReactionBarProps {
   sticky: CanvasElement;
   onToggleReaction: (elementId: string, emoji: string) => void;
   mirioReactionUnlocked?: boolean;
+  /** Distância extra (px) da base do post-it, usada para abrir espaço aos botões de adição rápida. */
+  verticalOffset?: number;
 }
 
 /**
@@ -23,6 +25,7 @@ export const StickyReactionBar: React.FC<StickyReactionBarProps> = React.memo(({
   sticky,
   onToggleReaction,
   mirioReactionUnlocked = false,
+  verticalOffset = 10,
 }) => {
   const barRef = useRef<HTMLDivElement>(null);
 
@@ -33,12 +36,12 @@ export const StickyReactionBar: React.FC<StickyReactionBarProps> = React.memo(({
       const width = (sticky.width || 180) * viewport.scale;
       const height = (sticky.height || 180) * viewport.scale;
       node.style.left = `${sticky.x * viewport.scale + viewport.x + width / 2}px`;
-      node.style.top = `${sticky.y * viewport.scale + viewport.y + height + 10}px`;
+      node.style.top = `${sticky.y * viewport.scale + viewport.y + height + verticalOffset}px`;
     };
 
     place(getViewport());
     return subscribeViewport(place);
-  }, [sticky.x, sticky.y, sticky.width, sticky.height]);
+  }, [sticky.x, sticky.y, sticky.width, sticky.height, verticalOffset]);
 
   return (
     <div

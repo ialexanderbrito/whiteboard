@@ -35,6 +35,8 @@ import {
 import { applyWorldTransform, publishViewport } from '../../utils/viewport';
 import { boundsIntersect, getElementWorldBounds } from '../../utils/elementBounds';
 import { StickyReactionBar } from './StickyReactionBar';
+import { StickyQuickAdd } from './StickyQuickAdd';
+import { getAdjacentStickyRect, type StickyDirection } from '../../utils/stickyPlacement';
 
 interface WhiteboardCanvasProps {
   boardId: string;
@@ -2487,6 +2489,71 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       ? selectedElements[0]
       : null;
 
+  // Criação rápida de post-it encostado ao selecionado (estilo FigJam)
+  const handleQuickAddSticky = useCallback(async (direction: StickyDirection) => {
+    if (!selectedSticky || readOnly || selectedSticky.locked) return;
+
+    const width = selectedSticky.width || 180;
+    const height = selectedSticky.height || 180;
+    const rect = getAdjacentStickyRect(
+      { x: selectedSticky.x, y: selectedSticky.y, width, height },
+      direction
+    );
+    const fill = selectedSticky.fill || '#fff9b1';
+
+    const newId = await onAddElement({
+      type: 'sticky',
+      x: Math.round(rect.x),
+      y: Math.round(rect.y),
+      width,
+      height,
+      fill,
+      text: '',
+      fontSize: selectedSticky.fontSize,
+      textAlign: selectedSticky.textAlign,
+      textColor: selectedSticky.textColor,
+      zIndex: elements.length + 1,
+      updatedBy: currentUser.uid,
+      updatedByName: currentUser.displayName,
+    });
+
+    if (!newId) return;
+
+    onSelectionChange([newId]);
+    setInlineEditing({
+      elementId: newId,
+      type: 'sticky',
+      worldX: Math.round(rect.x),
+      worldY: Math.round(rect.y),
+      width,
+      height,
+      text: '',
+      fill,
+      fontSize: selectedSticky.fontSize || 14,
+      textAlign: selectedSticky.textAlign || 'left',
+      textColor:
+        selectedSticky.textColor || getContrastTextColor(fill, '#0f172a', '#ffffff'),
+    });
+  }, [
+    selectedSticky,
+    readOnly,
+    onAddElement,
+    elements.length,
+    currentUser.uid,
+    currentUser.displayName,
+    onSelectionChange,
+  ]);
+
+  const canUseQuickAdd = Boolean(
+    selectedSticky &&
+    currentTool === 'select' &&
+    !readOnly &&
+    !selectedSticky.locked &&
+    !inlineEditing &&
+    !contextMenuState.isOpen &&
+    (!canCommentOnly || selectedSticky.updatedBy === currentUser.uid)
+  );
+
   // Cursor customizado de alta precisão de acordo com a ferramenta ativa
   const canvasCursor = React.useMemo(() => {
     if (isDraggableStage || isMiddlePanningState) {
@@ -2953,6 +3020,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         }}
         scale={scale}
         stagePos={stagePos}
+        topOffset={canUseQuickAdd ? 84 : 48}
         onToggleVote={onToggleVote}
         onAddVote={onAddVote}
         onRemoveVote={onRemoveVote}
@@ -2992,11 +3060,17 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       )}
 
       {/* Balão de Hiperlink Flutuante Estilo Miro (exibido quando um elemento com link está selecionado) */}
+      {/* Botões "+" ao redor do post-it selecionado para criar cards encostados (estilo FigJam) */}
+      {canUseQuickAdd && selectedSticky && (
+        <StickyQuickAdd sticky={selectedSticky} onCreate={handleQuickAddSticky} />
+      )}
+
       {selectedElements.length === 1 && !inlineEditing && (
         <ElementLinkBalloon
           element={selectedElements[0]}
           scale={scale}
           stagePos={stagePos}
+          stickyBottomOffset={canUseQuickAdd ? 84 : 46}
           canEdit={!readOnly}
           onEditLink={(oldUrl) => {
             const currentItem = selectedElements[0]?.links?.find((l) => l.url === oldUrl);
@@ -3029,6 +3103,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           sticky={selectedSticky}
           onToggleReaction={onToggleReaction}
           mirioReactionUnlocked={mirioReactionUnlocked}
+          verticalOffset={canUseQuickAdd ? 44 : 10}
         />
       )}
 

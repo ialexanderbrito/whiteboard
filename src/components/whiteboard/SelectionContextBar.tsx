@@ -90,6 +90,8 @@ interface SelectionContextBarProps {
   onReorderLayer?: (action: 'bringToFront' | 'sendToBack' | 'bringForward' | 'sendBackward') => void;
   scale: number;
   stagePos: { x: number; y: number };
+  /** Distância (px) entre a seleção e a base da barra. */
+  topOffset?: number;
   onToggleVote?: (elementId: string) => void;
   onAddVote?: (elementId: string) => void;
   onRemoveVote?: (elementId: string) => void;
@@ -251,6 +253,7 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
   onReorderLayer,
   scale,
   stagePos,
+  topOffset = 48,
   onAddVote,
   onRemoveVote,
   userElementVotes,
@@ -296,8 +299,8 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
     const screenX = anchor.minX * viewport.scale + viewport.x;
     const screenY = anchor.minY * viewport.scale + viewport.y;
     node.style.left = `${Math.max(16, Math.min(window.innerWidth - 440, screenX))}px`;
-    node.style.top = `${Math.max(68, screenY - 48)}px`;
-  }, []);
+    node.style.top = `${Math.max(68, screenY - topOffset)}px`;
+  }, [topOffset]);
 
   useEffect(() => {
     placeBar(getViewport());
@@ -318,7 +321,7 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
   const screenY = minY * scale + stagePos.y;
 
   const barLeft = Math.max(16, Math.min(window.innerWidth - 440, screenX));
-  const barTop = Math.max(68, screenY - 48);
+  const barTop = Math.max(68, screenY - topOffset);
 
   const isMultiSelect = selectedElements.length > 1;
   const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
