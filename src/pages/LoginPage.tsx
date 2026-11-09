@@ -241,12 +241,7 @@ export const LoginPage: React.FC = () => {
                   if (redirectUrl && redirectUrl !== '/') {
                     sessionStorage.setItem('mirio_auth_redirect', redirectUrl);
                   }
-                  return signInWithGoogle().then(() => {
-                    const saved = sessionStorage.getItem('mirio_auth_redirect');
-                    sessionStorage.removeItem('mirio_auth_redirect');
-                    const target = (redirectUrl && redirectUrl !== '/') ? redirectUrl : (saved || '/');
-                    navigate(target, { replace: true });
-                  });
+                  return signInWithGoogle();
                 }}
                 onGuestLogin={async (name: string) => {
                   await signInAsGuest(name);

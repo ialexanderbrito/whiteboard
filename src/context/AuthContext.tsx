@@ -123,6 +123,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return signInWithPopup(auth, googleProvider)
       .then((result) => {
         if (result?.user) {
+          // O popup pode concluir antes de onAuthStateChanged receber a sessão.
+          // Atualiza o contexto imediatamente para que a tela de login não permaneça visível.
           const color = getSavedColor();
           setCurrentUser({
             uid: result.user.uid,
