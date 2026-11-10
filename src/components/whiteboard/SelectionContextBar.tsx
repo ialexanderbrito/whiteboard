@@ -36,7 +36,7 @@ import {
   SendToBack,
   ArrowUp,
   ArrowDown
-} from 'lucide-react';
+} from '@/components/ui/icons';
 import type { CanvasElement } from '../../types/element';
 import { 
   STICKY_COLORS, 

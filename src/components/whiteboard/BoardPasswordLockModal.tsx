@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Lock, KeyRound, ArrowLeft, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { Lock, KeyRound, ArrowLeft, AlertCircle, Eye, EyeOff } from '@/components/ui/icons';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 

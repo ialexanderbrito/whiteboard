@@ -13,7 +13,7 @@ import {
   Radio, 
   Layers, 
   ShieldCheck 
-} from 'lucide-react';
+} from '@/components/ui/icons';
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();

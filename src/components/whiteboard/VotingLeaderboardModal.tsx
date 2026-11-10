@@ -13,7 +13,7 @@ import {
   Type,
   MapPin,
   Users
-} from 'lucide-react';
+} from '@/components/ui/icons';
 import confetti from 'canvas-confetti';
 import {
   Dialog,

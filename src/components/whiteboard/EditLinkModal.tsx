@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Globe, Link2, Trash2 } from 'lucide-react';
+import { Globe, Link2, Trash2 } from '@/components/ui/icons';
 import {
   Dialog,
   DialogContent,

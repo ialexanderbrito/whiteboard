@@ -9,7 +9,7 @@ import {
   MousePointerClick,
   History,
   Play
-} from 'lucide-react';
+} from '@/components/ui/icons';
 import {
   Dialog,
   DialogContent,

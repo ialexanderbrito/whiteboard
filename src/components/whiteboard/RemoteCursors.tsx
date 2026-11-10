@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { UserPresence } from '../../types/board';
-import { Pen, StickyNote, Eraser, Type, Square, Hand, Laser } from 'lucide-react';
+import { Pen, StickyNote, Eraser, Type, Square, Hand, Laser } from '@/components/ui/icons';
 import { getViewport, subscribeViewport } from '../../utils/viewport';
 
 interface RemoteCursorsProps {

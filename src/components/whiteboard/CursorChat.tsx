@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { CurrentUser } from '../../types/board';
-import { X, Send } from 'lucide-react';
+import { X, Send } from '@/components/ui/icons';
 import { reactionService } from '@/services/reactionService';
 import { playReactionPopSound } from '@/utils/audioChime';
 

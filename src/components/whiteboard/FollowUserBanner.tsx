@@ -1,5 +1,5 @@
 import React from 'react';
-import { Eye, X } from 'lucide-react';
+import { Eye, X } from '@/components/ui/icons';
 import { Button } from '@/components/ui/button';
 
 interface FollowUserBannerProps {

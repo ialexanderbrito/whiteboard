@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sun, Moon, Monitor, Check } from 'lucide-react';
+import { Sun, Moon, Monitor, Check } from '@/components/ui/icons';
 import { useTheme, type Theme } from '@/context/ThemeContext';
 import { Button } from '@/components/ui/button';
 import {

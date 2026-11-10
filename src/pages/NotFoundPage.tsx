@@ -24,7 +24,7 @@ import {
   Sparkles,
   Loader2,
   ArrowRight
-} from 'lucide-react';
+} from '@/components/ui/icons';
 
 export interface NotFoundPageProps {
   requestedBoardId?: string;

@@ -7,7 +7,7 @@ import {
   ZoomOut, 
   Tv,
   Laser
-} from 'lucide-react';
+} from '@/components/ui/icons';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { CanvasElement } from '@/types/element';

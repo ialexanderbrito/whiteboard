@@ -13,7 +13,7 @@ import {
   Headphones,
   Minimize2,
   Maximize2
-} from 'lucide-react';
+} from '@/components/ui/icons';
 import confetti from 'canvas-confetti';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

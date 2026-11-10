@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowLeft, Check, ExternalLink, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, Check, ExternalLink, ShieldCheck } from '@/components/ui/icons';
 import { Link } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
