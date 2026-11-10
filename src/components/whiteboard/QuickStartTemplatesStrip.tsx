@@ -39,7 +39,7 @@ interface QuickStartTemplatesStripProps {
  * Renderiza miniaturas SVG arquiteturais sob medida para cada categoria de template,
  * mantendo coerência estética com o BoardCardPreview do Dashboard.
  */
-const TemplateSchematicPreview: React.FC<{ variant: TemplatePreviewVariant }> = React.memo(
+export const TemplateSchematicPreview: React.FC<{ variant: TemplatePreviewVariant }> = React.memo(
   ({ variant }) => {
     switch (variant) {
       case 'retro_4ls':
