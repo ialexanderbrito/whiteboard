@@ -513,6 +513,28 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     isNew?: boolean;
   } | null>(null);
 
+  // Estado para ancoragem do popover seletor de emojis do post-it (ancorado ao botão '+' interno ou '+N')
+  const [reactionPickerTarget, setReactionPickerTarget] = useState<{
+    elementId: string;
+    anchor: { x: number; y: number };
+    mode?: 'picker' | 'overflow';
+  } | null>(null);
+
+  // Fecha o popover caso o elemento seja excluído ou se a seleção mudar para outro elemento
+  useEffect(() => {
+    if (!reactionPickerTarget) return;
+    const exists = elements.some((el) => el.id === reactionPickerTarget.elementId);
+    if (!exists) {
+      setReactionPickerTarget(null);
+      return;
+    }
+    if (selectedIds.length > 0 && !selectedIds.includes(reactionPickerTarget.elementId)) {
+      setReactionPickerTarget(null);
+    }
+  }, [elements, selectedIds, reactionPickerTarget]);
+
+
+
   const handleSaveModalLink = (url: string, label?: string) => {
     if (!linkModalState) return;
 
@@ -3208,6 +3230,9 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
               onSelect={handlers.onSelect}
               onChange={handlers.onChange}
               onToggleReaction={handleToggleReactionInternal}
+              onOpenReactionPicker={(elementId, anchor, mode) => {
+                setReactionPickerTarget({ elementId, anchor, mode });
+              }}
               onStartEditing={handlers.onStartEditing}
             />
           );
@@ -3301,11 +3326,10 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     stageRef.current?.batchDraw();
   }, [renderedElements]);
 
-  // Post-it selecionado único (para barra de reações flutuante em HTML com z-index 50)
-  const selectedSticky =
-    selectedElements.length === 1 && selectedElements[0].type === 'sticky'
-      ? selectedElements[0]
-      : null;
+  // Post-it alvo do seletor flutuante de reações ancorado ao botão '+' interno
+  const reactionPickerSticky = reactionPickerTarget
+    ? elements.find((e) => e.id === reactionPickerTarget.elementId)
+    : null;
 
   // Elemento elegível para botões "+" de criação rápida nas 4 direções (Post-its e Formas Geométricas)
   const selectedQuickAddElement =
@@ -4100,18 +4124,18 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       />
       )}
 
-      {/* Balão de Hiperlink Flutuante Estilo Miro (exibido quando um elemento com link está selecionado) */}
       {/* Botões "+" ao redor do post-it ou forma geométrica selecionada para criar elementos encostados (estilo FigJam) */}
       {canUseQuickAdd && selectedQuickAddElement && (
         <StickyQuickAdd sticky={selectedQuickAddElement} onCreate={handleQuickAddSticky} />
       )}
 
-      {selectedElements.length === 1 && !inlineEditing && !isTransforming && (
+      {/* Balão de Hiperlink Flutuante Estilo Miro (exibido para formas/elementos geométricos selecionados com link; em post-its o link é direto no texto) */}
+      {selectedElements.length === 1 && selectedElements[0].type !== 'sticky' && !inlineEditing && !isTransforming && (
         <ElementLinkBalloon
           element={selectedElements[0]}
           scale={scale}
           stagePos={stagePos}
-          stickyBottomOffset={canUseQuickAdd ? 84 : 46}
+          stickyBottomOffset={canUseQuickAdd ? 44 : 10}
           canEdit={!readOnly}
           onEditLink={(oldUrl) => {
             const currentItem = selectedElements[0]?.links?.find((l) => l.url === oldUrl);
@@ -4140,13 +4164,16 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         />
       )}
 
-      {/* Barra Flutuante de Reações Apple Emoji para o Post-it Selecionado (z-index 50: NUNCA fica por baixo de post-its vizinhos) */}
-      {selectedSticky && !isTransforming && onToggleReaction && (
+      {/* Popover Flutuante de Reações Apple Emoji ancorado ao botão '+' ou '+N' do Post-it */}
+      {reactionPickerSticky && !isTransforming && onToggleReaction && (
         <StickyReactionBar
-          sticky={selectedSticky}
-          onToggleReaction={onToggleReaction}
+          sticky={reactionPickerSticky}
+          currentUserId={currentUser.uid}
+          anchorPoint={reactionPickerTarget?.anchor}
+          mode={reactionPickerTarget?.mode}
+          onClose={() => setReactionPickerTarget(null)}
+          onToggleReaction={handleToggleReactionInternal}
           mirioReactionUnlocked={mirioReactionUnlocked}
-          verticalOffset={canUseQuickAdd ? 44 : 10}
         />
       )}
 
@@ -4195,7 +4222,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           })}
       </div>
 
-      {/* Badges Interativas de Votação (Estilo Miro) */}
+
       {(() => {
         const session = votingData?.session;
 
@@ -4519,6 +4546,11 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
               targetGif.style.left = `${e.target.x()}px`;
               targetGif.style.top = `${e.target.y()}px`;
             }
+            const targetReactions = document.getElementById(`sticky-reactions-${targetId}`);
+            if (targetReactions) {
+              targetReactions.style.left = `${e.target.x()}px`;
+              targetReactions.style.top = `${e.target.y()}px`;
+            }
           }
           if (targetId && selectedIds.length > 1 && selectedIds.includes(targetId)) {
             const initialSelf = dragStartPositions.current.get(targetId);
@@ -4542,6 +4574,11 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
                     if (itemGif) {
                       itemGif.style.left = `${newX}px`;
                       itemGif.style.top = `${newY}px`;
+                    }
+                    const itemReactions = document.getElementById(`sticky-reactions-${id}`);
+                    if (itemReactions) {
+                      itemReactions.style.left = `${newX}px`;
+                      itemReactions.style.top = `${newY}px`;
                     }
                   }
                 }
@@ -4826,7 +4863,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
               const tr = transformerRef.current;
               if (!tr) return;
 
-              // Sincroniza GIFs em tempo real durante rotação/redimensionamento
+              // Sincroniza GIFs e Reações de Post-its em tempo real durante rotação/redimensionamento
               tr.nodes().forEach((node) => {
                 const id = node.id();
                 if (!id) return;
@@ -4841,6 +4878,16 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
                   targetGif.style.height = `${Math.max(40, baseH * node.scaleY())}px`;
                   const rot = node.rotation();
                   targetGif.style.transform = rot ? `rotate(${rot}deg)` : '';
+                }
+                const targetReactions = document.getElementById(`sticky-reactions-${id}`);
+                if (targetReactions) {
+                  const elem = elementsRef.current.find((el) => el.id === id);
+                  const baseW = elem?.width || 180;
+                  const baseH = elem?.height || 180;
+                  targetReactions.style.left = `${node.x()}px`;
+                  targetReactions.style.top = `${node.y()}px`;
+                  targetReactions.style.width = `${Math.max(80, baseW * node.scaleX())}px`;
+                  targetReactions.style.height = `${Math.max(80, baseH * node.scaleY())}px`;
                 }
               });
 

@@ -5,7 +5,16 @@ import type { CanvasElement } from '../../types/element';
 import { extractAllLinks, stripMarkdownLinks, layoutFormattedWords, normalizeUrl } from '../../utils/textLinks';
 import { getContrastTextColor } from '../../utils/colors';
 import { isCoarseOrMobileViewport } from '../../utils/viewport';
-import { isMirioReaction, loadMirioReactionImage, getCachedMirioReactionImage } from '../../utils/mirioReaction';
+import {
+  isMirioReaction,
+  loadMirioReactionImage,
+  getCachedMirioReactionImage,
+} from '../../utils/mirioReaction';
+import {
+  getCachedAppleEmojiImage,
+  loadAppleEmojiImage,
+} from '../../utils/appleEmoji';
+import { playReactionPopSound } from '../../utils/audioChime';
 
 interface StickyNoteItemProps {
   element: CanvasElement;
@@ -19,6 +28,11 @@ interface StickyNoteItemProps {
   onSelect: (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => void;
   onChange: (updates: Partial<CanvasElement>) => void;
   onToggleReaction?: (elementId: string, emoji: string) => void;
+  onOpenReactionPicker?: (
+    elementId: string,
+    anchor: { x: number; y: number },
+    mode?: 'picker' | 'overflow'
+  ) => void;
   onStartEditing: (
     id: string,
     x: number,
@@ -28,6 +42,7 @@ interface StickyNoteItemProps {
     text: string,
     fill: string
   ) => void;
+  onHover?: (isHovered: boolean) => void;
 }
 
 export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
@@ -42,9 +57,14 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
   onSelect,
   onChange,
   onToggleReaction,
+  onOpenReactionPicker,
   onStartEditing,
+  onHover,
 }) => {
   const groupRef = useRef<Konva.Group>(null);
+  const [, setReactionRenderVersion] = useState(0);
+  const [isHoveredLocal, setIsHoveredLocal] = useState(false);
+
   const width = element.width || 180;
   const height = element.height || 180;
   const fill = element.fill || '#fff9b1';
@@ -72,20 +92,6 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
     [rawText, element.linkUrl, element.links]
   );
   const hasLinks = allLinks.length > 0;
-
-  const formattedWords = useMemo(() => {
-    if (!hasLinks || !cleanText) return null;
-    return layoutFormattedWords(
-      cleanText,
-      textWidth,
-      fontSize,
-      fontStyleStr,
-      textAlign,
-      1.35,
-      element.links,
-      element.linkUrl
-    );
-  }, [cleanText, hasLinks, textWidth, fontSize, fontStyleStr, textAlign, element.links, element.linkUrl]);
 
   const isItemDraggable = draggable !== undefined ? draggable && !element.locked : !element.locked;
 
@@ -133,7 +139,35 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
     handleDblClick();
   };
 
-  // Processa reações existentes, unificando chaves legado do Mirio se existirem
+  // Gerenciamento de hover 100% à prova de flickering no Konva
+  const handleMouseEnter = () => {
+    setIsHoveredLocal(true);
+    onHover?.(true);
+  };
+
+  const handleMouseMove = () => {
+    if (!isHoveredLocal) setIsHoveredLocal(true);
+    onHover?.(true);
+  };
+
+  const handleMouseLeave = (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
+    const stage = e.target.getStage();
+    const pointer = stage?.getPointerPosition();
+    if (!pointer || !groupRef.current) {
+      setIsHoveredLocal(false);
+      onHover?.(false);
+      return;
+    }
+    const transform = groupRef.current.getAbsoluteTransform().copy().invert();
+    const local = transform.point(pointer);
+    // Inclui a extensão das pílulas na base (que avançam até height + 14)
+    if (local.x < 0 || local.x > width || local.y < 0 || local.y > height + 14) {
+      setIsHoveredLocal(false);
+      onHover?.(false);
+    }
+  };
+
+  // Processa reações ativas no post-it
   const reactions = element.reactions || {};
   const activeReactions = useMemo(() => {
     const map = new Map<string, string[]>();
@@ -143,59 +177,130 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
       const current = map.get(canonicalKey) || [];
       map.set(canonicalKey, [...new Set([...current, ...users])]);
     }
-    return Array.from(map.entries());
+    return Array.from(map.entries()).sort((a, b) => b[1].length - a[1].length);
   }, [reactions]);
 
-  const hasMirioReaction = useMemo(
-    () => activeReactions.some(([emoji]) => isMirioReaction(emoji)),
-    [activeReactions]
-  );
+  const hasReactions = activeReactions.length > 0;
 
-  const [mirioImage, setMirioImage] = useState<HTMLImageElement | null>(() => getCachedMirioReactionImage());
-
+  // Carregador assíncrono de imagens Apple Emoji e Mirio
   useEffect(() => {
-    if (!hasMirioReaction) return;
-    if (mirioImage) return;
-
-    let isMounted = true;
-    void loadMirioReactionImage().then((img) => {
-      if (isMounted && img) {
-        setMirioImage(img);
+    activeReactions.forEach(([emoji]) => {
+      if (isMirioReaction(emoji)) {
+        if (!getCachedMirioReactionImage()) {
+          void loadMirioReactionImage().then(() => {
+            setReactionRenderVersion((v) => v + 1);
+            groupRef.current?.getLayer()?.batchDraw();
+          });
+        }
+      } else {
+        if (!getCachedAppleEmojiImage(emoji)) {
+          loadAppleEmojiImage(emoji, () => {
+            setReactionRenderVersion((v) => v + 1);
+            groupRef.current?.getLayer()?.batchDraw();
+          });
+        }
       }
     });
+  }, [activeReactions]);
 
-    return () => {
-      isMounted = false;
-    };
-  }, [hasMirioReaction, mirioImage]);
-
-  const reactionBadges = useMemo(() => {
-    let currentX = 0;
+  // Layout responsivo das pílulas de reações ancoradas na borda inferior externa estilo Miro
+  const footerBadgesLayout = useMemo(() => {
+    const START_X = 8;
     const GAP = 4;
+    const BADGE_HEIGHT = 22;
+    const PLUS_BTN_WIDTH = 22;
+    const OVERFLOW_WIDTH = 26;
+    // Largura disponível para as pílulas (deixando margem na direita para o autor)
+    const available = width - 16;
 
-    return activeReactions.map(([emoji, users]) => {
+    const badgeItems = activeReactions.map(([emoji, users]) => {
       const isMirio = isMirioReaction(emoji);
       const countStr = users.length.toString();
-      const countDigits = countStr.length;
-      const countWidth = countDigits * 7.5;
-
-      const badgeWidth = isMirio
-        ? Math.max(38, Math.round(24 + countWidth + 8))
-        : Math.max(36, Math.round(24 + countWidth + 6));
-
-      const x = currentX;
-      currentX += badgeWidth + GAP;
-
+      const badgeWidth = Math.max(38, Math.round(20 + countStr.length * 7.5 + 8));
       return {
         emoji,
         users,
         isMirio,
         countStr,
         badgeWidth,
-        x,
       };
     });
-  }, [activeReactions]);
+
+    let totalAll = 0;
+    for (let i = 0; i < badgeItems.length; i++) {
+      totalAll += badgeItems[i].badgeWidth + (i > 0 ? GAP : 0);
+    }
+
+    let visible: typeof badgeItems = [];
+    let overflowCount = 0;
+
+    // Se couber tudo + botão "+"
+    if (totalAll + GAP + PLUS_BTN_WIDTH <= available) {
+      visible = badgeItems;
+      overflowCount = 0;
+    } else {
+      let count = 0;
+      let curW = 0;
+      for (let i = 0; i < badgeItems.length; i++) {
+        const nextW = curW + (count > 0 ? GAP : 0) + badgeItems[i].badgeWidth + GAP + OVERFLOW_WIDTH + GAP + PLUS_BTN_WIDTH;
+        if (nextW <= available) {
+          count++;
+          curW += (count > 1 ? GAP : 0) + badgeItems[i].badgeWidth;
+        } else {
+          break;
+        }
+      }
+      const safeCount = Math.max(1, count);
+      visible = badgeItems.slice(0, safeCount);
+      overflowCount = badgeItems.length - safeCount;
+    }
+
+    let curX = START_X;
+    const positioned = visible.map((b) => {
+      const x = curX;
+      curX += b.badgeWidth + GAP;
+      return { ...b, x };
+    });
+
+    const overflowX = overflowCount > 0 ? curX : null;
+    if (overflowCount > 0) {
+      curX += OVERFLOW_WIDTH + GAP;
+    }
+
+    const plusButtonX = canEdit ? curX : null;
+
+    return {
+      badges: positioned,
+      overflowCount,
+      overflowX,
+      plusButtonX,
+      height: BADGE_HEIGHT,
+      // Metade dentro / metade fora da borda inferior externa:
+      y: Math.round(height - BADGE_HEIGHT / 2),
+    };
+  }, [activeReactions, width, height, canEdit]);
+
+  // Alias para retrocompatibilidade de testes e layout dinâmico dos badges
+  const reactionBadges = footerBadgesLayout.badges;
+
+  // Reserva de altura do texto: como as pílulas ficam sobrepostas à borda inferior (metade fora),
+  // o texto ganha quase todo o espaço interno, precisando apenas de folga para o autor
+  const footerReserveHeight = element.updatedByName ? 18 : 12;
+  const textMaxHeight = Math.max(20, height - 12 - footerReserveHeight);
+
+  const formattedWords = useMemo(() => {
+    if (!hasLinks || !cleanText) return null;
+    return layoutFormattedWords(
+      cleanText,
+      textWidth,
+      fontSize,
+      fontStyleStr,
+      textAlign,
+      1.35,
+      element.links,
+      element.linkUrl
+    );
+  }, [cleanText, hasLinks, textWidth, fontSize, fontStyleStr, textAlign, element.links, element.linkUrl]);
 
   return (
     <Group
@@ -209,6 +314,9 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
       onTap={onSelect}
       onDblClick={handleDblClick}
       onDblTap={handleDblClick}
+      onMouseEnter={handleMouseEnter}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
       onDragStart={() => {
         isDraggingRef.current = true;
       }}
@@ -238,7 +346,7 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
         });
       }}
     >
-      {/* Corpo autêntico de papel post-it (cantos retos/suaves de 3px, sem formato de balão) */}
+      {/* Corpo autêntico de papel post-it (cantos retos/suaves de 3px) */}
       <Rect
         width={width}
         height={height}
@@ -285,7 +393,7 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
 
       {/* Conteúdo textual autêntico do Post-it estilo Miro com suporte a hiperlinks sublinhados clicáveis */}
       {formattedWords && formattedWords.length > 0 ? (
-        <Group x={12} y={12} clipFunc={(ctx) => ctx.rect(0, 0, textWidth, height - 28)}>
+        <Group x={12} y={12} clipFunc={(ctx) => ctx.rect(0, 0, textWidth, textMaxHeight)}>
           {formattedWords.map((word) => (
             <Text
               key={word.id}
@@ -317,7 +425,7 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
         <Text
           text={cleanText || 'Clique 2x para escrever...'}
           width={textWidth}
-          height={height - 28}
+          height={textMaxHeight}
           x={12}
           y={12}
           fontSize={fontSize}
@@ -339,30 +447,59 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
         />
       )}
 
-      {/* Rodapé sutil com autor se disponível */}
+      {/* Rodapé com autor no canto inferior direito interno */}
       {element.updatedByName && (
         <Text
           text={element.updatedByName}
-          x={12}
-          y={height - 20}
-          width={width - 24}
+          x={width - 86}
+          y={height - 16}
+          width={78}
           align="right"
-          fontSize={10}
+          fontSize={9.5}
           fontFamily="system-ui, -apple-system, sans-serif"
-          fill={isDarkFill ? 'rgba(255, 255, 255, 0.5)' : 'rgba(15, 23, 42, 0.4)'}
+          fill={isDarkFill ? 'rgba(255, 255, 255, 0.55)' : 'rgba(15, 23, 42, 0.45)'}
           fontStyle="italic"
           ellipsis={true}
           wrap="none"
           listening={false}
+          perfectDrawEnabled={false}
         />
       )}
 
-      {/* Badges de Reações na base inferior do Post-it */}
-      {reactionBadges.length > 0 && (
-        <Group y={height + 6} x={4}>
+      {/* Badges de Reações com Imagens Apple Emoji no Canvas ancoradas na borda inferior estilo Miro */}
+      {hasReactions && (
+        <Group y={footerBadgesLayout.y}>
           {reactionBadges.map(({ emoji, users, isMirio, countStr, badgeWidth, x }) => {
             const hasUserReacted = currentUserId ? users.includes(currentUserId) : false;
             const isLocked = isMirio && !mirioReactionUnlocked;
+
+            const badgeFill = hasUserReacted
+              ? isDarkFill
+                ? 'rgba(22, 101, 52, 0.85)'
+                : '#ecfdf5'
+              : isDarkFill
+              ? 'rgba(30, 41, 59, 0.95)'
+              : '#ffffff';
+
+            const badgeStroke = hasUserReacted
+              ? isDarkFill
+                ? '#4ade80'
+                : '#10b981'
+              : isDarkFill
+              ? 'rgba(255, 255, 255, 0.20)'
+              : 'rgba(0, 0, 0, 0.12)';
+
+            const countColor = hasUserReacted
+              ? isDarkFill
+                ? '#86efac'
+                : '#065f46'
+              : isDarkFill
+              ? '#f8fafc'
+              : '#334155';
+
+            const emojiImg = isMirio
+              ? getCachedMirioReactionImage()
+              : getCachedAppleEmojiImage(emoji);
 
             return (
               <Group
@@ -372,11 +509,13 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
                   e.cancelBubble = true;
                   if (isLocked) return;
                   onToggleReaction?.(element.id, emoji);
+                  playReactionPopSound();
                 }}
                 onTap={(e) => {
                   e.cancelBubble = true;
                   if (isLocked) return;
                   onToggleReaction?.(element.id, emoji);
+                  playReactionPopSound();
                 }}
                 onMouseEnter={(e) => {
                   const stage = e.target.getStage();
@@ -389,68 +528,246 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
               >
                 <Rect
                   width={badgeWidth}
-                  height={22}
-                  fill={hasUserReacted ? '#f0fdf4' : '#ffffff'}
-                  stroke={hasUserReacted ? '#16a34a' : '#cbd5e1'}
+                  height={footerBadgesLayout.height}
+                  fill={badgeFill}
+                  stroke={badgeStroke}
                   strokeWidth={hasUserReacted ? 1.5 : 1}
                   cornerRadius={11}
                   shadowEnabled={shadowsEnabled}
-                  shadowColor="rgba(0,0,0,0.08)"
+                  shadowColor="rgba(0,0,0,0.12)"
                   shadowBlur={3}
                   shadowOffset={{ x: 0, y: 1 }}
                   perfectDrawEnabled={false}
                   shadowForStrokeEnabled={false}
                 />
-                {isMirio ? (
-                  <>
-                    {mirioImage ? (
-                      <KonvaImage
-                        image={mirioImage}
-                        x={6}
-                        y={4}
-                        width={14}
-                        height={14}
-                        cornerRadius={2}
-                        listening={false}
-                        perfectDrawEnabled={false}
-                      />
-                    ) : (
-                      <Rect
-                        x={6}
-                        y={4}
-                        width={14}
-                        height={14}
-                        fill={hasUserReacted ? '#86efac' : '#cbd5e1'}
-                        cornerRadius={7}
-                        listening={false}
-                      />
-                    )}
-                    <Text
-                      text={countStr}
-                      x={24}
-                      y={5}
-                      fontSize={11}
-                      fill={hasUserReacted ? '#15803d' : '#334155'}
-                      fontFamily="system-ui, -apple-system, sans-serif"
-                      fontStyle="bold"
-                      listening={false}
-                    />
-                  </>
-                ) : (
-                  <Text
-                    text={`${emoji} ${countStr}`}
+                {emojiImg ? (
+                  <KonvaImage
+                    image={emojiImg}
                     x={5}
-                    y={5}
-                    fontSize={11}
-                    fill={hasUserReacted ? '#15803d' : '#334155'}
-                    fontFamily="system-ui, -apple-system, sans-serif"
-                    fontStyle="bold"
+                    y={4}
+                    width={14}
+                    height={14}
+                    cornerRadius={isMirio ? 2 : 0}
+                    listening={false}
+                    perfectDrawEnabled={false}
+                  />
+                ) : (
+                  <Rect
+                    x={5}
+                    y={4}
+                    width={14}
+                    height={14}
+                    fill={hasUserReacted ? '#86efac' : 'transparent'}
+                    cornerRadius={isMirio ? 2 : 7}
                     listening={false}
                   />
                 )}
+                <Text
+                  text={countStr}
+                  x={22}
+                  y={4.5}
+                  fontSize={11}
+                  fill={countColor}
+                  fontFamily="system-ui, -apple-system, sans-serif"
+                  fontStyle="bold"
+                  listening={false}
+                />
               </Group>
             );
           })}
+
+          {/* Badge de Overflow (+N) que abre o painel detalhado de votos */}
+          {footerBadgesLayout.overflowCount > 0 && footerBadgesLayout.overflowX !== null && (
+            <Group
+              x={footerBadgesLayout.overflowX}
+              onClick={(e) => {
+                e.cancelBubble = true;
+                onOpenReactionPicker?.(
+                  element.id,
+                  {
+                    x: element.x + footerBadgesLayout.overflowX! + 13,
+                    y: element.y + height,
+                  },
+                  'overflow'
+                );
+              }}
+              onTap={(e) => {
+                e.cancelBubble = true;
+                onOpenReactionPicker?.(
+                  element.id,
+                  {
+                    x: element.x + footerBadgesLayout.overflowX! + 13,
+                    y: element.y + height,
+                  },
+                  'overflow'
+                );
+              }}
+              onMouseEnter={(e) => {
+                const stage = e.target.getStage();
+                if (stage) stage.container().style.cursor = 'pointer';
+              }}
+              onMouseLeave={(e) => {
+                const stage = e.target.getStage();
+                if (stage) stage.container().style.cursor = '';
+              }}
+            >
+              <Rect
+                width={26}
+                height={footerBadgesLayout.height}
+                fill={isDarkFill ? 'rgba(30, 41, 59, 0.95)' : '#ffffff'}
+                stroke={isDarkFill ? 'rgba(255, 255, 255, 0.20)' : 'rgba(0, 0, 0, 0.12)'}
+                strokeWidth={1}
+                cornerRadius={11}
+                shadowEnabled={shadowsEnabled}
+                shadowColor="rgba(0,0,0,0.10)"
+                shadowBlur={3}
+                shadowOffset={{ x: 0, y: 1 }}
+                perfectDrawEnabled={false}
+                shadowForStrokeEnabled={false}
+              />
+              <Text
+                text={`+${footerBadgesLayout.overflowCount}`}
+                x={0}
+                y={4.5}
+                width={26}
+                align="center"
+                fontSize={10}
+                fontStyle="bold"
+                fill={isDarkFill ? '#f8fafc' : '#475569'}
+                fontFamily="system-ui, -apple-system, sans-serif"
+                listening={false}
+              />
+            </Group>
+          )}
+
+          {/* Botão '+' integrado no final da fileira de badges para adicionar mais reações */}
+          {footerBadgesLayout.plusButtonX !== null && (
+            <Group
+              x={footerBadgesLayout.plusButtonX}
+              onClick={(e) => {
+                e.cancelBubble = true;
+                onOpenReactionPicker?.(
+                  element.id,
+                  {
+                    x: element.x + footerBadgesLayout.plusButtonX! + 11,
+                    y: element.y + height,
+                  },
+                  'picker'
+                );
+              }}
+              onTap={(e) => {
+                e.cancelBubble = true;
+                onOpenReactionPicker?.(
+                  element.id,
+                  {
+                    x: element.x + footerBadgesLayout.plusButtonX! + 11,
+                    y: element.y + height,
+                  },
+                  'picker'
+                );
+              }}
+              onMouseEnter={(e) => {
+                const stage = e.target.getStage();
+                if (stage) stage.container().style.cursor = 'pointer';
+              }}
+              onMouseLeave={(e) => {
+                const stage = e.target.getStage();
+                if (stage) stage.container().style.cursor = '';
+              }}
+            >
+              <Rect
+                width={22}
+                height={footerBadgesLayout.height}
+                fill={isDarkFill ? 'rgba(30, 41, 59, 0.95)' : '#ffffff'}
+                stroke={isDarkFill ? 'rgba(255, 255, 255, 0.20)' : 'rgba(0, 0, 0, 0.12)'}
+                strokeWidth={1}
+                cornerRadius={11}
+                shadowEnabled={shadowsEnabled}
+                shadowColor="rgba(0,0,0,0.10)"
+                shadowBlur={3}
+                shadowOffset={{ x: 0, y: 1 }}
+                perfectDrawEnabled={false}
+                shadowForStrokeEnabled={false}
+              />
+              <Text
+                text="+"
+                x={0}
+                y={2}
+                width={22}
+                align="center"
+                fontSize={13}
+                fontStyle="bold"
+                fill={isDarkFill ? '#94a3b8' : '#64748b'}
+                fontFamily="system-ui, -apple-system, sans-serif"
+                listening={false}
+              />
+            </Group>
+          )}
+        </Group>
+      )}
+
+      {/* Botão '+' discreto no hover quando o post-it NÃO tem nenhuma reação */}
+      {!hasReactions && isHoveredLocal && canEdit && (
+        <Group
+          x={8}
+          y={Math.round(height - 11)}
+          onClick={(e) => {
+            e.cancelBubble = true;
+            onOpenReactionPicker?.(
+              element.id,
+              {
+                x: element.x + 8 + 11,
+                y: element.y + height,
+              },
+              'picker'
+            );
+          }}
+          onTap={(e) => {
+            e.cancelBubble = true;
+            onOpenReactionPicker?.(
+              element.id,
+              {
+                x: element.x + 8 + 11,
+                y: element.y + height,
+              },
+              'picker'
+            );
+          }}
+          onMouseEnter={(e) => {
+            const stage = e.target.getStage();
+            if (stage) stage.container().style.cursor = 'pointer';
+          }}
+          onMouseLeave={(e) => {
+            const stage = e.target.getStage();
+            if (stage) stage.container().style.cursor = '';
+          }}
+        >
+          <Rect
+            width={24}
+            height={22}
+            fill={isDarkFill ? 'rgba(30, 41, 59, 0.92)' : 'rgba(255, 255, 255, 0.96)'}
+            stroke={isDarkFill ? 'rgba(255, 255, 255, 0.22)' : 'rgba(0, 0, 0, 0.14)'}
+            strokeWidth={1}
+            cornerRadius={11}
+            shadowEnabled={shadowsEnabled}
+            shadowColor="rgba(0,0,0,0.12)"
+            shadowBlur={3}
+            shadowOffset={{ x: 0, y: 1 }}
+            perfectDrawEnabled={false}
+            shadowForStrokeEnabled={false}
+          />
+          <Text
+            text="+"
+            x={0}
+            y={2}
+            width={24}
+            align="center"
+            fontSize={13}
+            fontStyle="bold"
+            fill={isDarkFill ? '#94a3b8' : '#64748b'}
+            fontFamily="system-ui, -apple-system, sans-serif"
+            listening={false}
+          />
         </Group>
       )}
 

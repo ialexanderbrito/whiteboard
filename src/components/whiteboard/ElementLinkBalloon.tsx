@@ -124,7 +124,7 @@ export const ElementLinkBalloon: React.FC<ElementLinkBalloonProps> = ({
       {links.length === 1 ? (
         /* Balão Pílula Simples para 1 Link (Miro Standard) */
         <div className="flex items-center gap-2 px-3 py-1.5 bg-popover/95 text-popover-foreground backdrop-blur-md rounded-full shadow-lg border border-border/80 text-xs">
-          <Globe className="size-3.5 text-blue-500 shrink-0" />
+          <Globe className="size-3.5 text-primary shrink-0" />
           
           <button
             type="button"
@@ -132,7 +132,7 @@ export const ElementLinkBalloon: React.FC<ElementLinkBalloonProps> = ({
             className="flex items-center gap-1.5 min-w-0 max-w-[200px] text-left hover:underline group"
             title={`Abrir ${links[0].url}`}
           >
-            <span className="font-semibold text-foreground truncate text-xs group-hover:text-blue-600 dark:group-hover:text-blue-400">
+            <span className="font-semibold text-foreground truncate text-xs group-hover:text-primary">
               {links[0].label || getDomainFromUrl(links[0].url)}
             </span>
             {links[0].label && (
@@ -147,7 +147,7 @@ export const ElementLinkBalloon: React.FC<ElementLinkBalloonProps> = ({
               size="sm"
               variant="default"
               onClick={(e) => handleOpen(links[0].url, e)}
-              className="h-6 px-2.5 text-[11px] font-semibold gap-1 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-xs"
+              className="h-6 px-2.5 text-[11px] font-semibold gap-1 bg-primary hover:bg-primary/90 text-primary-foreground rounded-full shadow-xs"
               title="Abrir página em nova aba"
             >
               <span>Abrir</span>
@@ -204,13 +204,13 @@ export const ElementLinkBalloon: React.FC<ElementLinkBalloonProps> = ({
         <div className="flex flex-col gap-1.5 p-2 bg-popover/95 text-popover-foreground backdrop-blur-md rounded-xl shadow-xl border border-border/80 text-xs min-w-[280px] max-w-[380px]">
           <div className="flex items-center justify-between px-1.5 pb-1 border-b border-border/60">
             <div className="flex items-center gap-1.5 font-semibold text-[11px] text-foreground">
-              <Globe className="size-3.5 text-blue-500" />
+              <Globe className="size-3.5 text-primary" />
               <span>Links no elemento ({links.length})</span>
             </div>
             <button
               type="button"
               onClick={handleOpenAll}
-              className="text-[10px] text-blue-600 dark:text-blue-400 font-medium hover:underline flex items-center gap-0.5"
+              className="text-[10px] text-primary font-medium hover:underline flex items-center gap-0.5"
             >
               <span>Abrir todos</span>
               <ExternalLink className="size-2.5" />
@@ -224,7 +224,7 @@ export const ElementLinkBalloon: React.FC<ElementLinkBalloonProps> = ({
                 className="flex items-center justify-between gap-2 p-1.5 rounded-lg hover:bg-muted/50 transition-colors group"
               >
                 <div className="flex items-center gap-2 min-w-0">
-                  <Globe className="size-3 text-muted-foreground group-hover:text-blue-500 shrink-0" />
+                  <Globe className="size-3 text-muted-foreground group-hover:text-primary shrink-0" />
                   <div className="min-w-0">
                     <p className="font-semibold text-xs text-foreground truncate leading-tight">
                       {linkItem.label || getDomainFromUrl(linkItem.url)}
@@ -240,7 +240,7 @@ export const ElementLinkBalloon: React.FC<ElementLinkBalloonProps> = ({
                     size="sm"
                     variant="default"
                     onClick={(e) => handleOpen(linkItem.url, e)}
-                    className="h-6 px-2 text-[10px] font-semibold gap-1 bg-blue-600 hover:bg-blue-700 text-white rounded-md"
+                    className="h-6 px-2 text-[10px] font-semibold gap-1 bg-primary hover:bg-primary/90 text-primary-foreground rounded-md"
                   >
                     <span>Abrir</span>
                     <ExternalLink className="size-2.5" />
