@@ -19,7 +19,7 @@ import {
   Lock,
   KeyRound,
   Users
-} from 'lucide-react';
+} from '@/components/ui/icons';
 import { useAuth } from '../context/AuthContext';
 import { boardService } from '../services/boardService';
 import type { Board } from '../types/board';
@@ -58,7 +58,6 @@ import {
 import { ThemeToggle } from '@/components/layout/ThemeToggle';
 import { BuyMeACoffeeModal } from '@/components/layout/BuyMeACoffeeModal';
 import { MirioLogo } from '@/components/layout/MirioLogo';
-import { CreateBoardModal } from '@/components/whiteboard/CreateBoardModal';
 import { BoardPasswordSettingsModal } from '@/components/whiteboard/BoardPasswordSettingsModal';
 import { BoardPermissionsModal } from '@/components/whiteboard/BoardPermissionsModal';
 import { 
@@ -66,8 +65,13 @@ import {
   getAdaptiveSnapshot, 
   saveAdaptiveSnapshot 
 } from '@/components/whiteboard/AdaptiveBoardSkeleton';
+import { BoardCardPreview } from '@/components/whiteboard/BoardCardPreview';
+import { QuickStartTemplatesStrip } from '@/components/whiteboard/QuickStartTemplatesStrip';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cleanBoardId, type CreateBoardOptions } from '@/services/boardService';
+import { elementService } from '@/services/elementService';
+import { SPRINT_TEMPLATES, generateTemplateElements, type SprintTemplate } from '@/utils/sprintTemplates';
+import type { CanvasElement } from '@/types/element';
 import { isBoardOwner } from '@/utils/permissions';
 import { CommandPalette } from '@/components/command/CommandPalette';
 import { KeyboardShortcutsModal } from '@/components/whiteboard/KeyboardShortcutsModal';
@@ -87,10 +91,11 @@ export const DashboardPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
 
   const [isCreating, setIsCreating] = useState(false);
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [creatingTemplateId, setCreatingTemplateId] = useState<string | null>(null);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+  const [isCoffeeModalOpen, setIsCoffeeModalOpen] = useState(false);
   const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
@@ -141,13 +146,50 @@ export const DashboardPage: React.FC = () => {
     setIsCreating(true);
     try {
       const boardId = await boardService.createBoard(options, currentUser);
-      setIsCreateModalOpen(false);
-      navigate(`/b/${boardId}`);
+      if (options.templateId) {
+        const tmpl = SPRINT_TEMPLATES.find((t) => t.id === options.templateId);
+        if (tmpl) {
+          const generated = generateTemplateElements(
+            tmpl,
+            { x: 88, y: 88 },
+            { uid: currentUser.uid, displayName: currentUser.displayName },
+            1
+          );
+          const now = Date.now();
+          const withIds: CanvasElement[] = generated.map((el, idx) => ({
+            ...el,
+            id: 'elem_' + Math.random().toString(36).substring(2, 11) + idx,
+            updatedAt: now,
+          }));
+          await elementService.batchAddElements(boardId, withIds);
+        }
+      }
+      navigate(options.templateId ? `/b/${boardId}?fit=1` : `/b/${boardId}`);
     } catch (e) {
       console.error('Erro ao criar quadro:', e);
     } finally {
       setIsCreating(false);
+      setCreatingTemplateId(null);
     }
+  };
+
+  const handleCreateBlankBoard = async () => {
+    if (!currentUser || isCreating) return;
+    setCreatingTemplateId('blank');
+    await handleConfirmCreateBoard({
+      title: 'Quadro sem título',
+      defaultPermission: 'edit',
+    });
+  };
+
+  const handleQuickCreateFromTemplate = async (template: SprintTemplate) => {
+    if (!currentUser || isCreating) return;
+    setCreatingTemplateId(template.id);
+    await handleConfirmCreateBoard({
+      title: template.shortTitle || template.title,
+      defaultPermission: 'edit',
+      templateId: template.id,
+    });
   };
 
   const handleConfirmDelete = async () => {
@@ -295,7 +337,10 @@ export const DashboardPage: React.FC = () => {
 
           <div className="flex items-center gap-2">
             {/* Botão Buy me a coffee */}
-            <BuyMeACoffeeModal />
+            <BuyMeACoffeeModal
+              open={isCoffeeModalOpen}
+              onOpenChange={setIsCoffeeModalOpen}
+            />
 
             {/* Alternador de Tema Claro / Escuro */}
             <ThemeToggle />
@@ -385,14 +430,23 @@ export const DashboardPage: React.FC = () => {
 
       {/* Conteúdo Principal do Workspace */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8 flex-1 w-full flex flex-col">
-        {/* Cabeçalho da Seção */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-6 border-b border-border">
+        {/* Faixa de Início Rápido com Templates por Perfil ("Comece algo novo") */}
+        <QuickStartTemplatesStrip
+          userName={currentUser?.displayName}
+          onCreateBlankBoard={handleCreateBlankBoard}
+          onQuickCreateFromTemplate={handleQuickCreateFromTemplate}
+          creatingTemplateId={creatingTemplateId}
+          isCreating={isCreating}
+        />
+
+        {/* Cabeçalho da Seção com Layout Fluido e Mobile-First */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 pb-6 border-b border-border">
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-lg font-semibold tracking-tight text-foreground">
+              <h1 className="text-lg sm:text-xl font-semibold tracking-tight text-foreground">
                 Quadros de Ideias
               </h1>
-              <Badge variant="secondary" className="text-xs font-mono min-w-6 flex items-center justify-center">
+              <Badge variant="secondary" className="text-xs font-mono min-w-6 flex items-center justify-center tabular-nums">
                 {isLoading ? (
                   <Skeleton className="h-3 w-3.5 rounded-xs" />
                 ) : (
@@ -400,62 +454,67 @@ export const DashboardPage: React.FC = () => {
                 )}
               </Badge>
             </div>
-            <p className="text-xs text-muted-foreground mt-0.5">
+            <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
               Espaço compartilhado para planejamento, retrospectivas ágeis e fluxos de trabalho.
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full md:w-auto">
             {/* Busca */}
-            <div className="relative w-full sm:w-64">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+            <div className="relative flex-1 sm:w-64 sm:flex-initial">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
               <Input
                 placeholder="Buscar quadro..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-8 pr-16 h-9 text-xs"
+                className="pl-8 pr-16 h-10 sm:h-9 text-xs"
               />
               <button
                 type="button"
                 onClick={() => setIsCommandPaletteOpen(true)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 px-1.5 py-0.5 rounded bg-muted/80 hover:bg-muted border border-border/80 text-[10px] font-mono font-bold text-muted-foreground hover:text-foreground transition-colors cursor-pointer select-none active:scale-[0.97]"
+                className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 px-1.5 py-0.5 rounded bg-muted/80 hover:bg-muted border border-border/80 text-[10px] font-mono font-bold text-muted-foreground hover:text-foreground transition-[background-color,color,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] cursor-pointer select-none active:scale-[0.97]"
                 title={`Abrir Paleta de Comandos (${isMac ? '⌘K' : 'Ctrl+K'})`}
               >
                 {isMac ? '⌘K' : 'Ctrl+K'}
               </button>
             </div>
 
-            {/* Alternador de Visualização Grid / Tabela com Persistência Imediata */}
-            <div className="flex items-center border border-border rounded-md p-0.5 bg-muted/30">
+            <div className="flex items-center justify-between sm:justify-end gap-2">
+              {/* Alternador de Visualização Grid / Tabela com Persistência Imediata */}
+              <div className="flex items-center border border-border rounded-md p-0.5 bg-muted/30">
+                <Button
+                  variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
+                  size="icon-sm"
+                  onClick={() => handleToggleViewMode('grid')}
+                  className="h-8 sm:h-7 px-2.5 sm:px-0 sm:w-7 gap-1.5 rounded-sm active:scale-[0.97] transition-transform duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] cursor-pointer"
+                  title="Visualização em Grade"
+                >
+                  <LayoutGrid className="size-3.5" />
+                  <span className="text-[11px] font-medium sm:hidden">Grade</span>
+                </Button>
+                <Button
+                  variant={viewMode === 'table' ? 'secondary' : 'ghost'}
+                  size="icon-sm"
+                  onClick={() => handleToggleViewMode('table')}
+                  className="h-8 sm:h-7 px-2.5 sm:px-0 sm:w-7 gap-1.5 rounded-sm active:scale-[0.97] transition-transform duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] cursor-pointer"
+                  title="Visualização em Lista"
+                >
+                  <List className="size-3.5" />
+                  <span className="text-[11px] font-medium sm:hidden">Lista</span>
+                </Button>
+              </div>
+
+              {/* Botão Novo Quadro (Criação Instantânea em 1 Clique) */}
               <Button
-                variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
-                size="icon-sm"
-                onClick={() => handleToggleViewMode('grid')}
-                className="size-7 rounded-sm active:scale-[0.97] transition-transform cursor-pointer"
-                title="Visualização em Grade"
+                type="button"
+                disabled={isCreating}
+                onClick={handleCreateBlankBoard}
+                className="gap-1.5 h-10 sm:h-9 px-3.5 text-xs font-medium shrink-0 shadow-xs active:scale-[0.97] transition-transform duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] flex-1 sm:flex-initial cursor-pointer"
               >
-                <LayoutGrid className="size-3.5" />
-              </Button>
-              <Button
-                variant={viewMode === 'table' ? 'secondary' : 'ghost'}
-                size="icon-sm"
-                onClick={() => handleToggleViewMode('table')}
-                className="size-7 rounded-sm active:scale-[0.97] transition-transform cursor-pointer"
-                title="Visualização em Lista"
-              >
-                <List className="size-3.5" />
+                <Plus className="size-4" />
+                <span>{creatingTemplateId === 'blank' ? 'Criando...' : 'Novo Quadro'}</span>
               </Button>
             </div>
-
-            {/* Botão Novo Quadro */}
-            <Button
-              type="button"
-              onClick={() => setIsCreateModalOpen(true)}
-              className="gap-1.5 h-9 text-xs font-medium shrink-0 shadow-xs active:scale-[0.97]"
-            >
-              <Plus className="size-4" />
-              <span>Novo Quadro</span>
-            </Button>
           </div>
         </div>
 
@@ -473,8 +532,9 @@ export const DashboardPage: React.FC = () => {
             </p>
             <Button
               type="button"
-              onClick={() => setIsCreateModalOpen(true)}
-              className="gap-1.5 h-8 text-xs font-medium active:scale-[0.97]"
+              disabled={isCreating}
+              onClick={handleCreateBlankBoard}
+              className="gap-1.5 h-8 text-xs font-medium active:scale-[0.97] cursor-pointer"
             >
               <Plus className="size-3.5" />
               <span>Criar Primeiro Quadro</span>
@@ -494,54 +554,43 @@ export const DashboardPage: React.FC = () => {
             </Button>
           </div>
         ) : viewMode === 'grid' ? (
-          /* Visualização em Grade Minimalista (Cards shadcn) */
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {filteredBoards.map((b) => {
+          /* Visualização em Grade Arquitetônica com Mini-Mapa em Tempo Real e Composições Táteis */
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5">
+            {filteredBoards.map((b, idx) => {
               const isOwner = isBoardOwner(b, currentUser);
               const canManage = isOwner;
+              const staggerDelay = `${Math.min(idx, 10) * 35}ms`;
+              const ownerInitial = (b.ownerName || 'U').charAt(0).toUpperCase();
 
               return (
                 <Card
                   key={b.id}
                   onClick={() => navigate(`/b/${cleanBoardId(b.id)}`)}
-                  className="group relative cursor-pointer border-border bg-card hover:border-foreground/20 hover:shadow-sm transition-all flex flex-col justify-between overflow-hidden"
+                  style={{ animationDelay: staggerDelay }}
+                  className="group relative cursor-pointer border-border/80 bg-card hover:border-foreground/25 hover:shadow-md transition-[transform,border-color,box-shadow] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] [@media(hover:hover)_and_(pointer:fine)]:hover:-translate-y-0.5 active:scale-[0.99] flex flex-col justify-between overflow-hidden animate-in fade-in duration-200"
                 >
-                  {/* Visual Header do Card (Canvas Miniature Wireframe sutil) */}
-                  <div className="h-28 bg-muted/30 border-b border-border/60 flex items-center justify-center relative overflow-hidden group-hover:bg-muted/50 transition-colors">
-                    {/* Subtle Canvas Dot Grid */}
-                    <div
-                      className="absolute inset-0 opacity-[0.15] dark:opacity-[0.25]"
-                      style={{
-                        backgroundImage: 'radial-gradient(currentColor 1px, transparent 1px)',
-                        backgroundSize: '12px 12px',
-                      }}
-                    />
+                  {/* Visual Header do Card (Mini-Mapa SVG Real ou Composição Arquitetônica Viva) */}
+                  <div className="relative">
+                    <BoardCardPreview board={b} />
 
-                    {/* Minimalist blueprint silhouette */}
-                    <div className="relative z-1 flex items-center gap-2 opacity-40 group-hover:opacity-75 transition-opacity">
-                      <div className="size-8 rounded border border-border bg-background shadow-xs flex items-center justify-center">
-                        <span className="size-2 rounded-full bg-foreground/40" />
-                      </div>
-                      <div className="size-8 rounded border border-border bg-background shadow-xs flex items-center justify-center">
-                        <div className="w-4 h-1 rounded bg-foreground/40" />
-                      </div>
-                    </div>
-
-                    {/* Menu de Ações no Canto do Card (Apenas para o proprietário; convidados não podem apagar nem compartilhar) */}
+                    {/* Menu de Ações no Canto do Card (Sempre acessível em touch, reveal suave em desktop) */}
                     {canManage && (
-                      <div className="absolute top-2 right-2 z-10">
+                      <div className="absolute top-2.5 right-2.5 z-10">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
                             <Button
                               variant="ghost"
                               size="icon-sm"
-                              className="size-7 rounded-md bg-background/80 backdrop-blur-xs text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity border border-border/40 active:scale-[0.97] cursor-pointer"
+                              className="size-7 rounded-md bg-background/85 backdrop-blur-xs text-muted-foreground hover:text-foreground opacity-100 [@media(hover:hover)_and_(pointer:fine)]:opacity-0 [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100 transition-[opacity,transform,color,background-color] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] border border-border/50 shadow-2xs active:scale-[0.97] cursor-pointer"
                               title="Mais opções do quadro"
                             >
                               <MoreHorizontal className="size-3.5" />
                             </Button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-52 animate-in zoom-in-95 duration-150">
+                          <DropdownMenuContent
+                            align="end"
+                            className="w-52 origin-(--radix-dropdown-menu-content-transform-origin) animate-in fade-in zoom-in-95 duration-150 ease-[cubic-bezier(0.23,1,0.32,1)]"
+                          >
                             <DropdownMenuItem
                               onClick={(e) => handleStartRename(e, b)}
                               className="gap-2 text-xs cursor-pointer"
@@ -627,7 +676,7 @@ export const DashboardPage: React.FC = () => {
                   </div>
 
                   {/* Conteúdo do Card */}
-                  <CardContent className="p-3.5 flex flex-col justify-between gap-3">
+                  <CardContent className="p-3.5 sm:p-4 flex flex-col justify-between gap-3 flex-1">
                     <div>
                       {inlineEditingBoardId === b.id ? (
                         <div 
@@ -665,7 +714,7 @@ export const DashboardPage: React.FC = () => {
                         </div>
                       ) : (
                         <div className="flex items-start justify-between gap-1.5">
-                          <h4 className="text-xs font-semibold text-foreground truncate group-hover:text-primary transition-colors flex-1">
+                          <h4 className="text-xs sm:text-[13px] font-semibold text-foreground truncate group-hover:text-primary transition-colors flex-1">
                             {b.title}
                           </h4>
                           {b.isPasswordProtected && (
@@ -679,7 +728,7 @@ export const DashboardPage: React.FC = () => {
                         </div>
                       )}
                       <p className="text-[11px] text-muted-foreground flex items-center gap-1 mt-1">
-                        <Clock className="size-3" />
+                        <Clock className="size-3 shrink-0" />
                         <span>{formatDate(b.updatedAt)}</span>
                         {b.defaultPermission === 'none' && (
                           <>
@@ -690,15 +739,21 @@ export const DashboardPage: React.FC = () => {
                       </p>
                     </div>
 
-                    <div className="flex items-center justify-between pt-2 border-t border-border/50 text-[11px] text-muted-foreground">
-                      <div className="flex items-center gap-1.5 truncate max-w-[140px]">
-                        <span className="truncate">{b.ownerName}</span>
+                    <div className="flex items-center justify-between pt-2.5 border-t border-border/50 text-[11px] text-muted-foreground">
+                      <div className="flex items-center gap-1.5 min-w-0 pr-2">
+                        <span
+                          className="size-4 rounded-full bg-muted border border-border/80 text-[9px] font-semibold text-foreground/80 flex items-center justify-center shrink-0"
+                          aria-hidden="true"
+                        >
+                          {ownerInitial}
+                        </span>
+                        <span className="truncate max-w-[105px]">{b.ownerName}</span>
                         {isOwner ? (
-                          <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 font-normal">
+                          <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 font-normal shrink-0">
                             Meu
                           </Badge>
                         ) : (
-                          <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4 font-normal">
+                          <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4 font-normal shrink-0">
                             Compartilhado
                           </Badge>
                         )}
@@ -708,7 +763,7 @@ export const DashboardPage: React.FC = () => {
                           variant="ghost"
                           size="icon-sm"
                           onClick={(e) => handleCopyLink(e, b.id)}
-                          className="size-6 text-muted-foreground hover:text-foreground rounded cursor-pointer"
+                          className="size-6 text-muted-foreground hover:text-foreground rounded active:scale-[0.95] transition-[color,background-color,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] cursor-pointer shrink-0"
                           title="Copiar link"
                         >
                           {copiedId === b.id ? (
@@ -725,7 +780,7 @@ export const DashboardPage: React.FC = () => {
                             e.stopPropagation();
                             navigate(`/b/${cleanBoardId(b.id)}`);
                           }}
-                          className="h-6 px-2 text-[11px] gap-1 text-primary hover:text-primary hover:bg-primary/10 rounded font-medium cursor-pointer"
+                          className="h-6 px-2 text-[11px] gap-1 text-primary hover:text-primary hover:bg-primary/10 rounded font-medium active:scale-[0.97] transition-[color,background-color,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] cursor-pointer shrink-0"
                           title="Entrar no quadro"
                         >
                           <span>Entrar</span>
@@ -985,17 +1040,6 @@ export const DashboardPage: React.FC = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      {/* Modal de Criação e Configuração de Novo Quadro */}
-      {currentUser && (
-        <CreateBoardModal
-          open={isCreateModalOpen}
-          onOpenChange={setIsCreateModalOpen}
-          currentUser={currentUser}
-          onCreateBoard={handleConfirmCreateBoard}
-          isCreating={isCreating}
-        />
-      )}
-
       {/* Paleta de Comandos Global (Cmd+K / Ctrl+K) */}
       <CommandPalette
         open={isCommandPaletteOpen}
@@ -1003,8 +1047,26 @@ export const DashboardPage: React.FC = () => {
         dashboardContext={{
           boards,
           isAnonymous: currentUser?.isAnonymous,
-          onCreateBoard: () => setIsCreateModalOpen(true),
+          onCreateBoard: handleCreateBlankBoard,
+          onCreateFromTemplate: handleQuickCreateFromTemplate,
           onOpenEditProfile: () => setIsEditProfileOpen(true),
+          onOpenCoffee: () => setIsCoffeeModalOpen(true),
+          onOpenBoardPermissions: boards.some((b) => isBoardOwner(b, currentUser))
+            ? (b) => {
+                const target = isBoardOwner(b, currentUser)
+                  ? b
+                  : boards.find((item) => isBoardOwner(item, currentUser)) || null;
+                setPermissionsModalBoard(target);
+              }
+            : undefined,
+          onOpenBoardPassword: boards.some((b) => isBoardOwner(b, currentUser))
+            ? (b) => {
+                const target = isBoardOwner(b, currentUser)
+                  ? b
+                  : boards.find((item) => isBoardOwner(item, currentUser)) || null;
+                setPasswordModalBoard(target);
+              }
+            : undefined,
           onToggleViewMode: () => {
             const next = viewMode === 'grid' ? 'table' : 'grid';
             handleToggleViewMode(next);
