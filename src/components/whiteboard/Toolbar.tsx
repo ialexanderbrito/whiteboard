@@ -28,7 +28,8 @@ import {
   HelpCircle,
   Laser,
   Minus,
-  Plus
+  Plus,
+  LayoutTemplate
 } from '@/components/ui/icons';
 import type { ToolType } from '../../types/element';
 import { STICKY_COLORS, SHAPE_QUICK_SWATCHES } from '../../utils/colors';
@@ -76,6 +77,8 @@ interface ToolbarProps {
   position?: 'left' | 'bottom';
   // Central de Ajuda & Atalhos
   onOpenShortcuts?: () => void;
+  // Templates de Sprint (Padrão Miro / FigJam)
+  onOpenTemplates?: () => void;
 }
 
 const PEN_COLORS = [
@@ -159,6 +162,7 @@ export const Toolbar: React.FC<ToolbarProps> = React.memo(({
   canCommentOnly = false,
   position = 'left',
   onOpenShortcuts,
+  onOpenTemplates,
 }) => {
   const [activePicker, setActivePicker] = useState<'sticky' | 'pen' | 'shapes' | null>(null);
   const [currentShape, setCurrentShape] = useState<ToolType>('rect');
@@ -773,6 +777,28 @@ export const Toolbar: React.FC<ToolbarProps> = React.memo(({
               <p className="font-medium text-xs">Moldura <span className="opacity-60 text-[10px]">(F)</span></p>
             </TooltipContent>
           </Tooltip>
+
+          {/* Templates de Sprint e Frameworks (Padrão Miro & FigJam na barra de ferramentas) */}
+          {onOpenTemplates && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActivePicker(null);
+                    onOpenTemplates();
+                  }}
+                  className="size-8 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors flex items-center justify-center active:scale-[0.98]"
+                  aria-label="Inserir Templates de Sprint"
+                >
+                  <LayoutTemplate className="size-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side={tooltipSide}>
+                <p className="font-medium text-xs">Templates de Sprint <span className="opacity-60 text-[10px]">(⌘K)</span></p>
+              </TooltipContent>
+            </Tooltip>
+          )}
           </>
           )}
           </>
