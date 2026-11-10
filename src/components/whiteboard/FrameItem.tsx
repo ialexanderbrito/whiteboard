@@ -2,6 +2,7 @@ import React, { useRef } from 'react';
 import { Group, Rect, Text } from 'react-konva';
 import type Konva from 'konva';
 import type { CanvasElement } from '../../types/element';
+import { isCoarseOrMobileViewport } from '../../utils/viewport';
 
 interface FrameItemProps {
   element: CanvasElement;
@@ -118,6 +119,7 @@ export const FrameItem: React.FC<FrameItemProps> = React.memo(({
           height={28}
           fill={themeColor}
           cornerRadius={[8, 8, 0, 0]}
+          shadowEnabled={!isCoarseOrMobileViewport()}
           shadowColor="rgba(0,0,0,0.12)"
           shadowBlur={4}
           shadowOffset={{ x: 0, y: 1 }}

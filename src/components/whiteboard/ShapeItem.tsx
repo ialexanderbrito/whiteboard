@@ -4,6 +4,7 @@ import type Konva from 'konva';
 import type { CanvasElement } from '../../types/element';
 import { getContrastTextColor } from '../../utils/colors';
 import { extractAllLinks, stripMarkdownLinks, layoutFormattedWords, normalizeUrl } from '../../utils/textLinks';
+import { isCoarseOrMobileViewport } from '../../utils/viewport';
 
 interface ShapeItemProps {
   element: CanvasElement;
@@ -115,6 +116,7 @@ export const ShapeItem: React.FC<ShapeItemProps> = React.memo(({
   };
 
   const renderShapeNode = () => {
+    const shadowsEnabled = !isCoarseOrMobileViewport();
     if (type === 'circle') {
       return (
         <Circle
@@ -122,6 +124,7 @@ export const ShapeItem: React.FC<ShapeItemProps> = React.memo(({
           fill={fill}
           stroke={strokeColor}
           strokeWidth={actualStrokeWidth}
+          shadowEnabled={shadowsEnabled}
           shadowColor="rgba(0,0,0,0.06)"
           shadowBlur={6}
           shadowOffset={{ x: 0, y: 2 }}
@@ -140,6 +143,7 @@ export const ShapeItem: React.FC<ShapeItemProps> = React.memo(({
           fill={fill}
           stroke={strokeColor}
           strokeWidth={actualStrokeWidth}
+          shadowEnabled={shadowsEnabled}
           shadowColor="rgba(0,0,0,0.06)"
           shadowBlur={6}
           shadowOffset={{ x: 0, y: 2 }}
@@ -158,6 +162,7 @@ export const ShapeItem: React.FC<ShapeItemProps> = React.memo(({
           fill={fill}
           stroke={strokeColor}
           strokeWidth={actualStrokeWidth}
+          shadowEnabled={shadowsEnabled}
           shadowColor="rgba(0,0,0,0.06)"
           shadowBlur={6}
           shadowOffset={{ x: 0, y: 2 }}
@@ -181,6 +186,7 @@ export const ShapeItem: React.FC<ShapeItemProps> = React.memo(({
           fill={fill}
           stroke={strokeColor}
           strokeWidth={actualStrokeWidth}
+          shadowEnabled={shadowsEnabled}
           shadowColor="rgba(0,0,0,0.06)"
           shadowBlur={6}
           shadowOffset={{ x: 0, y: 2 }}
@@ -199,6 +205,7 @@ export const ShapeItem: React.FC<ShapeItemProps> = React.memo(({
         cornerRadius={6}
         stroke={strokeColor}
         strokeWidth={actualStrokeWidth}
+        shadowEnabled={shadowsEnabled}
         shadowColor="rgba(0,0,0,0.06)"
         shadowBlur={6}
         shadowOffset={{ x: 0, y: 2 }}

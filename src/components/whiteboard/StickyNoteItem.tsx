@@ -4,6 +4,7 @@ import type Konva from 'konva';
 import type { CanvasElement } from '../../types/element';
 import { extractAllLinks, stripMarkdownLinks, layoutFormattedWords, normalizeUrl } from '../../utils/textLinks';
 import { getContrastTextColor } from '../../utils/colors';
+import { isCoarseOrMobileViewport } from '../../utils/viewport';
 
 interface StickyNoteItemProps {
   element: CanvasElement;
@@ -44,6 +45,7 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
   const width = element.width || 180;
   const height = element.height || 180;
   const fill = element.fill || '#fff9b1';
+  const shadowsEnabled = !isCoarseOrMobileViewport();
 
   // Contraste automático da fonte com base na luminância do post-it ou cor personalizada do usuário
   const defaultTextColor = getContrastTextColor(fill, '#0f172a', '#ffffff');
@@ -179,6 +181,7 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
         height={height}
         fill={fill}
         cornerRadius={3}
+        shadowEnabled={shadowsEnabled}
         shadowColor="rgba(0, 0, 0, 0.14)"
         shadowBlur={isSelected ? 12 : 6}
         shadowOffset={{ x: 1, y: isSelected ? 4 : 2 }}
@@ -318,6 +321,7 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
                   stroke={hasUserReacted ? '#16a34a' : '#cbd5e1'}
                   strokeWidth={hasUserReacted ? 1.5 : 1}
                   cornerRadius={11}
+                  shadowEnabled={shadowsEnabled}
                   shadowColor="rgba(0,0,0,0.08)"
                   shadowBlur={3}
                   shadowOffset={{ x: 0, y: 1 }}

@@ -3,6 +3,7 @@ import { Group, Image as KonvaImage, Rect, Text } from 'react-konva';
 import type Konva from 'konva';
 import type { CanvasElement } from '../../types/element';
 import { getAppleEmojiUrl } from '../../utils/appleEmoji';
+import { isCoarseOrMobileViewport } from '../../utils/viewport';
 
 interface StickerItemProps {
   element: CanvasElement;
@@ -60,7 +61,16 @@ export const StickerItem: React.FC<StickerItemProps> = React.memo(({
       if (isMounted) setImage(img);
     };
     img.onerror = () => {
-      console.warn('Falha ao carregar imagem do sticker:', resolvedSrc);
+      // Caso o servidor externo não envie cabeçalhos CORS, tenta carregar sem crossOrigin
+      const fallbackImg = new window.Image();
+      fallbackImg.src = resolvedSrc;
+      fallbackImg.onload = () => {
+        stickerImageCache.set(resolvedSrc, fallbackImg);
+        if (isMounted) setImage(fallbackImg);
+      };
+      fallbackImg.onerror = () => {
+        console.warn('Falha ao carregar imagem do sticker:', resolvedSrc);
+      };
     };
     return () => {
       isMounted = false;
@@ -148,6 +158,7 @@ export const StickerItem: React.FC<StickerItemProps> = React.memo(({
           width={width}
           height={height}
           cornerRadius={8}
+          shadowEnabled={!isCoarseOrMobileViewport()}
           shadowColor="rgba(0, 0, 0, 0.12)"
           shadowBlur={isSelected ? 12 : 4}
           shadowOffset={{ x: 0, y: 2 }}
@@ -246,6 +257,7 @@ export const StickerItem: React.FC<StickerItemProps> = React.memo(({
             height={20}
             fill="#2563eb"
             cornerRadius={4}
+            shadowEnabled={!isCoarseOrMobileViewport()}
             shadowColor="rgba(0, 0, 0, 0.25)"
             shadowBlur={4}
             shadowOffsetY={1}
