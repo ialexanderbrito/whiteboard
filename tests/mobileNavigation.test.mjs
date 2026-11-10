@@ -147,3 +147,30 @@ test('Mobile and readOnly performance optimizations are wired into CanvasGrid, W
     'BoardPage should provide Fit-to-Content on mobile'
   );
 });
+
+test('MobileBoardNavbar and MobileReadOnlyDrawer implement floating HUD, gesture guide, and desktop handoff', () => {
+  const navbarCode = fs.readFileSync(
+    path.resolve('src/components/whiteboard/MobileBoardNavbar.tsx'),
+    'utf8'
+  );
+  const drawerCode = fs.readFileSync(
+    path.resolve('src/components/whiteboard/MobileReadOnlyDrawer.tsx'),
+    'utf8'
+  );
+
+  // Floating HUD with safe-area-inset-top, back button on left, fit-to-content, and share/copy handoff
+  assert.ok(
+    navbarCode.includes('env(safe-area-inset-top)') &&
+      navbarCode.includes('onOpenMobileGuide') &&
+      navbarCode.includes('onFitToContent'),
+    'MobileBoardNavbar should respect safe-area-inset-top and expose guide + fit-to-content triggers'
+  );
+
+  // Drawer includes 3-column gesture strip, cross-device handoff, and Emil Kowalski tactile/blur transitions
+  assert.ok(
+    drawerCode.includes('grid-cols-3') &&
+      drawerCode.includes('Enviar p/ PC') &&
+      drawerCode.includes('blur(2px)'),
+    'MobileReadOnlyDrawer should display 3-column gesture strip, PC handoff CTA, and blur-masked state crossfade'
+  );
+});
