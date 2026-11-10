@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import QRCode from 'qrcode';
-import { Coffee, Copy, Check, QrCode } from 'lucide-react';
+import { Coffee, Copy, Check, QrCode } from '@/components/ui/icons';
 import {
   Dialog,
   DialogContent,
@@ -15,18 +15,40 @@ import { generatePixPayload } from '@/utils/pix';
 
 const PIX_KEY = 'pix@ialexanderbrito.dev';
 
-interface BuyMeACoffeeModalProps {
+export interface BuyMeACoffeeModalProps {
   trigger?: React.ReactNode;
   className?: string;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  hideTrigger?: boolean;
 }
 
-export const BuyMeACoffeeModal: React.FC<BuyMeACoffeeModalProps> = ({ trigger, className }) => {
-  const [open, setOpen] = useState(false);
-  const [amount, setAmount] = useState<number | undefined>(10);
+const PRESETS = [
+  { label: 'R$ 5', value: 5 },
+  { label: 'R$ 15', value: 15 },
+  { label: 'R$ 30', value: 30 },
+  { label: 'Livre', value: undefined },
+] as const;
+
+export const BuyMeACoffeeModal: React.FC<BuyMeACoffeeModalProps> = ({
+  trigger,
+  className,
+  open: controlledOpen,
+  onOpenChange: setControlledOpen,
+  hideTrigger = false,
+}) => {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isControlled = controlledOpen !== undefined;
+  const open = isControlled ? controlledOpen : internalOpen;
+  const setOpen = isControlled ? (setControlledOpen || (() => {})) : setInternalOpen;
+
+  const [amount, setAmount] = useState<number | undefined>(15);
   const [customAmountText, setCustomAmountText] = useState('');
+  const [isCustomMode, setIsCustomMode] = useState(false);
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
   const [copiedPayload, setCopiedPayload] = useState(false);
 
+  // Geração do QR Code dinâmico conforme o valor muda
   useEffect(() => {
     const payload = generatePixPayload({
       pixKey: PIX_KEY,
@@ -34,7 +56,7 @@ export const BuyMeACoffeeModal: React.FC<BuyMeACoffeeModalProps> = ({ trigger, c
     });
 
     QRCode.toDataURL(payload, {
-      width: 260,
+      width: 240,
       margin: 1,
       color: {
         dark: '#09090b',
@@ -45,7 +67,7 @@ export const BuyMeACoffeeModal: React.FC<BuyMeACoffeeModalProps> = ({ trigger, c
       .catch((err) => console.error('Erro ao gerar QRCode:', err));
   }, [amount]);
 
-  const handleCopyPayload = async () => {
+  const handleCopyCode = useCallback(async () => {
     try {
       const payload = generatePixPayload({
         pixKey: PIX_KEY,
@@ -57,14 +79,21 @@ export const BuyMeACoffeeModal: React.FC<BuyMeACoffeeModalProps> = ({ trigger, c
     } catch (e) {
       console.error(e);
     }
-  };
+  }, [amount]);
 
-  const handleSelectPreset = (val?: number) => {
-    setAmount(val);
-    setCustomAmountText('');
-  };
+  const handleSelectPreset = useCallback((val?: number) => {
+    if (val === undefined) {
+      setIsCustomMode(true);
+      setAmount(undefined);
+      setCustomAmountText('');
+    } else {
+      setIsCustomMode(false);
+      setAmount(val);
+      setCustomAmountText('');
+    }
+  }, []);
 
-  const handleCustomChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCustomChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value.replace(/[^0-9.]/g, '');
     setCustomAmountText(raw);
     const num = parseFloat(raw);
@@ -73,57 +102,58 @@ export const BuyMeACoffeeModal: React.FC<BuyMeACoffeeModalProps> = ({ trigger, c
     } else {
       setAmount(undefined);
     }
-  };
+  }, []);
+
+  const defaultTrigger = (
+    <Button
+      variant="outline"
+      size="sm"
+      className={`group h-8 gap-2 px-2.5 text-xs font-medium rounded-lg border-border/80 bg-background/80 dark:bg-card/80 backdrop-blur-md shadow-2xs hover:bg-muted/80 active:scale-[0.97] transition-all duration-150 cursor-pointer ${className || ''}`}
+    >
+      <div className="flex size-4 items-center justify-center rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 group-hover:scale-105 transition-transform duration-150">
+        <Coffee className="size-3" />
+      </div>
+      <span className="text-foreground">Apoiar</span>
+      <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+        PIX
+      </span>
+    </Button>
+  );
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {trigger ? (
-          trigger
-        ) : (
-          <Button
-            variant="outline"
-            size="sm"
-            className={`group h-8 gap-2 px-2.5 text-xs font-medium rounded-lg border-border/80 bg-background/80 dark:bg-card/80 backdrop-blur-md shadow-xs hover:bg-muted/80 hover:border-border active:scale-[0.98] transition-all ${className || ''}`}
-          >
-            <div className="flex size-4 items-center justify-center rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 group-hover:bg-amber-500/20 group-hover:scale-110 transition-all">
-              <Coffee className="size-3" />
-            </div>
-            <span className="text-foreground">Apoiar</span>
-            <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-              PIX
-            </span>
-          </Button>
-        )}
-      </DialogTrigger>
+      {!hideTrigger && (
+        <DialogTrigger asChild>
+          {trigger || defaultTrigger}
+        </DialogTrigger>
+      )}
 
-      <DialogContent className="max-w-xs p-5">
+      <DialogContent className="max-w-[320px] p-5 gap-3.5">
         <DialogHeader className="text-center sm:text-center items-center space-y-1">
-          <div className="flex size-9 items-center justify-center rounded-md border border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400 mb-0.5 shadow-xs">
+          <div className="flex size-8 items-center justify-center rounded-lg border border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400 mb-0.5 shadow-2xs">
             <Coffee className="size-4" />
           </div>
-          <DialogTitle className="text-base font-semibold tracking-tight">
+          <DialogTitle className="text-sm font-semibold tracking-tight text-foreground">
             Apoiar o Mirio via PIX
           </DialogTitle>
-          <DialogDescription className="text-xs text-muted-foreground">
-            Qualquer valor ajuda a manter os servidores e a evolução contínua do projeto.
+          <DialogDescription className="text-xs text-muted-foreground leading-normal">
+            Ajude a manter os servidores ativos e o projeto em evolução contínua.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-3.5 my-1">
-          {/* Presets de Valor em Botões Segmentados */}
-          <div className="grid grid-cols-4 gap-1 p-0.5 bg-muted/50 rounded-md border border-border">
-            {[5, 10, 25, undefined].map((val) => {
-              const isSelected = amount === val && !customAmountText;
-              const label = val === undefined ? 'Livre' : `R$ ${val}`;
+        <div className="space-y-3">
+          {/* Segmented Control Minimalista (Emil Kowalski) */}
+          <div className="grid grid-cols-4 gap-1 p-0.5 bg-muted/60 rounded-lg border border-border/70">
+            {PRESETS.map(({ label, value }) => {
+              const isSelected = isCustomMode ? value === undefined : amount === value;
               return (
                 <button
                   key={label}
                   type="button"
-                  onClick={() => handleSelectPreset(val)}
-                  className={`h-7 text-xs font-medium rounded transition-all active:scale-[0.98] ${
+                  onClick={() => handleSelectPreset(value)}
+                  className={`h-7 text-xs font-medium rounded-md transition-all duration-150 active:scale-[0.97] cursor-pointer ${
                     isSelected
-                      ? 'bg-background text-foreground shadow-xs font-semibold'
+                      ? 'bg-background text-foreground shadow-2xs font-semibold'
                       : 'text-muted-foreground hover:text-foreground'
                   }`}
                 >
@@ -133,60 +163,60 @@ export const BuyMeACoffeeModal: React.FC<BuyMeACoffeeModalProps> = ({ trigger, c
             })}
           </div>
 
-          {/* Campo para valor customizado se quiser valor livre */}
-          {amount === undefined && (
-            <div className="flex items-center gap-1.5 max-w-[140px] mx-auto animate-in fade-in-0 zoom-in-95 duration-100">
-              <span className="text-xs font-mono text-muted-foreground">R$</span>
+          {/* Input de Valor Livre quando ativo */}
+          {isCustomMode && (
+            <div className="flex items-center gap-1.5 max-w-[130px] mx-auto animate-in fade-in-0 duration-150">
+              <span className="text-xs font-mono font-medium text-muted-foreground">R$</span>
               <Input
                 type="text"
                 autoFocus
-                placeholder="Valor..."
+                placeholder="0,00"
                 value={customAmountText}
                 onChange={handleCustomChange}
-                className="h-7 text-xs text-center font-mono"
+                className="h-7 text-xs text-center font-mono font-medium bg-background"
               />
             </div>
           )}
 
           {/* QR Code Container Limpo e Centralizado */}
-          <div className="flex flex-col items-center justify-center p-3 rounded-md border border-border bg-muted/20">
-            {qrCodeUrl ? (
-              <div className="p-2.5 bg-white rounded-md border border-border shadow-xs">
+          <div className="flex flex-col items-center justify-center p-2.5 rounded-xl border border-border/80 bg-muted/20">
+            <div className="p-2 bg-white rounded-lg border border-border/60 shadow-2xs">
+              {qrCodeUrl ? (
                 <img
                   src={qrCodeUrl}
                   alt="QR Code Pix"
-                  className="size-44 object-contain"
+                  className="size-36 object-contain select-none"
                 />
-              </div>
-            ) : (
-              <div className="size-44 flex items-center justify-center">
-                <QrCode className="size-8 text-muted-foreground animate-pulse" />
-              </div>
-            )}
+              ) : (
+                <div className="size-36 flex items-center justify-center">
+                  <QrCode className="size-7 text-muted-foreground animate-pulse" />
+                </div>
+              )}
+            </div>
 
-            <p className="text-[11px] text-muted-foreground text-center mt-2.5 font-medium">
+            <p className="text-[11px] font-mono text-muted-foreground text-center mt-2">
               {amount && amount > 0
-                ? `Valor selecionado: R$ ${amount.toFixed(2)}`
-                : 'Escaneie no app do seu banco e defina a quantia desejada'}
+                ? `R$ ${amount.toFixed(2)}`
+                : 'Definir no app bancário'}
             </p>
           </div>
 
-          {/* Botão de Cópia Pix Copia e Cola */}
+          {/* Botão de Cópia no padrão exato do Mirio (ShareModal / CreateBoardModal) */}
           <Button
             type="button"
             size="sm"
-            onClick={handleCopyPayload}
-            className="w-full h-9 text-xs font-medium gap-1.5 shadow-xs"
+            onClick={handleCopyCode}
+            className="w-full h-8 text-xs font-medium gap-1.5 shadow-2xs active:scale-[0.97] transition-all duration-150 cursor-pointer"
           >
             {copiedPayload ? (
               <>
-                <Check className="size-3.5 text-emerald-400" />
-                <span>Código Copiado com Sucesso!</span>
+                <Check className="size-3.5 text-emerald-500 stroke-[2.5]" />
+                <span>Código copiado!</span>
               </>
             ) : (
               <>
                 <Copy className="size-3.5" />
-                <span>Copiar Pix Copia e Cola</span>
+                <span>Copiar código Pix</span>
               </>
             )}
           </Button>

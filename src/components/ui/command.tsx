@@ -2,7 +2,7 @@ import * as React from "react";
 import { type DialogProps } from "@radix-ui/react-dialog";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Command as CommandPrimitive } from "cmdk";
-import { Search } from "lucide-react";
+import { Search } from '@/components/ui/icons';
 
 import { cn } from "@/lib/utils";
 import { Dialog, DialogPortal } from "@/components/ui/dialog";
@@ -34,14 +34,20 @@ const CommandDialog = ({
   return (
     <Dialog {...props}>
       <DialogPortal>
-        {/* Backdrop com blur suave e fade quase imperceptível (Emil Kowalski / Raycast feel) */}
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/45 backdrop-blur-xs transition-opacity duration-100 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+        {/* Backdrop com blur suave e fechamento instantâneo (Emil Kowalski / Raycast feel) para não bloquear modais subsequentes */}
+        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/45 backdrop-blur-xs data-[state=open]:animate-in data-[state=open]:fade-in-0 duration-100" />
         <DialogPrimitive.Content
           className={cn(
-            "fixed left-[50%] top-[40%] sm:top-[45%] z-50 grid w-[calc(100%-2rem)] max-w-[620px] translate-x-[-50%] translate-y-[-50%] overflow-hidden rounded-2xl border border-border/80 bg-card/95 backdrop-blur-xl shadow-2xl p-0 duration-100 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-98 data-[state=open]:zoom-in-98",
+            "fixed left-[50%] top-[40%] sm:top-[45%] z-50 grid w-[calc(100%-2rem)] max-w-[620px] translate-x-[-50%] translate-y-[-50%] overflow-hidden rounded-2xl border border-border/80 bg-card/95 backdrop-blur-xl shadow-2xl p-0 duration-100 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-98",
             className
           )}
         >
+          <DialogPrimitive.Title className="sr-only">
+            Paleta de Comandos Mirio
+          </DialogPrimitive.Title>
+          <DialogPrimitive.Description className="sr-only">
+            Busque quadros, ferramentas do canvas, atalhos e ações rápidas.
+          </DialogPrimitive.Description>
           <Command className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-input-wrapper]_svg]:h-4 [&_[cmdk-input-wrapper]_svg]:w-4 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-3 [&_[cmdk-item]]:py-2.5">
             {children}
           </Command>
