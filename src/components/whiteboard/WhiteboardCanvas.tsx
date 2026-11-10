@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect, useLayoutEffect, useCallback } from 'react';
 import { Stage, Layer, Transformer, Rect, Circle, Line, Star, Group, Text } from 'react-konva';
-import type Konva from 'konva';
+import Konva from 'konva';
 import type { CanvasElement, ToolType, ElementType } from '../../types/element';
 import type { UserPresence, CurrentUser } from '../../types/board';
 import { StickyNoteItem } from './StickyNoteItem';
@@ -25,7 +25,13 @@ import { getContrastTextColor } from '../../utils/colors';
 import { calculateShapeDragBounds, getDefaultShapeBounds } from '../../utils/shapeSizing';
 import { playReactionPopSound } from '../../utils/audioChime';
 import { votingService, type BoardVotingData } from '../../services/votingService';
-import { stripMarkdownLinks, removeLinkFromElement, addLinkToElement, normalizeUrl } from '../../utils/textLinks';
+import {
+  stripMarkdownLinks,
+  removeLinkFromElement,
+  addLinkToElement,
+  normalizeUrl,
+  extractAllLinks,
+} from '../../utils/textLinks';
 import {
   allRunsHaveFormat,
   applyLinkToRuns,
@@ -42,16 +48,29 @@ import {
   fileToDataUrl,
   getImageDimensions,
 } from '../../utils/clipboard';
-import { applyWorldTransform, publishViewport } from '../../utils/viewport';
+import {
+  applyWorldTransform,
+  blendTouchVelocity,
+  computePinchViewport,
+  isCoarseOrMobileViewport,
+  publishViewport,
+  stepInertialPan,
+  type TouchVelocity,
+} from '../../utils/viewport';
 import {
   boundsIntersect,
   canElementRotate,
   getElementWorldBounds,
+  isBoundsInViewport,
   normalizeRotationDeg,
 } from '../../utils/elementBounds';
 import { StickyReactionBar } from './StickyReactionBar';
 import { StickyQuickAdd } from './StickyQuickAdd';
 import { getAdjacentStickyRect, type StickyDirection } from '../../utils/stickyPlacement';
+
+if (typeof window !== 'undefined' && isCoarseOrMobileViewport()) {
+  Konva.pixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
+}
 
 interface WhiteboardCanvasProps {
   boardId: string;
@@ -246,12 +265,31 @@ const checkElementSegmentHit = (
   return false;
 };
 
-// Converte links do Giphy para o CDN direto sem bloqueio de referrer
+const LEGACY_GIPHY_FALLBACKS: Record<string, string> = {
+  GkVM3PcFipxEk: 'https://static.klipy.com/ii/4e7bea9f7a3371424e6c16ebc93252fe/46/6a/IGemk23TDHctPwlki1.gif',
+  g01ZnwAUvutuK8GIQn: 'https://static.klipy.com/ii/d7aec6f6f171607374b2065c836f92f4/67/fc/eYsqvnbO.gif',
+  vyTnNTrs3IZdfAUQVW: 'https://static.klipy.com/ii/d7aec6f6f171607374b2065c836f92f4/8c/39/FmFDzsho.gif',
+  d3mlE7uhX8KFgEmY: 'https://static.klipy.com/ii/925f17378dd1893b674a723c07535afe/4d/6f/jVcYzyp9.gif',
+  '9M5jK4GXmD5o1irGrF': 'https://static.klipy.com/ii/c3a19a0b747a76e98651f2b9a3cca5ff/49/f8/zl1Y5fjP.gif',
+  MDJ9IbxxvDUQM: 'https://static.klipy.com/ii/c3a19a0b747a76e98651f2b9a3cca5ff/9c/63/z1XLwIWS.gif',
+  t3dLl0TGHCxTG: 'https://static.klipy.com/ii/35ccce3d852f7995dd2da910f2abd795/ec/59/uGVtiiAZ.gif',
+  nXxOjZrbnbRxS: 'https://static.klipy.com/ii/d6b0ce929193df3c242ac34b5654d2ce/35/88/KiVLVpaQ.gif',
+  '26ufdipQqU2lhNA4g': 'https://static.klipy.com/ii/d6b0ce929193df3c242ac34b5654d2ce/9a/57/CCtgUPsD.gif',
+  '3o7TKTDnU76u2EPNDG': 'https://static.klipy.com/ii/35ccce3d852f7995dd2da910f2abd795/32/bf/zFtdVhji.gif',
+  nbvFVPiEiJH6Q: 'https://static.klipy.com/ii/f87f46a2c5aeaeed4c68910815f73eaf/08/b7/hK8oyGl2.gif',
+  '10JhviFuU2gWD6': 'https://static.klipy.com/ii/d6b0ce929193df3c242ac34b5654d2ce/79/f2/VyNapEfQ.gif',
+};
+
+// Normaliza links de GIF (Klipy CDN direto ou migração automática de links antigos do Giphy)
 const cleanGifUrl = (src?: string): string => {
   if (!src) return '';
-  const match = src.match(/giphy\.com\/media\/([^/]+)/);
+  const match = src.match(/giphy\.com\/media\/(?:v1\.[^/]+\/)?([^/]+)/);
   if (match && match[1]) {
-    return `https://i.giphy.com/media/${match[1]}/giphy.gif`;
+    const giphyId = match[1];
+    if (LEGACY_GIPHY_FALLBACKS[giphyId]) {
+      return LEGACY_GIPHY_FALLBACKS[giphyId];
+    }
+    return `https://i.giphy.com/media/${giphyId}/giphy.gif`;
   }
   return src;
 };
@@ -311,6 +349,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
   localLaserPointsRef,
 }) => {
   const stageRef = useRef<Konva.Stage>(null);
+  const elementsLayerRef = useRef<Konva.Layer>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
   const gifOverlayRef = useRef<HTMLDivElement>(null);
   const votingOverlayRef = useRef<HTMLDivElement>(null);
@@ -320,7 +359,12 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
   const stagePosRef = useRef(stagePos);
   const isLiveNavigating = useRef(false);
   const viewportCommitTimer = useRef<number | null>(null);
+  const panRafRef = useRef<number | null>(null);
+  const inertiaRafRef = useRef<number | null>(null);
+  const containerRectRef = useRef<{ left: number; top: number }>({ left: 0, top: 0 });
+  const lastTapRef = useRef<{ time: number; x: number; y: number }>({ time: 0, x: 0, y: 0 });
   const elementsRef = useRef(elements);
+  const elementsByIdRef = useRef<Map<string, CanvasElement>>(new Map());
   const selectedIdsRef = useRef(selectedIds);
   const currentUserRef = useRef(currentUser);
   const readOnlyRef = useRef(readOnly);
@@ -503,10 +547,15 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
   const dragStartPositions = useRef<Map<string, { x: number; y: number }>>(new Map());
 
   // Navegação por gestos touch (celular/tablet): pinça de 2 dedos para zoom,
-  // movimento dos 2 dedos para pan e arraste de 1 dedo no fundo em modo visualização
+  // movimento dos 2 dedos para pan, arraste de 1 dedo com inércia suave em modo visualização
   const touchGestureRef = useRef<{
     mode: 'pinch' | 'oneFingerPan';
     startCenter: { x: number; y: number };
+    lastPoint: { x: number; y: number };
+    lastMoveTime: number;
+    startTime: number;
+    velocity: TouchVelocity;
+    movedDist: number;
     startStagePos: { x: number; y: number };
     startDist: number;
     startScale: number;
@@ -527,6 +576,37 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
   const [isMiddlePanningState, setIsMiddlePanningState] = useState(false);
   const scaleRef = useRef(scale);
   worldOverlayRefs.current = [gifOverlayRef, votingOverlayRef];
+
+  // Frustum Culling de alta velocidade direto na árvore do Konva (0 re-renders do React):
+  // oculta grupos fora da tela visível para que stage.batchDraw() pule comandos 2D invisíveis.
+  const syncVisibleElements = (pos: { x: number; y: number }, currentScale: number) => {
+    const layer = elementsLayerRef.current;
+    if (!layer) return;
+    const children = layer.getChildren();
+    if (children.length === 0) return;
+
+    const viewport = { x: pos.x, y: pos.y, scale: currentScale };
+    const viewW = typeof window !== 'undefined' ? window.innerWidth : 1280;
+    const viewH = typeof window !== 'undefined' ? window.innerHeight : 720;
+    const selectedList = selectedIdsRef.current;
+    const byId = elementsByIdRef.current;
+
+    for (let i = 0; i < children.length; i++) {
+      const node = children[i];
+      const id = node.id();
+      if (!id) continue;
+      if (selectedList.length > 0 && selectedList.includes(id)) {
+        if (!node.visible()) node.visible(true);
+        continue;
+      }
+      const el = byId.get(id);
+      if (!el) continue;
+      const inView = isBoundsInViewport(getElementWorldBounds(el), viewport, viewW, viewH, 240);
+      if (node.visible() !== inView) {
+        node.visible(inView);
+      }
+    }
+  };
 
   const syncWorldOverlays = (pos: { x: number; y: number }, currentScale: number) => {
     const viewport = { x: pos.x, y: pos.y, scale: currentScale };
@@ -551,24 +631,65 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     if (viewportCommitTimer.current !== null) {
       window.clearTimeout(viewportCommitTimer.current);
     }
-    viewportCommitTimer.current = window.setTimeout(runCommit, 120);
+    viewportCommitTimer.current = window.setTimeout(runCommit, 140);
   };
 
-  // Função acelerada para movimentar o palco e garantir que os GIFs e overlays acompanhem com 0ms de latência
-  const applyStagePan = (newPos: { x: number; y: number }, currentScale: number, commit: 'idle' | 'immediate' = 'idle') => {
+  const flushViewportFrame = (pos: { x: number; y: number }, currentScale: number) => {
+    if (stageRef.current) {
+      stageRef.current.position(pos);
+      stageRef.current.scale({ x: currentScale, y: currentScale });
+      syncVisibleElements(pos, currentScale);
+      stageRef.current.batchDraw();
+    }
+    syncWorldOverlays(pos, currentScale);
+  };
+
+  const cancelInertia = () => {
+    if (inertiaRafRef.current !== null) {
+      cancelAnimationFrame(inertiaRafRef.current);
+      inertiaRafRef.current = null;
+    }
+    if (panRafRef.current !== null) {
+      cancelAnimationFrame(panRafRef.current);
+      panRafRef.current = null;
+    }
+  };
+
+  // Coalesce múltiplos eventos touchmove por frame de tela em um único batchDraw + DOM transform
+  const scheduleStagePan = (newPos: { x: number; y: number }, currentScale: number) => {
     isLiveNavigating.current = true;
     middlePanCurrentPos.current = newPos;
     stagePosRef.current = newPos;
     scaleRef.current = currentScale;
 
-    if (stageRef.current) {
-      stageRef.current.position(newPos);
-      stageRef.current.scale({ x: currentScale, y: currentScale });
-      stageRef.current.batchDraw();
+    if (viewportCommitTimer.current !== null) {
+      window.clearTimeout(viewportCommitTimer.current);
+      viewportCommitTimer.current = null;
     }
 
-    syncWorldOverlays(newPos, currentScale);
-    commitViewportToReact(newPos, currentScale, commit === 'immediate');
+    if (panRafRef.current === null) {
+      panRafRef.current = requestAnimationFrame(() => {
+        panRafRef.current = null;
+        flushViewportFrame(stagePosRef.current, scaleRef.current);
+      });
+    }
+  };
+
+  // Função acelerada para movimentar o palco e garantir que os GIFs e overlays acompanhem com 0ms de latência
+  const applyStagePan = (
+    newPos: { x: number; y: number },
+    currentScale: number,
+    commit: 'idle' | 'immediate' | 'none' = 'idle'
+  ) => {
+    isLiveNavigating.current = true;
+    middlePanCurrentPos.current = newPos;
+    stagePosRef.current = newPos;
+    scaleRef.current = currentScale;
+
+    flushViewportFrame(newPos, currentScale);
+    if (commit !== 'none') {
+      commitViewportToReact(newPos, currentScale, commit === 'immediate');
+    }
   };
 
   // The Stage is uncontrolled during navigation: props are only applied when
@@ -578,12 +699,35 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     if (isLiveNavigating.current) return;
     scaleRef.current = scale;
     stagePosRef.current = stagePos;
-    if (stageRef.current) {
-      stageRef.current.position(stagePos);
-      stageRef.current.scale({ x: scale, y: scale });
-    }
-    syncWorldOverlays(stagePos, scale);
+    flushViewportFrame(stagePos, scale);
   }, [scale, stagePos]);
+
+  useEffect(() => {
+    return () => {
+      cancelInertia();
+      if (viewportCommitTimer.current !== null) {
+        window.clearTimeout(viewportCommitTimer.current);
+      }
+    };
+  }, []);
+
+  // Mantém dimensões do Stage e offset do container atualizados sem re-renders extras
+  useEffect(() => {
+    const updateStageMetrics = () => {
+      const stage = stageRef.current;
+      if (!stage) return;
+      stage.width(window.innerWidth);
+      stage.height(window.innerHeight);
+      const rect = stage.container()?.getBoundingClientRect();
+      if (rect) {
+        containerRectRef.current = { left: rect.left, top: rect.top };
+      }
+      syncVisibleElements(stagePosRef.current, scaleRef.current);
+      stage.batchDraw();
+    };
+    window.addEventListener('resize', updateStageMetrics, { passive: true });
+    return () => window.removeEventListener('resize', updateStageMetrics);
+  }, []);
 
   useEffect(() => {
     if (!isMiddlePanning.current) {
@@ -646,6 +790,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     }
     return map;
   }, [liveErasedElements, elements]);
+  elementsByIdRef.current = elementsById;
 
   // Mapa de colega remoto para o elemento que ele está selecionando (estável: não quebra quando colegas apenas movem o mouse)
   const remoteSelectionKey = remoteUsers
@@ -1267,6 +1412,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
   // O scroll contínuo do touchpad navega; a roda discreta do mouse faz zoom no cursor.
   const handleWheel = (e: Konva.KonvaEventObject<WheelEvent>) => {
     e.evt.preventDefault();
+    cancelInertia();
     const stage = stageRef.current;
     if (!stage) return;
 
@@ -1312,14 +1458,22 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     applyStagePan(newPos, newScale);
   };
 
-  // ===== Navegação touch (mobile/tablet) =====
+  // ===== Navegação touch de alta performance (mobile/tablet) =====
   // 2 dedos: pinça para zoom + movimento simultâneo para pan (funciona em qualquer ferramenta).
-  // 1 dedo sobre o fundo em modo visualização (celular): arrasta o quadro nas duas direções.
+  // 1 dedo em modo visualização (ou ferramenta Pan): arrasta o quadro com inércia suave,
+  // mesmo quando o toque começa sobre post-its, molduras, formas ou textos.
+  const updateContainerRect = () => {
+    const rect = stageRef.current?.container()?.getBoundingClientRect();
+    if (rect) {
+      containerRectRef.current = { left: rect.left, top: rect.top };
+    }
+  };
+
   const getTouchPointInContainer = (clientX: number, clientY: number) => {
-    const rect = stageRef.current?.container().getBoundingClientRect();
+    const rect = containerRectRef.current;
     return {
-      x: clientX - (rect?.left ?? 0),
-      y: clientY - (rect?.top ?? 0),
+      x: clientX - rect.left,
+      y: clientY - rect.top,
     };
   };
 
@@ -1342,6 +1496,9 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
 
   const handleStageTouchStart = (e: Konva.KonvaEventObject<TouchEvent>) => {
     const touches = e.evt.touches;
+    cancelInertia();
+    updateContainerRect();
+    const now = performance.now();
 
     if (touches.length >= 2) {
       e.evt.preventDefault();
@@ -1359,6 +1516,11 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       touchGestureRef.current = {
         mode: 'pinch',
         startCenter: center,
+        lastPoint: center,
+        lastMoveTime: now,
+        startTime: now,
+        velocity: { vx: 0, vy: 0 },
+        movedDist: 0,
         startStagePos: startPos,
         startDist: dist,
         startScale,
@@ -1370,24 +1532,31 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       return;
     }
 
-    // Dedo restante após pinça (ou eventos fantasma logo após o fim do gesto): ignora
-    if (skipTouchUntilLiftRef.current || Date.now() < touchGestureEndedAtRef.current + 350) {
+    // Modo visualização (celular) ou ferramenta Pan: 1 dedo move a câmera em qualquer ponto da tela
+    // (inclusive sobre post-its, frames e formas), sem bloqueio de 350ms entre gestos consecutivos.
+    if ((readOnly || currentTool === 'pan') && !isSpacePressed && touches.length === 1) {
       e.evt.preventDefault();
-      return;
-    }
-
-    // Modo visualização (celular): arrastar o fundo do quadro com 1 dedo move a câmera
-    if (readOnly && e.target === stageRef.current && !isSpacePressed) {
-      e.evt.preventDefault();
+      skipTouchUntilLiftRef.current = false;
       const point = getTouchPointInContainer(touches[0].clientX, touches[0].clientY);
       touchGestureRef.current = {
         mode: 'oneFingerPan',
         startCenter: point,
+        lastPoint: point,
+        lastMoveTime: now,
+        startTime: now,
+        velocity: { vx: 0, vy: 0 },
+        movedDist: 0,
         startStagePos: stagePosRef.current,
         startDist: 0,
         startScale: scaleRef.current,
         centerWorld: { x: 0, y: 0 },
       };
+      return;
+    }
+
+    // Dedo restante após pinça no modo edição (ou eventos fantasma logo após o fim do gesto): ignora
+    if (skipTouchUntilLiftRef.current || Date.now() < touchGestureEndedAtRef.current + 350) {
+      e.evt.preventDefault();
       return;
     }
 
@@ -1402,15 +1571,23 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       if (touches.length < 2) return;
       e.evt.preventDefault();
       const { center, dist } = getTwoTouchMetrics(touches);
-      const newScale = Math.max(0.1, Math.min(5, gesture.startScale * (dist / gesture.startDist)));
-      // Mantém fixo o ponto do mundo onde a pinça começou; o movimento do centro vira pan
-      applyStagePan(
-        {
-          x: center.x - gesture.centerWorld.x * newScale,
-          y: center.y - gesture.centerWorld.y * newScale,
-        },
-        newScale
+      const next = computePinchViewport(
+        gesture.centerWorld,
+        gesture.startDist,
+        gesture.startScale,
+        center,
+        dist,
+        0.1,
+        5
       );
+      gesture.lastPoint = center;
+      gesture.lastMoveTime = performance.now();
+      gesture.movedDist += Math.hypot(
+        center.x - gesture.startCenter.x,
+        center.y - gesture.startCenter.y
+      );
+      // Mantém fixo o ponto do mundo onde a pinça começou; o movimento do centro vira pan
+      scheduleStagePan({ x: next.x, y: next.y }, next.scale);
       return;
     }
 
@@ -1418,7 +1595,17 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       e.evt.preventDefault();
       if (touches.length !== 1) return;
       const point = getTouchPointInContainer(touches[0].clientX, touches[0].clientY);
-      applyStagePan(
+      const now = performance.now();
+      const dt = now - gesture.lastMoveTime;
+      const stepDx = point.x - gesture.lastPoint.x;
+      const stepDy = point.y - gesture.lastPoint.y;
+
+      gesture.velocity = blendTouchVelocity(gesture.velocity, stepDx, stepDy, dt);
+      gesture.lastPoint = point;
+      gesture.lastMoveTime = now;
+      gesture.movedDist += Math.hypot(stepDx, stepDy);
+
+      scheduleStagePan(
         {
           x: gesture.startStagePos.x + (point.x - gesture.startCenter.x),
           y: gesture.startStagePos.y + (point.y - gesture.startCenter.y),
@@ -1441,20 +1628,134 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     const gesture = touchGestureRef.current;
 
     if (gesture && !isSingleFingerInteractionLocked()) {
-      if (gesture.mode === 'pinch' || gesture.mode === 'oneFingerPan') {
-        applyStagePan(stagePosRef.current, scaleRef.current, 'immediate');
-      }
-      touchGestureRef.current = null;
-      if (remaining > 0) {
-        // Continua com 1 dedo pós-gesto: ignora esse dedo até que todos sejam levantados
-        skipTouchUntilLiftRef.current = true;
-        touchGestureEndedAtRef.current = Date.now();
+      e.evt.preventDefault();
+      const now = performance.now();
+
+      // Transição suave Pinça (2 dedos) -> Pan (1 dedo) no mobile sem travar
+      if (gesture.mode === 'pinch' && remaining === 1 && (readOnly || currentTool === 'pan')) {
+        if (panRafRef.current !== null) {
+          cancelAnimationFrame(panRafRef.current);
+          panRafRef.current = null;
+          flushViewportFrame(stagePosRef.current, scaleRef.current);
+        }
+        const point = getTouchPointInContainer(e.evt.touches[0].clientX, e.evt.touches[0].clientY);
+        touchGestureRef.current = {
+          mode: 'oneFingerPan',
+          startCenter: point,
+          lastPoint: point,
+          lastMoveTime: now,
+          startTime: now,
+          velocity: { vx: 0, vy: 0 },
+          movedDist: gesture.movedDist,
+          startStagePos: stagePosRef.current,
+          startDist: 0,
+          startScale: scaleRef.current,
+          centerWorld: { x: 0, y: 0 },
+        };
+        skipTouchUntilLiftRef.current = false;
         return;
       }
+
+      if (panRafRef.current !== null) {
+        cancelAnimationFrame(panRafRef.current);
+        panRafRef.current = null;
+        flushViewportFrame(stagePosRef.current, scaleRef.current);
+      }
+
+      touchGestureRef.current = null;
+      touchGestureEndedAtRef.current = Date.now();
+
+      if (remaining > 0) {
+        commitViewportToReact(stagePosRef.current, scaleRef.current, true);
+        skipTouchUntilLiftRef.current = true;
+        return;
+      }
+
+      skipTouchUntilLiftRef.current = false;
+
+      if (gesture.mode === 'oneFingerPan') {
+        const isQuickTap = gesture.movedDist < 10 && now - gesture.startTime < 300;
+        if (isQuickTap && readOnly) {
+          const tapScreen = gesture.lastPoint;
+          const worldX = (tapScreen.x - stagePosRef.current.x) / scaleRef.current;
+          const worldY = (tapScreen.y - stagePosRef.current.y) / scaleRef.current;
+
+          // 1. Toque rápido sobre elemento com link abre o link mesmo em modo visualização
+          const hitCandidates = sortedElements.filter((el) =>
+            checkElementHit(el, worldX, worldY, 8 / Math.max(0.25, scaleRef.current))
+          );
+          const topHit = hitCandidates[hitCandidates.length - 1];
+          if (topHit) {
+            const links = extractAllLinks(topHit.text, topHit.linkUrl, topHit.links);
+            if (links.length > 0 && links[0].url) {
+              window.open(links[0].url, '_blank', 'noopener,noreferrer');
+              commitViewportToReact(stagePosRef.current, scaleRef.current, true);
+              return;
+            }
+          }
+
+          // 2. Duplo-toque rápido dá zoom inteligente no ponto tocado (ou volta para 100%)
+          const lastTap = lastTapRef.current;
+          const wallNow = Date.now();
+          if (
+            lastTap.time > 0 &&
+            wallNow - lastTap.time < 320 &&
+            Math.hypot(tapScreen.x - lastTap.x, tapScreen.y - lastTap.y) < 36
+          ) {
+            lastTapRef.current = { time: 0, x: 0, y: 0 };
+            const currentScale = scaleRef.current;
+            const targetScale = currentScale < 1.35 ? Math.min(2.5, currentScale * 1.85) : 1;
+            const nextPos = {
+              x: tapScreen.x - worldX * targetScale,
+              y: tapScreen.y - worldY * targetScale,
+            };
+            applyStagePan(nextPos, targetScale, 'immediate');
+            return;
+          }
+          lastTapRef.current = { time: wallNow, x: tapScreen.x, y: tapScreen.y };
+        }
+
+        // 3. Inércia suave pós-arraste (momentum scrolling a 60/120fps)
+        const timeSinceLastMove = now - gesture.lastMoveTime;
+        const speed = Math.hypot(gesture.velocity.vx, gesture.velocity.vy);
+        if (timeSinceLastMove < 65 && speed >= 0.12) {
+          let currentVel = gesture.velocity;
+          let lastFrameTime = performance.now();
+
+          const stepMomentum = (frameNow: number) => {
+            const dt = frameNow - lastFrameTime;
+            lastFrameTime = frameNow;
+            const step = stepInertialPan(stagePosRef.current, currentVel, dt);
+            const nextPos = { x: step.x, y: step.y };
+            stagePosRef.current = nextPos;
+            middlePanCurrentPos.current = nextPos;
+            currentVel = { vx: step.vx, vy: step.vy };
+            flushViewportFrame(nextPos, scaleRef.current);
+
+            if (step.active) {
+              inertiaRafRef.current = requestAnimationFrame(stepMomentum);
+            } else {
+              inertiaRafRef.current = null;
+              commitViewportToReact(stagePosRef.current, scaleRef.current, true);
+            }
+          };
+
+          inertiaRafRef.current = requestAnimationFrame(stepMomentum);
+          return;
+        }
+      }
+
+      commitViewportToReact(stagePosRef.current, scaleRef.current, true);
+      return;
     }
 
     if (remaining === 0) {
       skipTouchUntilLiftRef.current = false;
+    }
+
+    if (readOnly) {
+      e.evt.preventDefault();
+      return;
     }
 
     (handleMouseUp as unknown as (ev: Konva.KonvaEventObject<TouchEvent>) => void)(e);
@@ -1753,7 +2054,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
   // Pressionar mouse no canvas
   const handleMouseDown = async (e: Konva.KonvaEventObject<MouseEvent>) => {
     // Ignora eventos sintéticos de mouse gerados pelo toque durante/ logo após gestos touch (pinça/pan)
-    if (touchGestureRef.current || Date.now() < touchGestureEndedAtRef.current + 300) {
+    if (touchGestureRef.current || Date.now() < touchGestureEndedAtRef.current + 450) {
       return;
     }
 
@@ -2028,6 +2329,10 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
 
   // Movimento do mouse
   const handleMouseMove = (e: Konva.KonvaEventObject<MouseEvent>) => {
+    if (touchGestureRef.current || Date.now() < touchGestureEndedAtRef.current + 450) {
+      return;
+    }
+
     // Navegação suave com botão do meio do mouse (Scroll Wheel Drag)
     if (isMiddlePanning.current && middlePanStart.current) {
       const dx = e.evt.clientX - middlePanStart.current.clientX;
@@ -2037,6 +2342,10 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         y: Math.round(middlePanStart.current.stageY + dy),
       };
       applyStagePan(newPos, scaleRef.current);
+      return;
+    }
+
+    if (readOnly) {
       return;
     }
 
@@ -2759,6 +3068,12 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     ]
   );
 
+  // Atualiza frustum culling sempre que a lista de elementos do quadro muda
+  useLayoutEffect(() => {
+    syncVisibleElements(stagePosRef.current, scaleRef.current);
+    stageRef.current?.batchDraw();
+  }, [renderedElements]);
+
   // Post-it selecionado único (para barra de reações flutuante em HTML com z-index 50)
   const selectedSticky =
     selectedElements.length === 1 && selectedElements[0].type === 'sticky'
@@ -3398,31 +3713,42 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         style={{
           transform: `translate3d(${stagePos.x}px, ${stagePos.y}px, 0) scale(${scale})`,
           transformOrigin: '0 0',
+          zIndex: 10,
         }}
       >
         {elements
           .filter((e) => e.type === 'gif' && Boolean(e.src))
-          .map((elem) => (
-            <img
-              key={elem.id}
-              id={`gif-overlay-${elem.id}`}
-              src={cleanGifUrl(elem.src)}
-              alt={elem.alt || 'GIF animado'}
-              loading="eager"
-              referrerPolicy="no-referrer"
-              className="absolute pointer-events-none select-none rounded-lg shadow-sm object-contain"
-              style={{
-                left: `${elem.x}px`,
-                top: `${elem.y}px`,
-                width: `${elem.width || 220}px`,
-                height: `${elem.height || 160}px`,
-                transform: elem.rotation ? `rotate(${elem.rotation}deg)` : undefined,
-                transformOrigin: 'top left',
-                zIndex: 10,
-                willChange: 'left, top',
-              }}
-            />
-          ))}
+          .map((elem) => {
+            const isGifSelected = selectedIds.includes(elem.id);
+            const remoteSel = remoteSelectionMap[elem.id];
+            const ringColor = remoteSel
+              ? remoteSel.color
+              : isGifSelected
+              ? userSelectionColor
+              : undefined;
+
+            return (
+              <img
+                key={elem.id}
+                id={`gif-overlay-${elem.id}`}
+                src={cleanGifUrl(elem.src)}
+                alt={elem.alt || 'GIF animado'}
+                loading="eager"
+                className="absolute pointer-events-none select-none rounded-lg shadow-sm object-contain"
+                style={{
+                  left: `${elem.x}px`,
+                  top: `${elem.y}px`,
+                  width: `${elem.width || 220}px`,
+                  height: `${elem.height || 160}px`,
+                  transform: elem.rotation ? `rotate(${elem.rotation}deg)` : undefined,
+                  transformOrigin: 'top left',
+                  zIndex: elem.zIndex || 10,
+                  outline: ringColor ? `2px solid ${ringColor}` : undefined,
+                  willChange: 'left, top',
+                }}
+              />
+            );
+          })}
       </div>
 
       {/* Badges Interativas de Votação (Estilo Miro) */}
@@ -3617,7 +3943,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         ref={stageRef}
         width={window.innerWidth}
         height={window.innerHeight}
-        draggable={isDraggableStage}
+        draggable={!readOnly && isDraggableStage}
         onDragStart={(e) => {
           if (isMiddlePanning.current) {
             e.cancelBubble = true;
@@ -3704,12 +4030,13 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           isMouseOverCanvasRef.current = false;
         }}
       >
-        <Layer id="elements-layer">
+        <Layer ref={elementsLayerRef} id="elements-layer" listening={!readOnly}>
           {/* Renderização de todos os elementos no canvas Konva */}
           {renderedElements /* stable while pan/zoom changes */}
         </Layer>
 
         {/* Camada Dinâmica 2: Elemento sendo desenhado no momento e Marquee (isolada para não repintar o canvas de elementos estáticos a cada pixel) */}
+        {!readOnly && (
         <Layer id="drawing-preview-layer" listening={false}>
           {drawingElement && drawingElement.type === 'pen' && (
             <FreeDrawItem
@@ -3872,8 +4199,10 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
             />
           )}
         </Layer>
+        )}
 
         {/* Camada 3: Konva Transformer para redimensionamento e rotação pelas 4 pontas (estilo Figma/Miro) */}
+        {!readOnly && (
         <Layer id="transformer-layer">
           <Transformer
             ref={transformerRef}
@@ -4003,9 +4332,11 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
             anchorCornerRadius={2}
           />
         </Layer>
+        )}
       </Stage>
 
       {/* Pílula minimalista de ângulo ao vivo durante o giro pelas pontas (0 re-renders por frame) */}
+      {!readOnly && (
       <div
         ref={rotationHudRef}
         data-snapped="false"
@@ -4021,6 +4352,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       >
         <span ref={rotationHudValueRef}>0°</span>
       </div>
+      )}
 
       {/* Editor Inline Flutuante em HTML com posicionamento e estilização contextual precisos */}
       {/* Editor de texto rico: formatação por letra/palavra, links por seleção e resize lateral */}

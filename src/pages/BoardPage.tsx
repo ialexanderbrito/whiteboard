@@ -39,6 +39,8 @@ import { MobileReadOnlyDrawer } from '../components/whiteboard/MobileReadOnlyDra
 import { reactionService } from '../services/reactionService';
 import { MIRIO_REACTION, isMirioReactionUnlocked, unlockMirioReaction } from '../utils/mirioReaction';
 import { publishCursorReadout } from '../utils/cursorReadout';
+import { computeFitToContentViewport } from '../utils/viewport';
+import { getElementWorldBounds } from '../utils/elementBounds';
 
 // Modais pesados carregados sob demanda (Code-Splitting) para carregamento instantâneo do quadro
 const StickersModal = lazy(() => import('../components/whiteboard/StickersModal').then(m => ({ default: m.StickersModal })));
@@ -161,12 +163,13 @@ export const BoardPage: React.FC = () => {
   });
 
   useEffect(() => {
+    if (isMobile) return;
     const handleMouseMove = (e: MouseEvent) => {
       currentMousePosRef.current = { x: e.clientX, y: e.clientY };
     };
     window.addEventListener('mousemove', handleMouseMove, { passive: true });
     return () => window.removeEventListener('mousemove', handleMouseMove);
-  }, []);
+  }, [isMobile]);
 
   // Chat do Cursor Flutuante (Estilo Figma)
   const [isCursorChatOpen, setIsCursorChatOpen] = useState(false);
@@ -230,13 +233,13 @@ export const BoardPage: React.FC = () => {
     return DEFAULT_GRID_OPACITY;
   });
 
-  const handleToggleGrid = (show?: boolean) => {
+  const handleToggleGrid = useCallback((show?: boolean) => {
     setShowGrid((prev) => {
       const next = typeof show === 'boolean' ? show : !prev;
       localStorage.setItem('mirio_show_grid', String(next));
       return next;
     });
-  };
+  }, []);
 
   const handleChangeGridType = (type: GridType) => {
     setGridType(type);
@@ -476,15 +479,15 @@ export const BoardPage: React.FC = () => {
     await votingService.endSession(boardId);
   };
 
-  const handleAddVote = async (elementId: string) => {
+  const handleAddVote = useCallback(async (elementId: string) => {
     if (!boardId || !currentUser) return;
     await votingService.addVote(boardId, elementId, currentUser);
-  };
+  }, [boardId, currentUser]);
 
-  const handleRemoveVote = async (elementId: string) => {
+  const handleRemoveVote = useCallback(async (elementId: string) => {
     if (!boardId || !currentUser) return;
     await votingService.removeVote(boardId, elementId, currentUser);
-  };
+  }, [boardId, currentUser]);
 
   const handleToggleVotingComplete = async () => {
     if (!boardId || !currentUser) return;
@@ -616,7 +619,14 @@ export const BoardPage: React.FC = () => {
     if (!boardId || !currentUser || hasNoAccess || boardNotFound || !isBoardReady) return;
 
     const controls = presenceService.joinBoard(boardId, currentUser, (users) => {
-      setRemoteUsers(users);
+      setRemoteUsers((prev) => {
+        if (isMobile) {
+          const prevKey = prev.map((u) => `${u.userId}:${u.selectedElementId || ''}`).join('|');
+          const nextKey = users.map((u) => `${u.userId}:${u.selectedElementId || ''}`).join('|');
+          if (prevKey === nextKey) return prev;
+        }
+        return users;
+      });
     });
     presenceControls.current = controls;
 
@@ -624,7 +634,7 @@ export const BoardPage: React.FC = () => {
       controls.leaveBoard();
       presenceControls.current = null;
     };
-  }, [boardId, currentUser, hasNoAccess, boardNotFound, isBoardReady]);
+  }, [boardId, currentUser, hasNoAccess, boardNotFound, isBoardReady, isMobile]);
 
   // Acompanhamento suave da câmera quando seguindo outro usuário
   useEffect(() => {
@@ -1306,12 +1316,44 @@ export const BoardPage: React.FC = () => {
   };
 
   // Controles de zoom
-  const handleZoomIn = () => setScale((prev) => Math.min(5, prev * 1.2));
-  const handleZoomOut = () => setScale((prev) => Math.max(0.1, prev / 1.2));
-  const handleResetZoom = () => {
+  const handleZoomIn = useCallback(() => setScale((prev) => Math.min(5, prev * 1.2)), []);
+  const handleZoomOut = useCallback(() => setScale((prev) => Math.max(0.1, prev / 1.2)), []);
+  const handleResetZoom = useCallback(() => {
     setScale(1);
     setStagePos({ x: 0, y: 0 });
-  };
+  }, []);
+
+  const handleFitToContent = useCallback(() => {
+    const currentElements = elementsRef.current;
+    if (currentElements.length === 0) {
+      setScale(1);
+      setStagePos({ x: 0, y: 0 });
+      return;
+    }
+    const bounds = currentElements.map((el) => getElementWorldBounds(el));
+    const fitted = computeFitToContentViewport(bounds, window.innerWidth, window.innerHeight, {
+      topInset: isMobile ? 64 : 56,
+      padding: isMobile ? 24 : 48,
+      minScale: 0.15,
+      maxScale: 1.15,
+    });
+    if (fitted) {
+      setStagePos({ x: fitted.x, y: fitted.y });
+      setScale(fitted.scale);
+    }
+  }, [isMobile]);
+
+  const hasAutoFittedMobileRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isMobile || !boardId || elements.length === 0) return;
+    if (hasAutoFittedMobileRef.current === boardId) return;
+    hasAutoFittedMobileRef.current = boardId;
+    handleFitToContent();
+  }, [isMobile, boardId, elements.length, handleFitToContent]);
+
+  const handleOpenShortcuts = useCallback(() => setIsShortcutsModalOpen(true), []);
+  const handleOpenTemplates = useCallback(() => setIsSprintTemplatesOpen(true), []);
+  const handleOpenStickers = useCallback(() => setIsStickersModalOpen(true), []);
 
   if (authLoading) {
     return <LoadingScreen />;
@@ -1376,19 +1418,31 @@ export const BoardPage: React.FC = () => {
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-background selection:bg-foreground selection:text-background">
       {isMobile && !isPresentationMode && (
-        <div className="pointer-events-none fixed inset-x-0 top-0 z-40 flex items-center justify-between border-b border-border/70 bg-background/90 px-4 py-3 backdrop-blur-md">
+        <div className="pointer-events-none fixed inset-x-0 top-0 z-40 flex items-center justify-between gap-2 border-b border-border/70 bg-background/95 px-4 py-2.5">
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-foreground">{board.title || 'Quadro sem título'}</p>
             <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Somente visualização</p>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="pointer-events-auto shrink-0"
-            onClick={() => navigate('/')}
-          >
-            Voltar
-          </Button>
+          <div className="pointer-events-auto flex shrink-0 items-center gap-1.5">
+            {elements.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 px-2.5 text-xs"
+                onClick={handleFitToContent}
+              >
+                Ajustar
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-2.5 text-xs"
+              onClick={() => navigate('/')}
+            >
+              Voltar
+            </Button>
+          </div>
         </div>
       )}
 
@@ -1745,7 +1799,7 @@ export const BoardPage: React.FC = () => {
       />}
 
       {/* Camada de Cursores Remotos Voando na Tela */}
-      {showRemoteCursors && (
+      {showRemoteCursors && !isMobile && (
         <RemoteCursors
           remoteUsers={remoteUsers}
         />
@@ -1795,9 +1849,9 @@ export const BoardPage: React.FC = () => {
         onRemoveVote={handleRemoveVote}
         readOnly={isReadOnly}
         canCommentOnly={isCommentOnly}
-        onOpenShortcuts={() => setIsShortcutsModalOpen(true)}
-        onOpenTemplates={() => setIsSprintTemplatesOpen(true)}
-        onOpenStickers={() => setIsStickersModalOpen(true)}
+        onOpenShortcuts={handleOpenShortcuts}
+        onOpenTemplates={handleOpenTemplates}
+        onOpenStickers={handleOpenStickers}
         onResetZoom={handleResetZoom}
         gridType={gridType}
         gridSize={gridSize}
