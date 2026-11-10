@@ -1,34 +1,42 @@
 import React from 'react';
 import { MirioLogo } from '@/components/layout/MirioLogo';
+import { LoadingCollaboratorCursors } from '@/components/layout/LoadingCollaboratorCursors';
 import { cn } from '@/lib/utils';
 
 export interface LoadingScreenProps {
   /** Se deve ocupar a tela inteira com position fixed (padrão: true) */
   fullscreen?: boolean;
+  /** Mensagem contextual de carregamento (opcional) */
+  message?: string;
+  /** Se deve exibir os cursores colaborativos fakes animados (padrão: true) */
+  showCursors?: boolean;
   /** Classes CSS adicionais */
   className?: string;
 }
 
 /**
- * LoadingScreen — Tela de Carregamento Global Ultra-Minimalista do Mirio.
+ * LoadingScreen — Tela de Carregamento Global Minimalista & Fluida do Mirio.
  *
- * Aplicação dos princípios de Design Engineering (Emil Kowalski):
+ * Aplicação dos princípios de Design Engineering (Emil Kowalski) & Frontend Design:
  * - 100% acelerado via GPU (apenas transform e opacity).
- * - Sem animações a partir de scale(0) (inicia em scale 0.96 com opacidade suave).
- * - Easing orgânico cubic-bezier(0.23, 1, 0.32, 1).
- * - Uma única tela global para toda a aplicação: minimalista, silenciosa, sem poluição visual.
+ * - Sem pulos de animação: transição suave de escala (scale 0.985 -> 1) ancorada no centro.
+ * - Trilho laser 100% contínuo e sem saltos de keyframe (saída total do feixe à direita).
+ * - Cursores colaborativos fakes (Sofia, Lucas e Camila) simulando o canvas multiplayer vivo do Mirio.
+ * - Suporte pleno a prefers-reduced-motion e layout adaptativo/responsivo.
  */
 export const LoadingScreen: React.FC<LoadingScreenProps> = ({
   fullscreen = true,
+  message,
+  showCursors = true,
   className,
 }) => {
   return (
     <div
       role="status"
-      aria-label="Carregando..."
+      aria-label={message || 'Carregando...'}
       className={cn(
         'relative flex flex-col items-center justify-center bg-background text-foreground select-none overflow-hidden',
-        fullscreen ? 'fixed inset-0 w-screen h-screen z-50' : 'w-full h-full min-h-[300px]',
+        fullscreen ? 'fixed inset-0 w-screen h-screen z-50' : 'w-full h-full min-h-[340px]',
         className
       )}
     >
@@ -44,8 +52,11 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = ({
         className="pointer-events-none fixed inset-0 z-0 bg-[radial-gradient(ellipse_at_center,transparent_30%,hsl(var(--background)/0.8)_85%)]"
       />
 
+      {/* Cursores Colaborativos Fakes (Simulam colegas preparando o canvas em tempo real) */}
+      {showCursors && <LoadingCollaboratorCursors />}
+
       {/* Emblema Central e Trilho Laser Linear Minimalista */}
-      <div className="relative z-10 animate-mirio-entrance flex flex-col items-center justify-center gap-5">
+      <div className="relative z-10 animate-mirio-entrance flex flex-col items-center justify-center gap-4">
         {/* Emblema com Aura de Respiração Suave */}
         <div className="relative flex items-center justify-center">
           <div
@@ -55,13 +66,20 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = ({
           <MirioLogo variant="compact" className="h-9 w-auto object-contain select-none" />
         </div>
 
-        {/* Trilho de Progresso Linear de Alta Precisão (Substitui o circular progress) */}
+        {/* Trilho de Progresso Laser Contínuo e Fluido */}
         <div
           aria-hidden="true"
-          className="relative h-0.5 w-36 rounded-full bg-muted/80 overflow-hidden border border-border/30"
+          className="relative h-1 w-40 rounded-full bg-muted/80 overflow-hidden border border-border/40 shadow-inner"
         >
-          <div className="absolute inset-y-0 w-1/2 bg-gradient-to-r from-transparent via-foreground to-transparent animate-mirio-beam" />
+          <div className="absolute inset-y-0 w-1/2 bg-gradient-to-r from-transparent via-foreground to-transparent animate-mirio-beam will-change-transform" />
         </div>
+
+        {/* Mensagem Opcional de Status Elegante e Silenciosa */}
+        {message && (
+          <p className="text-xs font-medium text-muted-foreground/80 tracking-tight select-none">
+            {message}
+          </p>
+        )}
       </div>
     </div>
   );

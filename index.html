@@ -186,12 +186,14 @@
         bottom: 0;
         width: 50%;
         background: linear-gradient(90deg, transparent, currentColor, transparent);
-        animation: init-beam-anim 1.4s cubic-bezier(0.77, 0, 0.175, 1) infinite;
+        animation: init-beam-anim 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+        will-change: transform, opacity;
       }
       @keyframes init-beam-anim {
-        0% { transform: translateX(-100%); }
-        50% { transform: translateX(35%); }
-        100% { transform: translateX(120%); }
+        0% { transform: translateX(-120%); opacity: 0; }
+        15% { opacity: 1; }
+        85% { opacity: 1; }
+        100% { transform: translateX(220%); opacity: 0; }
       }
     </style>
   </head>
