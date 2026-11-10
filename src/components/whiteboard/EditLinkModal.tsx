@@ -77,7 +77,7 @@ export const EditLinkModal: React.FC<EditLinkModalProps> = ({
           </div>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} noValidate className="space-y-4">
           <div className="space-y-1.5">
             <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block">
               Endereço web (URL) <span className="text-destructive">*</span>

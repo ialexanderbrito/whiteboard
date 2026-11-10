@@ -46,6 +46,7 @@ import {
   getContrastTextColor 
 } from '../../utils/colors';
 import { alignElements, type AlignmentType } from '../../utils/alignment';
+import { getElementWorldBounds } from '../../utils/elementBounds';
 import { 
   extractAllLinks,
   getDomainFromUrl, 
@@ -54,6 +55,19 @@ import {
   addLinkToElement,
   removeLinkFromElement
 } from '../../utils/textLinks';
+import {
+  allRunsHaveFormat,
+  applyLinkToRuns,
+  deriveLinksFromRuns,
+  layoutElementRichText,
+  removeRunLink,
+  runsToPlainText,
+  setAllRunsColor,
+  toggleAllRunsFormat,
+  updateRunLink,
+  type RichTextFormatState,
+} from '../../utils/richText';
+import { textEditingBridge } from '../../utils/textEditingBridge';
 import { Button } from '@/components/ui/button';
 import {
   getViewport,
@@ -92,6 +106,8 @@ interface SelectionContextBarProps {
   stagePos: { x: number; y: number };
   /** Distância (px) entre a seleção e a base da barra. */
   topOffset?: number;
+  /** Elemento cujo editor rico está aberto (a barra passa a formatar a seleção). */
+  editingElementId?: string;
   onToggleVote?: (elementId: string) => void;
   onAddVote?: (elementId: string) => void;
   onRemoveVote?: (elementId: string) => void;
@@ -254,6 +270,7 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
   scale,
   stagePos,
   topOffset = 48,
+  editingElementId,
   onAddVote,
   onRemoveVote,
   userElementVotes,
@@ -277,6 +294,17 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
   const [customFillInput, setCustomFillInput] = useState('');
   const [customStrokeInput, setCustomStrokeInput] = useState('');
   const [customTextColorInput, setCustomTextColorInput] = useState('');
+  const [editorFormats, setEditorFormats] = useState<RichTextFormatState | null>(null);
+
+  // Acompanha a formatação da seleção dentro do editor rico ativo.
+  useEffect(() => {
+    const update = () => {
+      const editor = editingElementId ? textEditingBridge.get(editingElementId) : null;
+      setEditorFormats(editor ? editor.getActiveFormats() : null);
+    };
+    update();
+    return textEditingBridge.subscribe(update);
+  }, [editingElementId]);
 
   const primaryElement = selectedElements[0];
   const elementLinks = useMemo(() => {
@@ -285,10 +313,14 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
   }, [primaryElement, primaryElement?.text, primaryElement?.linkUrl, primaryElement?.links]);
 
   // Posição flutuante na tela logo acima da seleção (acompanha pan/zoom ao vivo).
+  // Usa o bounding box rotation-aware (getElementWorldBounds) para que a barra
+  // ancorar no topo VISUAL do elemento — elementos rotacionados não mais
+  // sobrepõem a barra com seu canto superior girado.
   // O deslocamento é escrito direto no DOM durante a navegação: um setState por
   // frame re-renderizaria esta barra (e seus dezenas de controles) a cada wheel.
-  const minX = selectedElements.length > 0 ? Math.min(...selectedElements.map((e) => e.x)) : 0;
-  const minY = selectedElements.length > 0 ? Math.min(...selectedElements.map((e) => e.y)) : 0;
+  const selectionBounds = selectedElements.map(getElementWorldBounds);
+  const minX = selectionBounds.length > 0 ? Math.min(...selectionBounds.map((b) => b.x)) : 0;
+  const minY = selectionBounds.length > 0 ? Math.min(...selectionBounds.map((b) => b.y)) : 0;
   const barRef = useRef<HTMLDivElement>(null);
   const barAnchorRef = useRef({ minX, minY });
 
@@ -332,29 +364,31 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
   const batchStrokeWidth = selectedElements.find((e) => ['pen', 'line', 'arrow'].includes(e.type))?.strokeWidth || 3;
 
   const handleBatchColor = (color: string) => {
+    const getColorUpdates = (e: CanvasElement): Partial<CanvasElement> => {
+      if (['pen', 'line', 'arrow'].includes(e.type)) {
+        return { stroke: color };
+      }
+      if (e.type === 'text') {
+        return {
+          fill: color,
+          textColor: color,
+          ...(Array.isArray(e.richText) && e.richText.length > 0
+            ? { richText: setAllRunsColor(e.richText, color) }
+            : {}),
+        };
+      }
+      return { fill: color };
+    };
+
     if (onBatchUpdateElements) {
       const updates = selectedElements.map((e) => ({
         id: e.id,
-        updates: ['pen', 'line', 'arrow'].includes(e.type)
-          ? { stroke: color }
-          : { fill: color },
+        updates: getColorUpdates(e),
       }));
       onBatchUpdateElements(updates);
-    } else if (onUpdateElements) {
-      selectedElements.forEach((e) => {
-        if (['pen', 'line', 'arrow'].includes(e.type)) {
-          onUpdateElement(e.id, { stroke: color });
-        } else {
-          onUpdateElement(e.id, { fill: color });
-        }
-      });
     } else {
       selectedElements.forEach((e) => {
-        if (['pen', 'line', 'arrow'].includes(e.type)) {
-          onUpdateElement(e.id, { stroke: color });
-        } else {
-          onUpdateElement(e.id, { fill: color });
-        }
+        onUpdateElement(e.id, getColorUpdates(e));
       });
     }
   };
@@ -1091,13 +1125,47 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
   const hasTextFormatting = isSticky || isText || isShape;
   const isLocked = Boolean(primaryElement.locked);
 
-  const activeTextColor =
-    primaryElement.textColor ||
-    (isText
-      ? (primaryElement.fill || '#0f172a')
-      : getContrastTextColor(primaryElement.fill || (isSticky ? '#fff9b1' : '#ffffff'), '#0f172a', '#ffffff'));
+  const activeEditor = editingElementId ? textEditingBridge.get(editingElementId) : null;
+  const isEditorActive = Boolean(
+    activeEditor && editorFormats && editingElementId === primaryElement.id
+  );
+  const editorHasLink = isEditorActive && activeEditor ? activeEditor.hasActiveLink() : false;
+
+  // Ao fechar um popover da barra durante a edição, devolve o foco ao texto
+  // (senão o Radix foca o botão de origem e o usuário perde o cursor).
+  const handlePopoverCloseAutoFocus = (event: Event) => {
+    const editor = textEditingBridge.get(primaryElement.id);
+    if (!editor) return;
+    event.preventDefault();
+    editor.focus();
+  };
+  const hasRichText =
+    isText && Array.isArray(primaryElement.richText) && primaryElement.richText.length > 0;
+  const firstRichColor = primaryElement.richText?.find((run) => run.color)?.color;
+
+  const activeTextColor = isEditorActive && editorFormats
+    ? editorFormats.color
+    : firstRichColor ||
+      primaryElement.textColor ||
+      (isText
+        ? (primaryElement.fill || '#0f172a')
+        : getContrastTextColor(primaryElement.fill || (isSticky ? '#fff9b1' : '#ffffff'), '#0f172a', '#ffffff'));
 
   const handleSetTextColor = (colorVal: string | undefined) => {
+    if (isEditorActive && activeEditor) {
+      activeEditor.applyColor(colorVal);
+      return;
+    }
+
+    if (hasRichText) {
+      onUpdateElement(primaryElement.id, {
+        richText: setAllRunsColor(primaryElement.richText!, colorVal),
+        textColor: colorVal,
+        ...(isText ? { fill: colorVal } : {}),
+      });
+      return;
+    }
+
     if (isText) {
       onUpdateElement(primaryElement.id, { textColor: colorVal, fill: colorVal });
     } else {
@@ -1105,24 +1173,72 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
     }
   };
 
-  const isBold = primaryElement.fontWeight === 'bold';
-  const isItalic = primaryElement.fontStyle === 'italic';
-  const isUnderline = primaryElement.textDecoration?.includes('underline');
-  const isStrikethrough = primaryElement.textDecoration?.includes('line-through');
+  const isBold = isEditorActive && editorFormats
+    ? editorFormats.bold
+    : hasRichText
+    ? allRunsHaveFormat(primaryElement.richText, 'bold')
+    : primaryElement.fontWeight === 'bold';
+  const isItalic = isEditorActive && editorFormats
+    ? editorFormats.italic
+    : hasRichText
+    ? allRunsHaveFormat(primaryElement.richText, 'italic')
+    : primaryElement.fontStyle === 'italic';
+  const isUnderline = isEditorActive && editorFormats
+    ? editorFormats.underline
+    : hasRichText
+    ? allRunsHaveFormat(primaryElement.richText, 'underline')
+    : Boolean(primaryElement.textDecoration?.includes('underline'));
+  const isStrikethrough = isEditorActive && editorFormats
+    ? editorFormats.strikethrough
+    : hasRichText
+    ? allRunsHaveFormat(primaryElement.richText, 'strikethrough')
+    : Boolean(primaryElement.textDecoration?.includes('line-through'));
 
   const handleToggleBold = () => {
+    if (isEditorActive && activeEditor) {
+      activeEditor.applyCommand('bold');
+      return;
+    }
+    if (hasRichText) {
+      onUpdateElement(primaryElement.id, {
+        richText: toggleAllRunsFormat(primaryElement.richText!, 'bold', !isBold),
+        fontWeight: !isBold ? 'bold' : 'normal',
+      });
+      return;
+    }
     onUpdateElement(primaryElement.id, {
       fontWeight: isBold ? 'normal' : 'bold',
     });
   };
 
   const handleToggleItalic = () => {
+    if (isEditorActive && activeEditor) {
+      activeEditor.applyCommand('italic');
+      return;
+    }
+    if (hasRichText) {
+      onUpdateElement(primaryElement.id, {
+        richText: toggleAllRunsFormat(primaryElement.richText!, 'italic', !isItalic),
+        fontStyle: !isItalic ? 'italic' : 'normal',
+      });
+      return;
+    }
     onUpdateElement(primaryElement.id, {
       fontStyle: isItalic ? 'normal' : 'italic',
     });
   };
 
   const handleToggleUnderline = () => {
+    if (isEditorActive && activeEditor) {
+      activeEditor.applyCommand('underline');
+      return;
+    }
+    if (hasRichText) {
+      onUpdateElement(primaryElement.id, {
+        richText: toggleAllRunsFormat(primaryElement.richText!, 'underline', !isUnderline),
+      });
+      return;
+    }
     const next = isUnderline
       ? isStrikethrough ? 'line-through' : 'none'
       : isStrikethrough ? 'underline line-through' : 'underline';
@@ -1130,6 +1246,16 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
   };
 
   const handleToggleStrikethrough = () => {
+    if (isEditorActive && activeEditor) {
+      activeEditor.applyCommand('strikeThrough');
+      return;
+    }
+    if (hasRichText) {
+      onUpdateElement(primaryElement.id, {
+        richText: toggleAllRunsFormat(primaryElement.richText!, 'strikethrough', !isStrikethrough),
+      });
+      return;
+    }
     const next = isStrikethrough
       ? isUnderline ? 'underline' : 'none'
       : isUnderline ? 'underline line-through' : 'line-through';
@@ -1140,15 +1266,34 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
   const currentFontSize = primaryElement.fontSize || (isSticky ? 14 : isShape ? 16 : 20);
   const currentTextAlign = primaryElement.textAlign || (isShape ? 'center' : 'left');
 
+  const applyElementFontSize = (sz: number) => {
+    if (isText) {
+      const layout = layoutElementRichText(
+        { ...primaryElement, fontSize: sz },
+        {
+          maxWidth: primaryElement.width || 200,
+          fontSize: sz,
+          align: primaryElement.textAlign || 'left',
+        }
+      );
+      onUpdateElement(primaryElement.id, {
+        fontSize: sz,
+        height: Math.max(1, Math.round(layout.height)),
+      });
+    } else {
+      onUpdateElement(primaryElement.id, { fontSize: sz });
+    }
+  };
+
   const handleSelectFontSize = (sz: number) => {
-    onUpdateElement(primaryElement.id, { fontSize: sz });
+    applyElementFontSize(sz);
     setIsFontSizePopoverOpen(false);
   };
 
   const handleApplyCustomFontSize = () => {
     const parsed = parseInt(customFontSizeInput, 10);
     if (!isNaN(parsed) && parsed >= 8 && parsed <= 300) {
-      onUpdateElement(primaryElement.id, { fontSize: parsed });
+      applyElementFontSize(parsed);
       setIsFontSizePopoverOpen(false);
       setCustomFontSizeInput('');
     }
@@ -1180,17 +1325,45 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
     }
 
     const norm = normalizeUrl(trimmedUrl);
-    const { linkUrl, links } = addLinkToElement(
+    const editor = textEditingBridge.get(primaryElement.id);
+
+    // Com o editor rico aberto, o link vai exatamente para a seleção atual.
+    if (editor) {
+      editor.applyLink(norm, linkTextLabel.trim() || undefined);
+      if (typeof window !== 'undefined') {
+        (window as any).__mirio_active_text_selection = null;
+      }
+      setIsLinkPopoverOpen(false);
+      setIsEditingExistingLink(false);
+      setEditingLinkUrl(null);
+      setLinkInput('');
+      setLinkTextLabel('');
+      return;
+    }
+
+    const labelValue = linkTextLabel.trim() || undefined;
+    const { linkUrl: baseLinkUrl, links: baseLinks } = addLinkToElement(
       primaryElement.linkUrl,
       primaryElement.links,
       norm,
-      linkTextLabel.trim() || undefined
+      labelValue
     );
 
+    const sourceRuns = primaryElement.richText;
+    const richText =
+      Array.isArray(sourceRuns) && sourceRuns.length > 0
+        ? editingLinkUrl
+          ? updateRunLink(sourceRuns, editingLinkUrl, norm, labelValue)
+          : applyLinkToRuns(sourceRuns, norm, labelValue)
+        : undefined;
+
+    const derived = richText ? deriveLinksFromRuns(richText) : null;
+
     onUpdateElement(primaryElement.id, {
-      linkUrl,
-      links,
-      text: stripMarkdownLinks(primaryElement.text || ''),
+      linkUrl: derived ? derived.linkUrl : baseLinkUrl,
+      links: derived ? derived.links : baseLinks,
+      text: richText ? runsToPlainText(richText) : stripMarkdownLinks(primaryElement.text || ''),
+      ...(richText ? { richText } : {}),
     });
 
     if (typeof window !== 'undefined') {
@@ -1204,16 +1377,32 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
   };
 
   const handleRemoveLink = (targetUrl?: string) => {
+    const editor = textEditingBridge.get(primaryElement.id);
+    if (editor) {
+      editor.removeLink();
+      setLinkInput('');
+      setLinkTextLabel('');
+      setEditingLinkUrl(null);
+      setIsEditingExistingLink(false);
+      setIsLinkPopoverOpen(false);
+      return;
+    }
+
     const { linkUrl, links } = removeLinkFromElement(
       primaryElement.linkUrl,
       primaryElement.links,
       targetUrl
     );
 
+    const richText = primaryElement.richText
+      ? removeRunLink(primaryElement.richText, targetUrl)
+      : undefined;
+
     onUpdateElement(primaryElement.id, {
       linkUrl,
       links,
       text: stripMarkdownLinks(primaryElement.text || ''),
+      ...(richText ? { richText } : {}),
     });
 
     setLinkInput('');
@@ -1231,8 +1420,15 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
       onOpenChange={(open) => {
         setIsLinkPopoverOpen(open);
         if (open) {
+          const editor = textEditingBridge.get(primaryElement?.id || '');
+          const editorSelection = editor?.getSelectionInfo();
           const activeSel = typeof window !== 'undefined' ? (window as any).__mirio_active_text_selection : null;
-          if (activeSel && activeSel.elementId === primaryElement?.id && activeSel.text) {
+          if (editorSelection?.text) {
+            setLinkTextLabel(editorSelection.text);
+            setLinkInput('');
+            setEditingLinkUrl(null);
+            setIsEditingExistingLink(true);
+          } else if (activeSel && activeSel.elementId === primaryElement?.id && activeSel.text) {
             setLinkTextLabel(activeSel.text);
             setLinkInput('');
             setEditingLinkUrl(null);
@@ -1281,6 +1477,7 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
         side="top"
         align="center"
         className="w-80 p-3 text-xs shadow-xl rounded-xl border-border bg-popover"
+        onCloseAutoFocus={handlePopoverCloseAutoFocus}
         onPointerDownOutside={() => {
           if (typeof window !== 'undefined') (window as any).__mirio_menu_dismissed_at = Date.now();
         }}
@@ -1540,6 +1737,18 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
               </div>
             </div>
 
+            {(editingLinkUrl || editorHasLink) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => handleRemoveLink(editingLinkUrl || undefined)}
+                className="w-full h-7 text-[11px] gap-1 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              >
+                <Trash2 className="size-3" />
+                <span>Remover link</span>
+              </Button>
+            )}
+
             <p className="text-[10px] text-muted-foreground leading-tight pt-1">
               {(isText || isSticky || isShape)
                 ? 'No texto, selecione qualquer palavra e pressione Ctrl+L para criar um link instantâneo.'
@@ -1554,6 +1763,7 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
   return (
     <div
       ref={barRef}
+      data-mirio-text-toolbar="true"
       className="absolute z-40 flex items-center gap-1 bg-popover/95 text-popover-foreground backdrop-blur-md px-1.5 py-1 rounded-xl shadow-md border border-border select-none"
       style={{
         left: `${barLeft}px`,
@@ -2171,6 +2381,7 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
               side="top"
               align="center"
               className="w-48 p-2.5 text-xs shadow-xl border-border bg-popover"
+              onCloseAutoFocus={handlePopoverCloseAutoFocus}
               onPointerDownOutside={() => {
                 if (typeof window !== 'undefined') (window as any).__mirio_menu_dismissed_at = Date.now();
               }}
@@ -2246,6 +2457,55 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
             <TooltipContent side="top">Negrito ({modKey}+B)</TooltipContent>
           </Tooltip>
 
+          {/* 2.2b Itálico, Sublinhado e Riscado direto na barra */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={handleToggleItalic}
+                className={`size-7 rounded-md transition active:scale-[0.97] ${
+                  isItalic ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Italic className="size-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top">Itálico ({modKey}+I)</TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={handleToggleUnderline}
+                className={`size-7 rounded-md transition active:scale-[0.97] ${
+                  isUnderline ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Underline className="size-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top">Sublinhado ({modKey}+U)</TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={handleToggleStrikethrough}
+                className={`size-7 rounded-md transition active:scale-[0.97] ${
+                  isStrikethrough ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Strikethrough className="size-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top">Riscado ({modKey}+Shift+X)</TooltipContent>
+          </Tooltip>
+
           {/* 2.3 Cor do Texto (1 botão com indicador de cor) */}
           <Popover>
             <Tooltip>
@@ -2271,6 +2531,7 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
               side="top"
               align="center"
               className="w-68 p-2.5 max-h-[380px] overflow-y-auto shadow-xl border-border bg-popover"
+              onCloseAutoFocus={handlePopoverCloseAutoFocus}
               onPointerDownOutside={() => {
                 if (typeof window !== 'undefined') (window as any).__mirio_menu_dismissed_at = Date.now();
               }}
@@ -2405,6 +2666,7 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
               side="top"
               align="center"
               className="w-56 p-2.5 text-xs shadow-xl border-border bg-popover space-y-2.5"
+              onCloseAutoFocus={handlePopoverCloseAutoFocus}
               onPointerDownOutside={() => {
                 if (typeof window !== 'undefined') (window as any).__mirio_menu_dismissed_at = Date.now();
               }}
@@ -2538,6 +2800,7 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
               side="top"
               align="center"
               className="w-48 p-2.5 text-xs shadow-xl border-border bg-popover"
+              onCloseAutoFocus={handlePopoverCloseAutoFocus}
               onPointerDownOutside={() => {
                 if (typeof window !== 'undefined') (window as any).__mirio_menu_dismissed_at = Date.now();
               }}
