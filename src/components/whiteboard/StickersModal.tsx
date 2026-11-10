@@ -18,21 +18,152 @@ import { getAppleEmojiUrl } from '@/utils/appleEmoji';
 // Badges ágeis com Emojis estilo Apple
 const TRENDING_TAGS = ['celebrate', 'agile', 'yes', 'coffee', 'mind blown', 'ship it', 'cat', 'bug', 'applause'];
 
-// Memes populares e reações engraçadas consagradas da internet
-const CURATED_GIFS = [
-  { name: 'Brinde DiCaprio', id: 'GkVM3PcFipxEk', url: 'https://i.giphy.com/media/GkVM3PcFipxEk/giphy.gif' },
-  { name: 'Travolta Confuso', id: 'g01ZnwAUvutuK8GIQn', url: 'https://i.giphy.com/media/g01ZnwAUvutuK8GIQn/giphy.gif' },
-  { name: 'Não Não Deus Não!', id: 'vyTnNTrs3IZdfAUQVW', url: 'https://i.giphy.com/media/vyTnNTrs3IZdfAUQVW/giphy.gif' },
-  { name: 'Pense Nisso (Roll Safe)', id: 'd3mlE7uhX8KFgEmY', url: 'https://i.giphy.com/media/d3mlE7uhX8KFgEmY/giphy.gif' },
-  { name: 'This is Fine (Cachorro)', id: '9M5jK4GXmD5o1irGrF', url: 'https://i.giphy.com/media/9M5jK4GXmD5o1irGrF/giphy.gif' },
-  { name: 'Gato Digitador Focado', id: 'MDJ9IbxxvDUQM', url: 'https://i.giphy.com/media/MDJ9IbxxvDUQM/giphy.gif' },
-  { name: 'Comer Pipoca na Treta', id: 't3dLl0TGHCxTG', url: 'https://i.giphy.com/media/t3dLl0TGHCxTG/giphy.gif' },
-  { name: 'Bebê Vitória (Success)', id: 'nXxOjZrbnbRxS', url: 'https://i.giphy.com/media/nXxOjZrbnbRxS/giphy.gif' },
-  { name: 'Cabeça Explodindo', id: '26ufdipQqU2lhNA4g', url: 'https://i.giphy.com/media/26ufdipQqU2lhNA4g/giphy.gif' },
-  { name: 'Drake Dançando', id: '3o7TKTDnU76u2EPNDG', url: 'https://i.giphy.com/media/3o7TKTDnU76u2EPNDG/giphy.gif' },
-  { name: 'Aplausos Entusiasmados', id: 'nbvFVPiEiJH6Q', url: 'https://i.giphy.com/media/nbvFVPiEiJH6Q/giphy.gif' },
-  { name: 'Gargalhada Épica', id: '10JhviFuU2gWD6', url: 'https://i.giphy.com/media/10JhviFuU2gWD6/giphy.gif' },
+interface GifItem {
+  id: string;
+  name: string;
+  url: string;
+  previewUrl?: string;
+}
+
+// Memes populares e reações consagradas na CDN da Klipy (fallback instantâneo)
+const CURATED_GIFS: GifItem[] = [
+  {
+    name: 'Brinde DiCaprio',
+    id: '7916368356156483',
+    url: 'https://static.klipy.com/ii/4e7bea9f7a3371424e6c16ebc93252fe/46/6a/IGemk23TDHctPwlki1.gif',
+    previewUrl: 'https://static.klipy.com/ii/4e7bea9f7a3371424e6c16ebc93252fe/46/6a/pcUbbCo9Qc8wrN0C.gif',
+  },
+  {
+    name: 'Travolta Confuso',
+    id: '3061683536704476',
+    url: 'https://static.klipy.com/ii/d7aec6f6f171607374b2065c836f92f4/67/fc/eYsqvnbO.gif',
+    previewUrl: 'https://static.klipy.com/ii/d7aec6f6f171607374b2065c836f92f4/67/fc/Ggluv1A2.gif',
+  },
+  {
+    name: 'Não Não Deus Não!',
+    id: '6149379373338412',
+    url: 'https://static.klipy.com/ii/d7aec6f6f171607374b2065c836f92f4/8c/39/FmFDzsho.gif',
+    previewUrl: 'https://static.klipy.com/ii/d7aec6f6f171607374b2065c836f92f4/8c/39/1bDCcmPi.gif',
+  },
+  {
+    name: 'Pense Nisso (Roll Safe)',
+    id: '1251982231578481',
+    url: 'https://static.klipy.com/ii/925f17378dd1893b674a723c07535afe/4d/6f/jVcYzyp9.gif',
+    previewUrl: 'https://static.klipy.com/ii/925f17378dd1893b674a723c07535afe/4d/6f/QsvtvV9u.gif',
+  },
+  {
+    name: 'This is Fine (Cachorro)',
+    id: '7889848656714426',
+    url: 'https://static.klipy.com/ii/c3a19a0b747a76e98651f2b9a3cca5ff/49/f8/zl1Y5fjP.gif',
+    previewUrl: 'https://static.klipy.com/ii/c3a19a0b747a76e98651f2b9a3cca5ff/49/f8/cG6oLGC8.gif',
+  },
+  {
+    name: 'Gato Digitador Focado',
+    id: '5122090673266753',
+    url: 'https://static.klipy.com/ii/c3a19a0b747a76e98651f2b9a3cca5ff/9c/63/z1XLwIWS.gif',
+    previewUrl: 'https://static.klipy.com/ii/c3a19a0b747a76e98651f2b9a3cca5ff/9c/63/E3MfOMq9.gif',
+  },
+  {
+    name: 'Comer Pipoca na Treta',
+    id: '7267495775780009',
+    url: 'https://static.klipy.com/ii/35ccce3d852f7995dd2da910f2abd795/ec/59/uGVtiiAZ.gif',
+    previewUrl: 'https://static.klipy.com/ii/35ccce3d852f7995dd2da910f2abd795/ec/59/RsxO4agf.gif',
+  },
+  {
+    name: 'Bebê Vitória (Success)',
+    id: '2492622719539599',
+    url: 'https://static.klipy.com/ii/d6b0ce929193df3c242ac34b5654d2ce/35/88/KiVLVpaQ.gif',
+    previewUrl: 'https://static.klipy.com/ii/d6b0ce929193df3c242ac34b5654d2ce/35/88/cRKlOJf7.gif',
+  },
+  {
+    name: 'Cabeça Explodindo',
+    id: '4532624641600511',
+    url: 'https://static.klipy.com/ii/d6b0ce929193df3c242ac34b5654d2ce/9a/57/CCtgUPsD.gif',
+    previewUrl: 'https://static.klipy.com/ii/d6b0ce929193df3c242ac34b5654d2ce/9a/57/xhKlDpCw.gif',
+  },
+  {
+    name: 'Comemorando (Celebrate)',
+    id: '8168425300051009',
+    url: 'https://static.klipy.com/ii/35ccce3d852f7995dd2da910f2abd795/32/bf/zFtdVhji.gif',
+    previewUrl: 'https://static.klipy.com/ii/35ccce3d852f7995dd2da910f2abd795/32/bf/D2RxVsDJ.gif',
+  },
+  {
+    name: 'Aplausos Entusiasmados',
+    id: '4596653737650329',
+    url: 'https://static.klipy.com/ii/f87f46a2c5aeaeed4c68910815f73eaf/08/b7/hK8oyGl2.gif',
+    previewUrl: 'https://static.klipy.com/ii/f87f46a2c5aeaeed4c68910815f73eaf/08/b7/McUpzTeD.gif',
+  },
+  {
+    name: 'Gargalhada Épica',
+    id: '3478590164151568',
+    url: 'https://static.klipy.com/ii/d6b0ce929193df3c242ac34b5654d2ce/79/f2/VyNapEfQ.gif',
+    previewUrl: 'https://static.klipy.com/ii/d6b0ce929193df3c242ac34b5654d2ce/79/f2/OfDbEjjb.gif',
+  },
 ];
+
+interface KlipyMediaVariant {
+  gif?: { url?: string };
+  webp?: { url?: string };
+}
+
+interface KlipyRawItem {
+  id?: string | number;
+  slug?: string;
+  title?: string;
+  file?: {
+    hd?: KlipyMediaVariant;
+    md?: KlipyMediaVariant;
+    sm?: KlipyMediaVariant;
+    xs?: KlipyMediaVariant;
+  };
+  files?: {
+    gif?: { url?: string };
+    mediumgif?: { url?: string };
+    tinygif?: { url?: string };
+  };
+}
+
+const parseKlipyResponse = (payload: unknown): GifItem[] => {
+  const root = payload as {
+    data?: { data?: KlipyRawItem[] } | KlipyRawItem[];
+  };
+  const rawList: KlipyRawItem[] = Array.isArray(root?.data)
+    ? root.data
+    : Array.isArray(root?.data?.data)
+    ? root.data.data
+    : [];
+
+  return rawList
+    .map((item): GifItem => {
+      const fullUrl =
+        item.file?.md?.gif?.url ||
+        item.file?.hd?.gif?.url ||
+        item.file?.sm?.gif?.url ||
+        item.files?.gif?.url ||
+        item.files?.mediumgif?.url ||
+        '';
+      const previewUrl =
+        item.file?.sm?.gif?.url ||
+        item.file?.md?.gif?.url ||
+        item.files?.tinygif?.url ||
+        fullUrl;
+      const name =
+        item.title?.trim() ||
+        item.slug?.replace(/-/g, ' ').trim() ||
+        'GIF animado';
+
+      return {
+        id: String(item.id || fullUrl),
+        name,
+        url: fullUrl,
+        previewUrl,
+      };
+    })
+    .filter((item) => Boolean(item.url));
+};
+
+const DEFAULT_KLIPY_KEY =
+  'DxJbnSmA6hJPpCHiYX7fYppxzJcH7zqXNh03ZGT2L7t8OyShfh6fxZc7aVN6QWNQ';
 
 interface StickersModalProps {
   open: boolean;
@@ -49,42 +180,116 @@ export const StickersModal: React.FC<StickersModalProps> = ({
   const [activeTab, setActiveTab] = useState<'emojis' | 'gifs' | 'url'>('emojis');
   const [gifSearch, setGifSearch] = useState('');
   const [customUrl, setCustomUrl] = useState('');
-  const [searchResults, setSearchResults] = useState(CURATED_GIFS);
+  const [trendingGifs, setTrendingGifs] = useState<GifItem[]>(CURATED_GIFS);
+  const [searchResults, setSearchResults] = useState<GifItem[]>(CURATED_GIFS);
   const [isSearching, setIsSearching] = useState(false);
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const hasLoadedTrendingRef = useRef(false);
 
-  const apiKey = import.meta.env.VITE_GIPHY_API_KEY as string;
+  const klipyApiKey =
+    (import.meta.env.VITE_KLIPY_API_KEY as string) || DEFAULT_KLIPY_KEY;
+  const giphyApiKey = import.meta.env.VITE_GIPHY_API_KEY as string;
 
-  const fetchGifs = async (query: string) => {
-    if (!apiKey) {
-      setSearchResults(CURATED_GIFS);
+  // Carrega GIFs em alta na Klipy ao abrir a aba de GIFs pela primeira vez
+  useEffect(() => {
+    if (!open || activeTab !== 'gifs' || hasLoadedTrendingRef.current || !klipyApiKey) {
       return;
     }
+    hasLoadedTrendingRef.current = true;
 
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(
+          `https://api.klipy.com/api/v1/${klipyApiKey}/gifs/trending?per_page=24&locale=pt`
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        const parsed = parseKlipyResponse(data);
+        if (!cancelled && parsed.length > 0) {
+          setTrendingGifs(parsed);
+          setSearchResults((prev) => (prev === CURATED_GIFS ? parsed : prev));
+        }
+      } catch (err) {
+        console.warn('Falha ao carregar GIFs em alta no Klipy:', err);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, activeTab, klipyApiKey]);
+
+  const fetchGifs = async (query: string) => {
     setIsSearching(true);
     try {
-      const res = await fetch(
-        `https://api.giphy.com/v1/gifs/search?api_key=${apiKey}&q=${encodeURIComponent(
-          query
-        )}&limit=24&rating=g`
-      );
-      if (res.ok) {
-        const data = await res.json();
-        const formatted = (data.data || [])
-          .map((item: { id: string; title: string }) => ({
-            name: item.title || 'GIF animado',
-            id: item.id,
-            // Link direto unauthenticated via CDN i.giphy.com sem restrições de referer
-            url: `https://i.giphy.com/media/${item.id}/giphy.gif`,
-          }))
-          .filter((item: { url: string }) => Boolean(item.url));
-
-        setSearchResults(formatted.length > 0 ? formatted : CURATED_GIFS);
+      // 1. Provedor principal: Klipy API
+      if (klipyApiKey) {
+        const res = await fetch(
+          `https://api.klipy.com/api/v1/${klipyApiKey}/gifs/search?q=${encodeURIComponent(
+            query
+          )}&per_page=24&locale=pt`
+        );
+        if (res.ok) {
+          const data = await res.json();
+          const formatted = parseKlipyResponse(data);
+          if (formatted.length > 0) {
+            setSearchResults(formatted);
+            return;
+          }
+        }
       }
+
+      // 2. Fallback secundário: Giphy API (caso configurada)
+      if (giphyApiKey) {
+        const res = await fetch(
+          `https://api.giphy.com/v1/gifs/search?api_key=${giphyApiKey}&q=${encodeURIComponent(
+            query
+          )}&limit=24&rating=g`
+        );
+        if (res.ok) {
+          const data = await res.json();
+          const formatted: GifItem[] = (data.data || [])
+            .map(
+              (item: {
+                id: string;
+                title: string;
+                images?: {
+                  fixed_height?: { url?: string };
+                  downsized?: { url?: string };
+                  original?: { url?: string };
+                };
+              }): GifItem => {
+                const directUrl =
+                  item.images?.fixed_height?.url ||
+                  item.images?.downsized?.url ||
+                  item.images?.original?.url ||
+                  `https://i.giphy.com/media/${item.id}/giphy.gif`;
+                return {
+                  name: item.title || 'GIF animado',
+                  id: item.id,
+                  url: directUrl,
+                  previewUrl: item.images?.fixed_height?.url || directUrl,
+                };
+              }
+            )
+            .filter((item: GifItem) => Boolean(item.url));
+
+          setSearchResults(formatted);
+          return;
+        }
+      }
+
+      // 3. Fallback local: filtra destaques
+      const qLower = query.toLowerCase();
+      const localMatches = trendingGifs.filter((g) =>
+        g.name.toLowerCase().includes(qLower)
+      );
+      setSearchResults(localMatches);
     } catch (err) {
-      console.warn('Falha ao buscar GIFs no Giphy:', err);
-      setSearchResults(CURATED_GIFS);
+      console.warn('Falha ao buscar GIFs:', err);
+      setSearchResults(trendingGifs);
     } finally {
       setIsSearching(false);
     }
@@ -99,7 +304,7 @@ export const StickersModal: React.FC<StickersModalProps> = ({
     }
 
     if (!value.trim()) {
-      setSearchResults(CURATED_GIFS);
+      setSearchResults(trendingGifs);
       setIsSearching(false);
       return;
     }
@@ -122,7 +327,7 @@ export const StickersModal: React.FC<StickersModalProps> = ({
     if (activeTag === tag) {
       setActiveTag(null);
       setGifSearch('');
-      setSearchResults(CURATED_GIFS);
+      setSearchResults(trendingGifs);
       return;
     }
     setActiveTag(tag);
@@ -143,9 +348,16 @@ export const StickersModal: React.FC<StickersModalProps> = ({
 
   const handleInsertCustomUrl = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!customUrl.trim()) return;
-    const isGif = customUrl.toLowerCase().includes('.gif');
-    onInsertMedia(isGif ? 'gif' : 'sticker', customUrl.trim(), 'Mídia personalizada');
+    const trimmed = customUrl.trim();
+    if (!trimmed) return;
+    const lower = trimmed.toLowerCase();
+    const isGif =
+      lower.includes('.gif') ||
+      lower.includes('.webp') ||
+      lower.includes('klipy.com') ||
+      lower.includes('giphy.com') ||
+      lower.includes('tenor.com');
+    onInsertMedia(isGif ? 'gif' : 'sticker', trimmed, 'Mídia personalizada');
     setCustomUrl('');
     onOpenChange(false);
   };
@@ -252,7 +464,8 @@ export const StickersModal: React.FC<StickersModalProps> = ({
                     type="button"
                     onClick={() => {
                       setGifSearch('');
-                      setSearchResults(CURATED_GIFS);
+                      setActiveTag(null);
+                      setSearchResults(trendingGifs);
                     }}
                     className="text-primary hover:underline font-medium"
                   >
@@ -262,24 +475,22 @@ export const StickersModal: React.FC<StickersModalProps> = ({
               ) : (
                 searchResults.map((gif, idx) => (
                   <button
-                    key={idx}
+                    key={gif.id || idx}
                     type="button"
                     onClick={() => handleSelectGif(gif.url, gif.name)}
                     className="group relative rounded-md overflow-hidden border border-border bg-muted/30 aspect-video hover:border-primary transition-all active:scale-[0.98]"
                     title={gif.name}
                   >
                     <img
-                      src={gif.url}
+                      src={gif.previewUrl || gif.url}
                       alt={gif.name}
                       loading="lazy"
-                      referrerPolicy="no-referrer"
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                       onError={(e) => {
-                        // Se falhar, tenta thumbnail direto
                         const target = e.target as HTMLImageElement;
-                        if (!target.dataset.retried && gif.id) {
+                        if (!target.dataset.retried && gif.url && target.src !== gif.url) {
                           target.dataset.retried = 'true';
-                          target.src = `https://media.giphy.com/media/${gif.id}/giphy.gif`;
+                          target.src = gif.url;
                         }
                       }}
                     />
