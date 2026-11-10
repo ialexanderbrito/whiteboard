@@ -48,6 +48,7 @@ test('BoardContextMenu contains all Creation and Board Tools for empty canvas', 
   assert.match(content, /Stickers & Emojis\.\.\./, 'Deve conter atalho para Stickers');
   assert.match(content, /Redefinir Zoom/, 'Deve conter opção Redefinir Zoom');
   assert.match(content, /Grade/, 'Deve conter opção para Alternar Grade');
+  assert.match(content, /Guias Inteligentes/, 'Deve conter opção para Alternar Guias Inteligentes');
 });
 
 test('BoardContextMenu contains Element Object Actions when element is selected', () => {

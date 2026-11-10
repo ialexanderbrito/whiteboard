@@ -59,6 +59,8 @@ interface NavbarProps {
   onToggleGrid?: (show?: boolean) => void;
   showRemoteCursors?: boolean;
   onToggleRemoteCursors?: (show?: boolean) => void;
+  smartGuides?: boolean;
+  onToggleSmartGuides?: (enabled?: boolean) => void;
   mirioReactionUnlocked?: boolean;
   isShareModalOpen?: boolean;
   onShareModalOpenChange?: (open: boolean) => void;
@@ -100,6 +102,8 @@ export const Navbar: React.FC<NavbarProps> = React.memo(({
   onToggleGrid,
   showRemoteCursors,
   onToggleRemoteCursors,
+  smartGuides,
+  onToggleSmartGuides,
   mirioReactionUnlocked = false,
   isShareModalOpen: controlledShareOpen,
   onShareModalOpenChange: setControlledShareOpen,
@@ -382,6 +386,8 @@ export const Navbar: React.FC<NavbarProps> = React.memo(({
           onToggleGrid={onToggleGrid}
           showRemoteCursors={showRemoteCursors}
           onToggleRemoteCursors={onToggleRemoteCursors}
+          smartGuides={smartGuides}
+          onToggleSmartGuides={onToggleSmartGuides}
         />
 
         {/* Botão de Compartilhar (Proprietários podem compartilhar seu quadro) */}

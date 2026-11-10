@@ -13,7 +13,8 @@ import {
   LayoutGrid, 
   Boxes, 
   Eye, 
-  EyeOff
+  EyeOff,
+  Magnet
 } from '@/components/ui/icons';
 import type { GridType, GridSize } from './CanvasGrid';
 import { DEFAULT_GRID_OPACITY } from './CanvasGrid';
@@ -40,6 +41,8 @@ export interface CanvasPreferencesMenuProps {
   onToggleGrid?: (show?: boolean) => void;
   showRemoteCursors?: boolean;
   onToggleRemoteCursors?: (show?: boolean) => void;
+  smartGuides?: boolean;
+  onToggleSmartGuides?: (enabled?: boolean) => void;
 }
 
 export const CanvasPreferencesMenu: React.FC<CanvasPreferencesMenuProps> = ({
@@ -55,6 +58,8 @@ export const CanvasPreferencesMenu: React.FC<CanvasPreferencesMenuProps> = ({
   onToggleGrid,
   showRemoteCursors = true,
   onToggleRemoteCursors,
+  smartGuides = true,
+  onToggleSmartGuides,
 }) => {
   const [open, setOpen] = useState(false);
   const { theme, setTheme } = useTheme();
@@ -218,6 +223,45 @@ export const CanvasPreferencesMenu: React.FC<CanvasPreferencesMenuProps> = ({
                 <>
                   <EyeOff className="size-3 text-muted-foreground" />
                   <span>Ocultos</span>
+                </>
+              )}
+            </button>
+          </div>
+        )}
+
+        {/* 3. Guias Inteligentes & Encaixe Magnético (Smart Guides) */}
+        {onToggleSmartGuides && (
+          <div className="flex items-center justify-between p-2 rounded-xl bg-muted/30 border border-border/60">
+            <div className="flex items-center gap-2">
+              <Magnet className="size-3.5 text-primary" />
+              <div>
+                <span className="text-xs font-medium text-foreground block leading-tight">
+                  Guias Inteligentes & Encaixe
+                </span>
+                <span className="text-[10px] text-muted-foreground block leading-tight">
+                  Trava nas bordas/centros (Ctrl ignora)
+                </span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => onToggleSmartGuides(!smartGuides)}
+              className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-md transition-[transform,background-color,color,border-color] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] shadow-2xs cursor-pointer active:scale-[0.95] ${
+                smartGuides
+                  ? 'text-primary bg-primary/10 hover:bg-primary/20 border border-primary/20'
+                  : 'text-muted-foreground bg-muted hover:bg-muted/80 border border-border/60'
+              }`}
+              title={smartGuides ? 'Desativar alinhamento magnético' : 'Ativar alinhamento magnético'}
+            >
+              {smartGuides ? (
+                <>
+                  <Magnet className="size-3 text-primary" />
+                  <span>Ativo</span>
+                </>
+              ) : (
+                <>
+                  <EyeOff className="size-3 text-muted-foreground" />
+                  <span>Inativo</span>
                 </>
               )}
             </button>

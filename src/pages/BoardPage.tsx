@@ -273,6 +273,20 @@ export const BoardPage: React.FC = () => {
     localStorage.setItem('mirio_grid_type', type);
   };
 
+  // Configurações das Guias Inteligentes e Encaixe Magnético (Smart Guides)
+  const [smartGuidesEnabled, setSmartGuidesEnabled] = useState<boolean>(() => {
+    const saved = localStorage.getItem('mirio_smart_guides_enabled');
+    return saved !== null ? saved !== 'false' : true;
+  });
+
+  const handleToggleSmartGuides = useCallback((enabled?: boolean) => {
+    setSmartGuidesEnabled((prev) => {
+      const next = typeof enabled === 'boolean' ? enabled : !prev;
+      localStorage.setItem('mirio_smart_guides_enabled', String(next));
+      return next;
+    });
+  }, []);
+
   const handleChangeGridSize = (size: GridSize) => {
     setGridSize(size);
     localStorage.setItem('mirio_grid_size', size);
@@ -1587,6 +1601,8 @@ export const BoardPage: React.FC = () => {
           onToggleGrid={handleToggleGrid}
           showRemoteCursors={showRemoteCursors}
           onToggleRemoteCursors={handleToggleRemoteCursors}
+          smartGuides={smartGuidesEnabled}
+          onToggleSmartGuides={handleToggleSmartGuides}
           mirioReactionUnlocked={mirioReactionUnlocked}
           isShareModalOpen={isShareModalOpen}
           onShareModalOpenChange={setIsShareModalOpen}
@@ -1887,6 +1903,8 @@ export const BoardPage: React.FC = () => {
           isDarkMode: isDark,
           showGrid,
           onToggleGrid: handleToggleGrid,
+          smartGuides: smartGuidesEnabled,
+          onToggleSmartGuides: handleToggleSmartGuides,
           showRemoteCursors,
           onToggleRemoteCursors: handleToggleRemoteCursors,
           gridType,
@@ -1977,6 +1995,8 @@ export const BoardPage: React.FC = () => {
         gridOpacity={gridOpacity}
         showGrid={showGrid}
         onToggleGrid={handleToggleGrid}
+        smartGuidesEnabled={smartGuidesEnabled}
+        onToggleSmartGuides={handleToggleSmartGuides}
         mirioReactionUnlocked={mirioReactionUnlocked}
       />
     </div>

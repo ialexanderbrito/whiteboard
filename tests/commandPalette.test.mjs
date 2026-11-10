@@ -37,3 +37,16 @@ test('DashboardPage and BoardPage wire onOpenCoffee and Share modal to CommandPa
   assert.match(boardSrc, /onShare:\s*\(\)\s*=>\s*setIsShareModalOpen\(true\)/);
   assert.match(boardSrc, /onCopyLink:\s*handleCopyShareLink/);
 });
+
+test('CommandPalette wires smartGuides toggle option under Exibição e Grade', () => {
+  const src = readSource('src/components/command/CommandPalette.tsx');
+  assert.match(src, /boardContext\.onToggleSmartGuides/);
+  assert.match(src, /Guias Inteligentes e Encaixe Magnético/);
+  assert.match(src, /value="guias inteligentes encaixe magnetico/);
+});
+
+test('BoardPage wires smartGuides and onToggleSmartGuides to CommandPalette', () => {
+  const boardSrc = readSource('src/pages/BoardPage.tsx');
+  assert.match(boardSrc, /smartGuides:\s*smartGuidesEnabled/);
+  assert.match(boardSrc, /onToggleSmartGuides:\s*handleToggleSmartGuides/);
+});

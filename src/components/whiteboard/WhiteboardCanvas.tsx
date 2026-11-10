@@ -68,6 +68,7 @@ import {
   isBoundsInViewport,
   normalizeRotationDeg,
 } from '../../utils/elementBounds';
+import { calculateSmartGuidesAndSnap, type GuideLine } from '../../utils/smartGuides';
 import { StickyReactionBar } from './StickyReactionBar';
 import { StickyQuickAdd } from './StickyQuickAdd';
 import { getAdjacentStickyRect, type StickyDirection } from '../../utils/stickyPlacement';
@@ -128,6 +129,8 @@ interface WhiteboardCanvasProps {
   gridOpacity?: number;
   showGrid?: boolean;
   onToggleGrid?: () => void;
+  smartGuidesEnabled?: boolean;
+  onToggleSmartGuides?: () => void;
   mirioReactionUnlocked?: boolean;
   onLaserMove?: (worldPos: { x: number; y: number }, isDrawing: boolean) => void;
   onLaserDown?: (worldPos: { x: number; y: number }) => void;
@@ -345,6 +348,8 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
   gridOpacity,
   showGrid = true,
   onToggleGrid,
+  smartGuidesEnabled = true,
+  onToggleSmartGuides,
   mirioReactionUnlocked = false,
   onLaserMove,
   onLaserDown,
@@ -356,6 +361,15 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
   const stageRef = useRef<Konva.Stage>(null);
   const elementsLayerRef = useRef<Konva.Layer>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
+  const smartGuidesLayerRef = useRef<Konva.Layer>(null);
+  const smartGuidesEnabledRef = useRef(smartGuidesEnabled);
+  smartGuidesEnabledRef.current = smartGuidesEnabled;
+  const dragSmartGuidesData = useRef<{
+    initialSelfPos: { x: number; y: number };
+    initialBounds: { x: number; y: number; w: number; h: number };
+    candidateElements: CanvasElement[];
+    draggedIds: Set<string>;
+  } | null>(null);
   const gifOverlayRef = useRef<HTMLDivElement>(null);
   const votingOverlayRef = useRef<HTMLDivElement>(null);
   const worldOverlayRefs = useRef<Array<React.RefObject<HTMLDivElement | null>>>([]);
@@ -591,6 +605,102 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
 
   // Rastreamento de posições iniciais para arraste em lote sincronizado
   const dragStartPositions = useRef<Map<string, { x: number; y: number }>>(new Map());
+
+  // Limpa as linhas-guia inteligentes do canvas
+  const clearSmartGuides = useCallback(() => {
+    const layer = smartGuidesLayerRef.current;
+    if (!layer) return;
+    if (layer.children.length > 0) {
+      layer.destroyChildren();
+      layer.batchDraw();
+    }
+  }, []);
+
+  // Renderiza as réguas e linhas-guia inteligentes estilo Figma/Miro (#F43F5E)
+  const drawSmartGuides = useCallback((guides: GuideLine[]) => {
+    const layer = smartGuidesLayerRef.current;
+    if (!layer) return;
+    layer.destroyChildren();
+
+    if (!guides || guides.length === 0) {
+      layer.batchDraw();
+      return;
+    }
+
+    const currentScale = scaleRef.current || 1;
+    const strokeWidth = Math.max(1, 1.5 / currentScale);
+    const tickSize = Math.max(2, 4 / currentScale);
+
+    for (const g of guides) {
+      if (g.orientation === 'vertical') {
+        // Linha guia vertical
+        const line = new Konva.Line({
+          points: [g.lineCoord, g.start, g.lineCoord, g.end],
+          stroke: '#F43F5E',
+          strokeWidth,
+          dash: [4 / currentScale, 3 / currentScale],
+          opacity: 0.95,
+          listening: false,
+          perfectDrawEnabled: false,
+        });
+        layer.add(line);
+
+        // Marcadores (ticks) nos topos e bases dos elementos alinhados
+        const topTick = new Konva.Line({
+          points: [g.lineCoord - tickSize, g.start, g.lineCoord + tickSize, g.start],
+          stroke: '#F43F5E',
+          strokeWidth,
+          opacity: 0.95,
+          listening: false,
+          perfectDrawEnabled: false,
+        });
+        const bottomTick = new Konva.Line({
+          points: [g.lineCoord - tickSize, g.end, g.lineCoord + tickSize, g.end],
+          stroke: '#F43F5E',
+          strokeWidth,
+          opacity: 0.95,
+          listening: false,
+          perfectDrawEnabled: false,
+        });
+        layer.add(topTick);
+        layer.add(bottomTick);
+      } else {
+        // Linha guia horizontal
+        const line = new Konva.Line({
+          points: [g.start, g.lineCoord, g.end, g.lineCoord],
+          stroke: '#F43F5E',
+          strokeWidth,
+          dash: [4 / currentScale, 3 / currentScale],
+          opacity: 0.95,
+          listening: false,
+          perfectDrawEnabled: false,
+        });
+        layer.add(line);
+
+        // Marcadores (ticks) nas extremidades esquerda e direita
+        const leftTick = new Konva.Line({
+          points: [g.start, g.lineCoord - tickSize, g.start, g.lineCoord + tickSize],
+          stroke: '#F43F5E',
+          strokeWidth,
+          opacity: 0.95,
+          listening: false,
+          perfectDrawEnabled: false,
+        });
+        const rightTick = new Konva.Line({
+          points: [g.end, g.lineCoord - tickSize, g.end, g.lineCoord + tickSize],
+          stroke: '#F43F5E',
+          strokeWidth,
+          opacity: 0.95,
+          listening: false,
+          perfectDrawEnabled: false,
+        });
+        layer.add(leftTick);
+        layer.add(rightTick);
+      }
+    }
+
+    layer.batchDraw();
+  }, []);
 
   // Navegação por gestos touch (celular/tablet): pinça de 2 dedos para zoom,
   // movimento dos 2 dedos para pan, arraste de 1 dedo com inércia suave em modo visualização
@@ -1309,6 +1419,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         onSelectionChange([]);
       }
 
+
       // Atalho de Ajuda / Atalhos (?)
       if ((e.key === '?' || (e.shiftKey && e.key === '/')) && onOpenShortcuts) {
         e.preventDefault();
@@ -1400,6 +1511,16 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         return;
       }
 
+      // Alternar Guias Inteligentes e Encaixe Magnético: Shift+S ou Ctrl+;
+      if (
+        ((e.ctrlKey || e.metaKey) && (e.key === ';' || e.code === 'Semicolon')) ||
+        (!e.ctrlKey && !e.metaKey && !e.altKey && e.shiftKey && (e.key === 'S' || e.key === 's'))
+      ) {
+        e.preventDefault();
+        onToggleSmartGuides?.();
+        return;
+      }
+
       // Atalhos de ferramentas (sem Ctrl/Meta/Alt)
       if (!e.ctrlKey && !e.metaKey && !e.altKey) {
         if (e.key === 'l' || e.key === 'L') {
@@ -1473,6 +1594,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     handleCut,
     handlePaste,
     onToggleGrid,
+    onToggleSmartGuides,
   ]);
 
   // Listener do evento nativo de 'paste' para captura rica de dados (imagens, textos e itens)
@@ -2444,10 +2566,6 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         y: Math.round(middlePanStart.current.stageY + dy),
       };
       applyStagePan(newPos, scaleRef.current);
-      return;
-    }
-
-    if (readOnly) {
       return;
     }
 
@@ -4300,14 +4418,76 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           }
           if (e.target === stageRef.current) return;
           const targetId = e.target.id();
-          if (targetId && selectedIds.includes(targetId)) {
+          if (targetId) {
             dragStartPositions.current.clear();
-            selectedIds.forEach((id) => {
-              const node = stageRef.current?.findOne('#' + id);
-              if (node) {
-                dragStartPositions.current.set(id, { x: node.x(), y: node.y() });
+            if (selectedIds.includes(targetId)) {
+              selectedIds.forEach((id) => {
+                const node = stageRef.current?.findOne('#' + id);
+                if (node) {
+                  dragStartPositions.current.set(id, { x: node.x(), y: node.y() });
+                }
+              });
+            } else {
+              dragStartPositions.current.set(targetId, { x: e.target.x(), y: e.target.y() });
+            }
+
+            // Inicialização do Alinhamento Magnético e Guias Inteligentes (Smart Guides)
+            if (smartGuidesEnabledRef.current) {
+              const isMulti = selectedIds.length > 1 && selectedIds.includes(targetId);
+              const draggedIds = new Set(isMulti ? selectedIds : [targetId]);
+
+              let initialBounds: { x: number; y: number; w: number; h: number };
+
+              if (!isMulti) {
+                const elem = elementsRef.current.find((el) => el.id === targetId);
+                initialBounds = elem
+                  ? getElementWorldBounds(elem)
+                  : { x: e.target.x(), y: e.target.y(), w: 100, h: 100 };
+              } else {
+                let minX = Infinity;
+                let minY = Infinity;
+                let maxX = -Infinity;
+                let maxY = -Infinity;
+                draggedIds.forEach((id) => {
+                  const elem = elementsRef.current.find((el) => el.id === id);
+                  if (elem) {
+                    const b = getElementWorldBounds(elem);
+                    if (b.x < minX) minX = b.x;
+                    if (b.y < minY) minY = b.y;
+                    if (b.x + b.w > maxX) maxX = b.x + b.w;
+                    if (b.y + b.h > maxY) maxY = b.y + b.h;
+                  }
+                });
+                initialBounds = {
+                  x: Number.isFinite(minX) ? minX : e.target.x(),
+                  y: Number.isFinite(minY) ? minY : e.target.y(),
+                  w: Number.isFinite(maxX) && Number.isFinite(minX) ? Math.max(10, maxX - minX) : 100,
+                  h: Number.isFinite(maxY) && Number.isFinite(minY) ? Math.max(10, maxY - minY) : 100,
+                };
               }
-            });
+
+              const currentScale = scaleRef.current || 1;
+              const viewport = {
+                x: stagePosRef.current.x,
+                y: stagePosRef.current.y,
+                scale: currentScale,
+              };
+
+              const candidates = elementsRef.current.filter((el) => {
+                if (draggedIds.has(el.id)) return false;
+                const b = getElementWorldBounds(el);
+                return isBoundsInViewport(b, viewport, window.innerWidth, window.innerHeight, 600);
+              });
+
+              dragSmartGuidesData.current = {
+                initialSelfPos: { x: e.target.x(), y: e.target.y() },
+                initialBounds,
+                candidateElements: candidates,
+                draggedIds,
+              };
+            } else {
+              dragSmartGuidesData.current = null;
+            }
           }
         }}
         onDragMove={(e) => {
@@ -4318,6 +4498,44 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
             return;
           }
           const targetId = e.target.id();
+
+          // Processamento do Alinhamento Magnético e Guias Inteligentes em tempo real
+          if (targetId && smartGuidesEnabledRef.current && dragSmartGuidesData.current) {
+            const isBypass = Boolean(e.evt && (e.evt.ctrlKey || e.evt.metaKey));
+            if (isBypass) {
+              clearSmartGuides();
+            } else {
+              const { initialSelfPos, initialBounds, candidateElements } = dragSmartGuidesData.current;
+              const rawDx = e.target.x() - initialSelfPos.x;
+              const rawDy = e.target.y() - initialSelfPos.y;
+
+              const currentBounds = {
+                x: initialBounds.x + rawDx,
+                y: initialBounds.y + rawDy,
+                w: initialBounds.w,
+                h: initialBounds.h,
+              };
+
+              const currentScale = scaleRef.current || 1;
+              const tolerance = 7.5 / currentScale;
+
+              const snapResult = calculateSmartGuidesAndSnap({
+                draggedBounds: currentBounds,
+                candidateElements,
+                tolerance,
+              });
+
+              if (snapResult.hasSnapX) {
+                e.target.x(e.target.x() + snapResult.deltaX);
+              }
+              if (snapResult.hasSnapY) {
+                e.target.y(e.target.y() + snapResult.deltaY);
+              }
+
+              drawSmartGuides(snapResult.guides);
+            }
+          }
+
           if (targetId) {
             const targetGif = document.getElementById(`gif-overlay-${targetId}`);
             if (targetGif) {
@@ -4356,6 +4574,8 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           }
         }}
         onDragEnd={(e) => {
+          clearSmartGuides();
+          dragSmartGuidesData.current = null;
           if (e.target === stageRef.current) {
             applyStagePan(
               { x: Math.round(e.target.x()), y: Math.round(e.target.y()) },
@@ -4682,6 +4902,11 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           />
         </Layer>
         )}
+
+        {/* Camada 4: Guias Inteligentes e Encaixe Magnético (Smart Guides) */}
+        {!readOnly && (
+          <Layer ref={smartGuidesLayerRef} id="smart-guides-layer" listening={false} />
+        )}
       </Stage>
 
       {/* Pílula minimalista de ângulo ao vivo durante o giro pelas pontas (0 re-renders por frame) */}
@@ -4870,6 +5095,8 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           onResetZoom={onResetZoom || (() => onStageChange({ x: 0, y: 0 }, 1))}
           onToggleGrid={onToggleGrid}
           showGrid={showGrid}
+          onToggleSmartGuides={onToggleSmartGuides}
+          smartGuidesEnabled={smartGuidesEnabled}
           readOnly={readOnly}
           canCommentOnly={canCommentOnly}
         />

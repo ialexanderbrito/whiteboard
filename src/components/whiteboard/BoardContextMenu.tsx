@@ -35,6 +35,7 @@ import {
   AlignCenterHorizontal,
   AlignEndHorizontal,
   Plus,
+  Magnet,
 } from '@/components/ui/icons';
 import type { CanvasElement } from '../../types/element';
 import type { AlignmentType } from '../../utils/alignment';
@@ -65,6 +66,8 @@ export interface BoardContextMenuProps {
   onResetZoom?: () => void;
   onToggleGrid?: () => void;
   showGrid?: boolean;
+  onToggleSmartGuides?: () => void;
+  smartGuidesEnabled?: boolean;
   readOnly?: boolean;
   canCommentOnly?: boolean;
 }
@@ -96,6 +99,8 @@ export const BoardContextMenu: React.FC<BoardContextMenuProps> = ({
   onResetZoom,
   onToggleGrid,
   showGrid = true,
+  onToggleSmartGuides,
+  smartGuidesEnabled = true,
   readOnly = false,
   canCommentOnly = false,
 }) => {
@@ -584,6 +589,27 @@ export const BoardContextMenu: React.FC<BoardContextMenuProps> = ({
               <kbd className="px-1.5 py-0.5 text-[9px] font-mono bg-muted text-muted-foreground rounded border border-border/50">
                 Shift+G
               </kbd>
+            </button>
+          )}
+
+          {onToggleSmartGuides && (
+            <button
+              type="button"
+              onClick={() => {
+                onToggleSmartGuides();
+                onClose();
+              }}
+              className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer group"
+            >
+              <div className="flex items-center gap-2">
+                <Magnet className="size-4 text-muted-foreground group-hover:scale-105 transition-transform" />
+                <span className="font-medium">
+                  {smartGuidesEnabled ? 'Desativar Guias Inteligentes' : 'Ativar Guias Inteligentes'}
+                </span>
+              </div>
+              <span className="px-1.5 py-0.5 text-[9px] font-mono bg-muted text-muted-foreground rounded border border-border/50">
+                {smartGuidesEnabled ? 'Ativo' : 'Inativo'}
+              </span>
             </button>
           )}
         </div>

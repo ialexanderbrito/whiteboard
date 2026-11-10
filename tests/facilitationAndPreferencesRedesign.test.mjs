@@ -43,6 +43,10 @@ test('CanvasPreferencesMenu: dedicated to visual preferences, theme, and canvas 
   // Colaboração & Cursores
   assert.match(content, /Cursores dos Colegas/, 'Deve conter toggle para cursores remotos');
 
+  // Guias Inteligentes & Encaixe Magnético (Smart Guides)
+  assert.match(content, /Guias Inteligentes & Encaixe/, 'Deve conter toggle para guias inteligentes e encaixe magnético');
+  assert.match(content, /smartGuides/, 'Deve suportar propriedade smartGuides');
+
   // Grade do Canvas
   assert.match(content, /Grade do Canvas/, 'Deve conter controles da grade');
   assert.match(content, /hybrid/, 'Deve suportar estilo híbrido');

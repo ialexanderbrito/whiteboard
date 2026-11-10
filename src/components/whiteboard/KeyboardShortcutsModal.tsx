@@ -66,6 +66,8 @@ const SHORTCUTS: ShortcutItem[] = [
   { keys: ['Ctrl', '0'], description: 'Redefinir Zoom para 100%', category: 'navigation' },
   { keys: ['Ctrl', "'"], description: 'Mostrar ou ocultar grade do canvas', category: 'navigation' },
   { keys: ['Shift', 'G'], description: 'Alternar grade do canvas', category: 'navigation' },
+  { keys: ['Shift', 'S'], description: 'Alternar guias inteligentes e encaixe magnético', category: 'navigation' },
+  { keys: ['Ctrl', '(segurar)'], description: 'Ignorar temporariamente o ímã ao arrastar', category: 'navigation' },
 
   // Histórico
   { keys: ['Ctrl', 'Z'], description: 'Desfazer última alteração', category: 'history' },

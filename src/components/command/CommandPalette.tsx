@@ -56,6 +56,7 @@ import {
   Boxes,
   Eye,
   EyeOff,
+  Magnet,
   Palette,
   SlidersHorizontal,
   Users,
@@ -124,6 +125,8 @@ export interface CommandPaletteBoardContext {
   onChangeGridOpacity?: (opacity: number) => void;
   showRemoteCursors?: boolean;
   onToggleRemoteCursors?: (show?: boolean) => void;
+  smartGuides?: boolean;
+  onToggleSmartGuides?: (enabled?: boolean) => void;
 }
 
 export interface CommandPaletteDashboardContext {
@@ -813,6 +816,28 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
             {/* Visualização & Grade do Canvas */}
             <CommandGroup heading="Exibição e Grade">
+              {boardContext.onToggleSmartGuides && (
+                <CommandItem
+                  value="guias inteligentes encaixe magnetico snap snapping smart guides alinhamento reguas trava imã desativar ativar"
+                  onSelect={() => handleSelect(() => boardContext.onToggleSmartGuides?.(!boardContext.smartGuides))}
+                  className="group"
+                >
+                  <div className="flex size-6 items-center justify-center rounded-lg bg-pink-500/10 text-pink-500 group-data-[selected=true]:bg-pink-500 group-data-[selected=true]:text-white transition-colors">
+                    <Magnet className="size-3.5" />
+                  </div>
+                  <span>
+                    {boardContext.smartGuides
+                      ? 'Desativar Guias Inteligentes e Encaixe Magnético'
+                      : 'Ativar Guias Inteligentes e Encaixe Magnético'}
+                  </span>
+                  <CommandShortcut>
+                    <span className="text-[10px] text-muted-foreground font-mono">
+                      {boardContext.smartGuides ? 'Ativo' : 'Inativo'}
+                    </span>
+                  </CommandShortcut>
+                </CommandItem>
+              )}
+
               {boardContext.onToggleRemoteCursors && (
                 <CommandItem
                   onSelect={() => handleSelect(() => boardContext.onToggleRemoteCursors?.(!boardContext.showRemoteCursors))}

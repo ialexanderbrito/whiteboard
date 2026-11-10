@@ -76,6 +76,7 @@ import {
   Loading03Icon,
   LockKeyIcon,
   Logout01Icon,
+  Magnet01Icon,
   MapIcon,
   Location01Icon,
   ArrowExpand01Icon,
@@ -280,6 +281,7 @@ export const List = createHugeIcon(LeftToRightListBulletIcon, 'List');
 export const Loader2 = createHugeIcon(Loading03Icon, 'Loader2');
 export const Lock = createHugeIcon(LockKeyIcon, 'Lock');
 export const LogOut = createHugeIcon(Logout01Icon, 'LogOut');
+export const Magnet = createHugeIcon(Magnet01Icon, 'Magnet');
 
 export const Map = createHugeIcon(MapIcon, 'Map');
 export const MapPin = createHugeIcon(Location01Icon, 'MapPin');
