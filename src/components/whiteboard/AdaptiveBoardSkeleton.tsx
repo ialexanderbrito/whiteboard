@@ -174,19 +174,25 @@ export const AdaptiveBoardSkeleton: React.FC<AdaptiveBoardSkeletonProps> = ({
             className="border-border bg-card flex flex-col justify-between overflow-hidden shadow-none pointer-events-none select-none"
             style={{ animationDelay: staggerDelay }}
           >
-            {/* Header Visual Miniature com Canvas Dot Grid sutil */}
-            <div className="h-28 bg-muted/20 border-b border-border/60 flex items-center justify-center relative overflow-hidden">
+            {/* Header Visual Miniature com Canvas Dot Grid sutil e composição de quadro */}
+            <div className="h-36 bg-muted/20 border-b border-border/60 flex items-center justify-center relative overflow-hidden">
               <div
-                className="absolute inset-0 opacity-[0.10] dark:opacity-[0.15]"
+                className="absolute inset-0 opacity-[0.12] dark:opacity-[0.18]"
                 style={{
                   backgroundImage: 'radial-gradient(currentColor 1px, transparent 1px)',
-                  backgroundSize: '12px 12px',
+                  backgroundSize: '14px 14px',
                 }}
               />
-              {/* Silhouette Blueprint dos Elementos */}
-              <div className="relative z-1 flex items-center gap-2 opacity-30">
-                <Skeleton className="size-8 rounded border border-border/50" />
-                <Skeleton className="size-8 rounded border border-border/50" />
+              {/* Silhouette Blueprint de Post-its e Nós Conectados */}
+              <div className="relative z-1 flex items-center gap-3 opacity-45">
+                <Skeleton className="w-11 h-11 rounded-md border border-border/60 -rotate-3" />
+                <div className="flex flex-col gap-1.5">
+                  <Skeleton className="w-13 h-6 rounded-md border border-border/60 rotate-1" />
+                  <Skeleton className="w-12 h-6 rounded-md border border-border/60 -rotate-1" />
+                </div>
+              </div>
+              <div className="absolute bottom-2 left-2.5">
+                <Skeleton className="h-4 w-16 rounded-full" />
               </div>
             </div>
 

@@ -36,7 +36,21 @@ test('DashboardPage: renders AdaptiveBoardSkeleton during loading without layout
   const content = fs.readFileSync(filePath, 'utf-8');
 
   assert.ok(content.includes('AdaptiveBoardSkeleton'), 'DashboardPage must render AdaptiveBoardSkeleton');
+  assert.ok(content.includes('BoardCardPreview'), 'DashboardPage must render BoardCardPreview in grid view');
   assert.ok(content.includes('isLoading'), 'DashboardPage must track isLoading state');
   assert.ok(content.includes('handleToggleViewMode'), 'DashboardPage must persist view mode changes');
   assert.ok(content.includes('saveAdaptiveSnapshot'), 'DashboardPage must save snapshot on interactions');
+});
+
+test('BoardCardPreview: renders live SVG mini-map and curated architectural compositions instead of generic dot-and-minus placeholder', () => {
+  const filePath = path.join(projectRoot, 'src', 'components', 'whiteboard', 'BoardCardPreview.tsx');
+  assert.ok(fs.existsSync(filePath), 'BoardCardPreview.tsx should exist');
+
+  const content = fs.readFileSync(filePath, 'utf-8');
+  assert.ok(content.includes('export const BoardCardPreview'), 'Must export BoardCardPreview');
+  assert.ok(content.includes('export function getBoardPreviewVariant'), 'Must export deterministic variant generator');
+  assert.ok(content.includes('elementService.subscribeElements'), 'Must subscribe to board elements for live mini-map');
+  assert.ok(content.includes('getElementWorldBounds'), 'Must compute world bounds for SVG viewBox');
+  assert.ok(content.includes('cubic-bezier(0.23,1,0.32,1)'), 'Must use Emil Kowalski custom ease-out curve');
+  assert.ok(content.includes('@media(hover:hover)_and_(pointer:fine)'), 'Must gate hover animations behind fine pointer media query');
 });

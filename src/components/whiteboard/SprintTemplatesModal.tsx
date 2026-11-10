@@ -10,8 +10,11 @@ import {
   Heart,
   CalendarDays,
   Users,
-  Lightbulb
-} from 'lucide-react';
+  Lightbulb,
+  GitBranch,
+  Map,
+  LayoutTemplate
+} from '@/components/ui/icons';
 import {
   Dialog,
   DialogContent,
@@ -59,22 +62,27 @@ export const SprintTemplatesModal: React.FC<SprintTemplatesModalProps> = ({
       case 'CalendarDays': return <CalendarDays className="size-4 text-foreground" />;
       case 'Users': return <Users className="size-4 text-foreground" />;
       case 'Lightbulb': return <Lightbulb className="size-4 text-foreground" />;
+      case 'GitBranch': return <GitBranch className="size-4 text-foreground" />;
+      case 'Map': return <Map className="size-4 text-foreground" />;
+      case 'LayoutTemplate': return <LayoutTemplate className="size-4 text-foreground" />;
       default: return <Target className="size-4 text-foreground" />;
     }
   };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {trigger ? (
-          trigger
-        ) : (
-          <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs font-medium rounded-lg shadow-xs">
-            <LayoutGrid className="size-3.5" />
-            <span>Templates</span>
-          </Button>
-        )}
-      </DialogTrigger>
+      {(!isControlled || trigger) && (
+        <DialogTrigger asChild>
+          {trigger ? (
+            trigger
+          ) : (
+            <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs font-medium rounded-lg shadow-xs">
+              <LayoutGrid className="size-3.5" />
+              <span>Templates</span>
+            </Button>
+          )}
+        </DialogTrigger>
+      )}
 
       <DialogContent className="max-w-2xl p-5">
         <DialogHeader className="space-y-1">

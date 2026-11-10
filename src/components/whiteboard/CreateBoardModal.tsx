@@ -11,8 +11,9 @@ import {
   MessageSquare,
   ShieldAlert,
   ChevronDown,
-  ArrowRight
-} from 'lucide-react';
+  ArrowRight,
+  LayoutTemplate
+} from '@/components/ui/icons';
 import {
   Dialog,
   DialogContent,
@@ -29,6 +30,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { SPRINT_TEMPLATES, type SprintTemplate } from '@/utils/sprintTemplates';
 import type { BoardPermission, CurrentUser } from '../../types/board';
 import type { CreateBoardOptions } from '../../services/boardService';
 
@@ -38,6 +40,7 @@ interface CreateBoardModalProps {
   currentUser: CurrentUser;
   onCreateBoard: (options: CreateBoardOptions) => Promise<void>;
   isCreating?: boolean;
+  initialTemplate?: SprintTemplate | null;
 }
 
 const TITLE_SUGGESTIONS = [
@@ -82,8 +85,10 @@ export const CreateBoardModal: React.FC<CreateBoardModalProps> = ({
   currentUser: _currentUser,
   onCreateBoard,
   isCreating = false,
+  initialTemplate = null,
 }) => {
   const [boardTitle, setBoardTitle] = useState('');
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
   const [defaultPermission, setDefaultPermission] = useState<BoardPermission>('edit');
   const [isPasswordProtected, setIsPasswordProtected] = useState(false);
   const [password, setPassword] = useState('');
@@ -98,13 +103,19 @@ export const CreateBoardModal: React.FC<CreateBoardModalProps> = ({
       // Gera ID curto, limpo e direto sem prefixo board_
       const generated = Math.random().toString(36).substring(2, 10);
       setPregeneratedId(generated);
-      setBoardTitle('');
+      if (initialTemplate) {
+        setSelectedTemplateId(initialTemplate.id);
+        setBoardTitle(initialTemplate.shortTitle || initialTemplate.title);
+      } else {
+        setSelectedTemplateId('');
+        setBoardTitle('');
+      }
       setDefaultPermission('edit');
       setIsPasswordProtected(false);
       setPassword('');
       setCopiedLink(false);
     }
-  }, [open]);
+  }, [open, initialTemplate]);
 
   // Link no padrão limpo e elegante /b/:id
   const cleanBoardUrl = `${window.location.origin}/b/${pregeneratedId}`;
@@ -123,16 +134,23 @@ export const CreateBoardModal: React.FC<CreateBoardModalProps> = ({
     e?.preventDefault();
     if (isCreating) return;
 
-    const finalTitle = boardTitle.trim() || 'Novo Quadro de Ideias';
+    const selectedTmpl = SPRINT_TEMPLATES.find((t) => t.id === selectedTemplateId);
+    const finalTitle =
+      boardTitle.trim() ||
+      selectedTmpl?.shortTitle ||
+      selectedTmpl?.title ||
+      'Novo Quadro de Ideias';
     await onCreateBoard({
       boardId: pregeneratedId,
       title: finalTitle,
       defaultPermission,
       isPasswordProtected,
       password: isPasswordProtected ? password.trim() : '',
+      templateId: selectedTemplateId || undefined,
     });
   };
 
+  const selectedTemplateObj = SPRINT_TEMPLATES.find((t) => t.id === selectedTemplateId) || null;
   const selectedPermOption = PERMISSION_OPTIONS.find((p) => p.id === defaultPermission) || PERMISSION_OPTIONS[0];
   const SelectedPermIcon = selectedPermOption.icon;
 
@@ -192,6 +210,103 @@ export const CreateBoardModal: React.FC<CreateBoardModalProps> = ({
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* 1.5. Estrutura Inicial (Quadro em Branco ou Template Pronto) */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-foreground flex items-center justify-between">
+              <span>Estrutura Inicial (Template)</span>
+              <span className="text-[11px] font-normal text-muted-foreground">
+                {selectedTemplateObj ? selectedTemplateObj.badge : 'Canvas livre'}
+              </span>
+            </label>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full justify-between h-auto py-2 px-3 text-left border-border hover:bg-muted/40 active:scale-[0.99] transition-all cursor-pointer"
+                >
+                  <div className="flex items-center gap-2.5 truncate">
+                    <div className="size-6 rounded-md bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                      <LayoutTemplate className="size-3.5" />
+                    </div>
+                    <div className="truncate">
+                      <p className="text-xs font-medium text-foreground truncate">
+                        {selectedTemplateObj
+                          ? selectedTemplateObj.shortTitle || selectedTemplateObj.title
+                          : 'Quadro em branco (Começar do zero)'}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground truncate">
+                        {selectedTemplateObj
+                          ? selectedTemplateObj.description
+                          : 'Canvas infinito vazio pronto para desenhar livremente'}
+                      </p>
+                    </div>
+                  </div>
+                  <ChevronDown className="size-3.5 opacity-60 shrink-0 ml-2" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="start"
+                className="w-[480px] max-w-[calc(100vw-3rem)] max-h-[260px] overflow-y-auto p-1"
+              >
+                <DropdownMenuItem
+                  onClick={() => setSelectedTemplateId('')}
+                  className={`flex items-start gap-2.5 py-2 px-2.5 cursor-pointer rounded-md ${
+                    !selectedTemplateId ? 'bg-primary/5 text-primary' : ''
+                  }`}
+                >
+                  <div className="flex-1 truncate">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-foreground">
+                        Quadro em branco (Começar do zero)
+                      </span>
+                      {!selectedTemplateId && <Check className="size-3.5 text-primary" />}
+                    </div>
+                    <span className="text-[10px] text-muted-foreground block">
+                      Sem molduras ou post-its iniciais
+                    </span>
+                  </div>
+                </DropdownMenuItem>
+
+                {SPRINT_TEMPLATES.map((tmpl) => {
+                  const isSelected = selectedTemplateId === tmpl.id;
+                  return (
+                    <DropdownMenuItem
+                      key={tmpl.id}
+                      onClick={() => {
+                        setSelectedTemplateId(tmpl.id);
+                        if (!boardTitle.trim() || TITLE_SUGGESTIONS.includes(boardTitle) || SPRINT_TEMPLATES.some((t) => (t.shortTitle || t.title) === boardTitle)) {
+                          setBoardTitle(tmpl.shortTitle || tmpl.title);
+                        }
+                      }}
+                      className={`flex items-start gap-2.5 py-2 px-2.5 cursor-pointer rounded-md ${
+                        isSelected ? 'bg-primary/5 text-primary' : ''
+                      }`}
+                    >
+                      <div className="flex-1 truncate">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs font-medium text-foreground truncate">
+                            {tmpl.shortTitle || tmpl.title}
+                          </span>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span className="text-[10px] text-muted-foreground font-mono">
+                              {tmpl.badge}
+                            </span>
+                            {isSelected && <Check className="size-3.5 text-primary" />}
+                          </div>
+                        </div>
+                        <span className="text-[10px] text-muted-foreground block truncate">
+                          {tmpl.description}
+                        </span>
+                      </div>
+                    </DropdownMenuItem>
+                  );
+                })}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
 
           {/* 2. Link do Quadro (Prévia com 1 clique de cópia) */}
