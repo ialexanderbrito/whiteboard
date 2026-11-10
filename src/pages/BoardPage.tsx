@@ -1762,6 +1762,7 @@ export const BoardPage: React.FC = () => {
           canCommentOnly={isCommentOnly}
           position={toolbarPosition}
           onOpenShortcuts={() => setIsShortcutsModalOpen(true)}
+          onOpenTemplates={() => setIsSprintTemplatesOpen(true)}
         />
       )}
 
