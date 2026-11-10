@@ -22,17 +22,21 @@ export const GRID_SIZE_VALUES: Record<GridSize, number> = {
 
 export const DEFAULT_GRID_OPACITY = 0.55;
 
-function buildPatternStyle(
-  stagePos: ViewportState,
+interface PatternDefinition {
+  backgroundImage: string;
+  backgroundSize: string;
+  periodX: number;
+  periodY: number;
+}
+
+function buildPatternDefinition(
   scale: number,
   gridType: GridType,
   gridSize: GridSize,
   isDark: boolean
-): React.CSSProperties {
+): PatternDefinition {
   const baseSize = GRID_SIZE_VALUES[gridSize] || 40;
   const scaledSize = Math.max(12, baseSize * scale);
-  const bgPosX = stagePos.x % scaledSize;
-  const bgPosY = stagePos.y % scaledSize;
   const dotRadius = Math.max(1, Math.min(2.5, 1.25 * Math.sqrt(scale)));
   const dotColor = isDark ? 'rgba(255, 255, 255, 0.16)' : 'rgba(15, 23, 42, 0.13)';
   const lineColor = isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(15, 23, 42, 0.05)';
@@ -44,7 +48,8 @@ function buildPatternStyle(
     return {
       backgroundImage: `radial-gradient(circle, ${dotColor} ${dotRadius}px, transparent ${dotRadius}px)`,
       backgroundSize: `${scaledSize}px ${scaledSize}px`,
-      backgroundPosition: `${bgPosX}px ${bgPosY}px`,
+      periodX: scaledSize,
+      periodY: scaledSize,
     };
   }
   if (gridType === 'lines') {
@@ -62,12 +67,8 @@ function buildPatternStyle(
         ${majorStep}px ${majorStep}px,
         ${majorStep}px ${majorStep}px
       `,
-      backgroundPosition: `
-        ${bgPosX}px ${bgPosY}px,
-        ${bgPosX}px ${bgPosY}px,
-        ${stagePos.x % majorStep}px ${stagePos.y % majorStep}px,
-        ${stagePos.x % majorStep}px ${stagePos.y % majorStep}px
-      `,
+      periodX: majorStep,
+      periodY: majorStep,
     };
   }
   if (gridType === 'crosses') {
@@ -76,7 +77,8 @@ function buildPatternStyle(
     return {
       backgroundImage: `url("${crossSvg}")`,
       backgroundSize: `${scaledSize}px ${scaledSize}px`,
-      backgroundPosition: `${bgPosX}px ${bgPosY}px`,
+      periodX: scaledSize,
+      periodY: scaledSize,
     };
   }
   if (gridType === 'isometric') {
@@ -85,7 +87,8 @@ function buildPatternStyle(
     return {
       backgroundImage: `url("${isoSvg}")`,
       backgroundSize: `${scaledSize}px ${isoH}px`,
-      backgroundPosition: `${stagePos.x % scaledSize}px ${stagePos.y % isoH}px`,
+      periodX: scaledSize,
+      periodY: isoH,
     };
   }
   const majorStep = scaledSize * 4;
@@ -100,18 +103,19 @@ function buildPatternStyle(
       ${majorStep}px ${majorStep}px,
       ${majorStep}px ${majorStep}px
     `,
-    backgroundPosition: `
-      ${bgPosX}px ${bgPosY}px,
-      ${stagePos.x % majorStep}px ${stagePos.y % majorStep}px,
-      ${stagePos.x % majorStep}px ${stagePos.y % majorStep}px
-    `,
+    periodX: majorStep,
+    periodY: majorStep,
   };
 }
 
-function applyPatternStyle(node: HTMLElement, style: React.CSSProperties) {
-  node.style.backgroundImage = String(style.backgroundImage || '');
-  node.style.backgroundSize = String(style.backgroundSize || '');
-  node.style.backgroundPosition = String(style.backgroundPosition || '');
+function computePatternTransform(
+  viewport: ViewportState,
+  periodX: number,
+  periodY: number
+): string {
+  const offsetX = ((viewport.x % periodX) + periodX) % periodX;
+  const offsetY = ((viewport.y % periodY) + periodY) % periodY;
+  return `translate3d(${offsetX}px, ${offsetY}px, 0)`;
 }
 
 export const CanvasGrid: React.FC<CanvasGridProps> = React.memo(({
@@ -124,19 +128,38 @@ export const CanvasGrid: React.FC<CanvasGridProps> = React.memo(({
 }) => {
   const { isDark } = useTheme();
   const patternRef = useRef<HTMLDivElement>(null);
+  const cachedDefRef = useRef<{ scale: number; def: PatternDefinition } | null>(null);
 
   // Fundo limpo sem marcas se estiver oculto ou se o tipo for 'none'
   const isHidden = !showGrid || gridType === 'none';
   const bgColor = isDark ? '#090d16' : '#f8fafc';
 
   // Hooks must run unconditionally, so the subscription lives before the
-  // hidden early-return. This keeps pan/zoom updates out of React entirely.
+  // hidden early-return. Pure panning only updates GPU-composited translate3d,
+  // avoiding full-screen CSS background-image/background-position repaints.
   useEffect(() => {
+    cachedDefRef.current = null;
     return subscribeViewport((viewport) => {
-      if (isHidden || !patternRef.current) return;
-      applyPatternStyle(
-        patternRef.current,
-        buildPatternStyle(viewport, viewport.scale, gridType, gridSize, isDark)
+      const node = patternRef.current;
+      if (isHidden || !node) return;
+
+      let current = cachedDefRef.current;
+      if (!current || current.scale !== viewport.scale) {
+        const def = buildPatternDefinition(viewport.scale, gridType, gridSize, isDark);
+        current = { scale: viewport.scale, def };
+        cachedDefRef.current = current;
+        node.style.backgroundImage = def.backgroundImage;
+        node.style.backgroundSize = def.backgroundSize;
+        node.style.left = `-${def.periodX}px`;
+        node.style.top = `-${def.periodY}px`;
+        node.style.right = `-${def.periodX}px`;
+        node.style.bottom = `-${def.periodY}px`;
+      }
+
+      node.style.transform = computePatternTransform(
+        viewport,
+        current.def.periodX,
+        current.def.periodY
       );
     });
   }, [gridType, gridSize, isDark, isHidden]);
@@ -144,14 +167,6 @@ export const CanvasGrid: React.FC<CanvasGridProps> = React.memo(({
   const opacity = Math.max(
     0.1,
     Math.min(1.0, typeof gridOpacity === 'number' && !isNaN(gridOpacity) ? gridOpacity : DEFAULT_GRID_OPACITY)
-  );
-
-  const patternStyle = buildPatternStyle(
-    { x: stagePos.x, y: stagePos.y, scale },
-    scale,
-    gridType,
-    gridSize,
-    isDark
   );
 
   if (isHidden) {
@@ -163,6 +178,13 @@ export const CanvasGrid: React.FC<CanvasGridProps> = React.memo(({
     );
   }
 
+  const initialDef = buildPatternDefinition(scale, gridType, gridSize, isDark);
+  const initialTransform = computePatternTransform(
+    { x: stagePos.x, y: stagePos.y, scale },
+    initialDef.periodX,
+    initialDef.periodY
+  );
+
   return (
     <div
       className="absolute inset-0 pointer-events-none overflow-hidden"
@@ -170,10 +192,17 @@ export const CanvasGrid: React.FC<CanvasGridProps> = React.memo(({
     >
       <div
         ref={patternRef}
-        className="absolute inset-0 pointer-events-none"
+        className="absolute pointer-events-none will-change-transform"
         style={{
           opacity,
-          ...patternStyle,
+          left: `-${initialDef.periodX}px`,
+          top: `-${initialDef.periodY}px`,
+          right: `-${initialDef.periodX}px`,
+          bottom: `-${initialDef.periodY}px`,
+          backgroundImage: initialDef.backgroundImage,
+          backgroundSize: initialDef.backgroundSize,
+          backgroundPosition: '0px 0px',
+          transform: initialTransform,
         }}
       />
     </div>
