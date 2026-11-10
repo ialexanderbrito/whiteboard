@@ -12,10 +12,26 @@ test('LoadingScreen: component exists and exports LoadingScreen and PageLoader',
   assert.ok(content.includes('export const PageLoader'), 'Should export PageLoader');
   assert.ok(content.includes('animate-mirio-beam'), 'Should use modern laser beam progress rail');
   assert.ok(content.includes('animate-mirio-entrance'), 'Should use Emil Kowalski entrance physics');
+  assert.ok(content.includes('LoadingCollaboratorCursors'), 'Should include animated collaborator cursors');
   assert.ok(!content.includes('animate-spin rounded-full'), 'Should NOT use legacy circular progress');
 });
 
-test('LoadingScreen CSS: contains Emil Kowalski GPU animations and prefers-reduced-motion', () => {
+test('LoadingCollaboratorCursors: renders simulated live collaborators and tools', () => {
+  const filePath = path.resolve('src/components/layout/LoadingCollaboratorCursors.tsx');
+  assert.ok(fs.existsSync(filePath), 'LoadingCollaboratorCursors.tsx should exist');
+
+  const content = fs.readFileSync(filePath, 'utf-8');
+  assert.ok(content.includes('Sofia'), 'Should include collaborator Sofia');
+  assert.ok(content.includes('Lucas'), 'Should include collaborator Lucas');
+  assert.ok(content.includes('Camila'), 'Should include collaborator Camila');
+  assert.ok(content.includes('animate-mirio-cursor-sofia'), 'Sofia cursor should have GPU physics');
+  assert.ok(content.includes('animate-mirio-sticky-drag'), 'Sticky note should follow Sofia drag');
+  assert.ok(content.includes('animate-mirio-cursor-lucas'), 'Lucas cursor should have selection motion');
+  assert.ok(content.includes('animate-mirio-lucas-chat'), 'Lucas should have cursor chat bubble');
+  assert.ok(content.includes('pointer-events-none'), 'All mock cursors must be non-blocking for interaction');
+});
+
+test('LoadingScreen CSS: contains Emil Kowalski GPU animations, fluid beam, and prefers-reduced-motion', () => {
   const cssPath = path.resolve('src/index.css');
   const css = fs.readFileSync(cssPath, 'utf-8');
 
@@ -24,6 +40,10 @@ test('LoadingScreen CSS: contains Emil Kowalski GPU animations and prefers-reduc
   assert.ok(css.includes('.animate-mirio-beam'), 'Class animate-mirio-beam must be defined');
   assert.ok(css.includes('.animate-mirio-entrance'), 'Class animate-mirio-entrance must be defined');
   assert.ok(css.includes('cubic-bezier(0.23, 1, 0.32, 1)'), 'Must use custom organic easing curve');
+  assert.ok(css.includes('translateX(220%)'), 'Beam must fully exit track past 200% to eliminate snapping jumps');
+  assert.ok(!css.includes('translateY(6px)'), 'Loader entrance must not have vertical jump');
+  assert.ok(css.includes('animate-mirio-cursor-sofia'), 'Sofia cursor class must be defined');
+  assert.ok(css.includes('animate-mirio-cursor-lucas'), 'Lucas cursor class must be defined');
   assert.ok(css.includes('prefers-reduced-motion'), 'Must support reduced motion for accessibility');
 });
 
@@ -34,6 +54,7 @@ test('index.html: contains zero-FOUC initial loader matching design system', () 
   assert.ok(html.includes('id="initial-loader"'), 'index.html must have initial fallback loader');
   assert.ok(html.includes('init-beam'), 'index.html fallback must use precision laser rail');
   assert.ok(html.includes('init-dots'), 'index.html must include canvas dots background');
+  assert.ok(html.includes('translateX(220%)'), 'Fallback beam must fully exit without snapping');
 });
 
 test('App.tsx and BoardPage.tsx: circular progress spinner replaced with LoadingScreen', () => {
@@ -61,4 +82,3 @@ test('Single Global Login: LoginPage is minimal and BoardPage redirects unauthen
   assert.ok(boardContent.includes('<Navigate to={`/login?redirect='), 'BoardPage must redirect unauthenticated users to global login');
   assert.ok(!boardContent.includes('<AuthCard'), 'BoardPage must not render a duplicate inline AuthCard');
 });
-
