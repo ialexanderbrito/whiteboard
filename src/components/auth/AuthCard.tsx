@@ -4,7 +4,6 @@ import {
   AlertCircle, 
   Loader2, 
   MousePointer2, 
-  ShieldCheck,
   User
 } from '@/components/ui/icons';
 import { Button } from '@/components/ui/button';
@@ -219,12 +218,6 @@ export const AuthCard: React.FC<AuthCardProps> = ({
             )}
           </Button>
         </form>
-
-        {/* Rodapé Informativo */}
-        <div className="pt-1 flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground font-mono">
-          <ShieldCheck className="size-3.5 text-muted-foreground shrink-0" />
-          <span>Acesso seguro sem cadastro complexo</span>
-        </div>
       </CardContent>
     </Card>
   );
