@@ -45,9 +45,14 @@ import {
   copyCanvasElements,
   getCachedClipboardElements,
   getElementsBoundingBox,
-  fileToDataUrl,
-  getImageDimensions,
 } from '../../utils/clipboard';
+import {
+  processImageFiles,
+  saveRecentUploadedImages,
+  computeImageGridLayout,
+  validateDroppedFiles,
+  formatUnsupportedFileMessage,
+} from '../../utils/imageUpload';
 import {
   applyWorldTransform,
   blendTouchVelocity,
@@ -414,6 +419,47 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
   const isDrawingPen = (currentTool === 'pen' && penMode === 'pen') || (currentTool as string) === 'pen';
   const isDrawingTool = isHighlighterActive || isDrawingPen;
   const userSelectionColor = currentUser.color || '#0284c7';
+
+  // Toast Notificação de Feedback do Canvas (arquivos não suportados, PDF, alertas pontuais)
+  const [canvasToast, setCanvasToast] = useState<{
+    id: string;
+    type: 'info' | 'warning' | 'error';
+    title: string;
+    message: string;
+  } | null>(null);
+  const canvasToastTimerRef = useRef<number | null>(null);
+
+  const showCanvasToast = useCallback(
+    (
+      title: string,
+      message: string,
+      type: 'info' | 'warning' | 'error' = 'warning',
+      durationMs = 6500
+    ) => {
+      if (canvasToastTimerRef.current !== null) {
+        window.clearTimeout(canvasToastTimerRef.current);
+      }
+      setCanvasToast({
+        id: 'toast_' + Date.now(),
+        type,
+        title,
+        message,
+      });
+      canvasToastTimerRef.current = window.setTimeout(() => {
+        setCanvasToast(null);
+        canvasToastTimerRef.current = null;
+      }, durationMs);
+    },
+    []
+  );
+
+  useEffect(() => {
+    return () => {
+      if (canvasToastTimerRef.current !== null) {
+        window.clearTimeout(canvasToastTimerRef.current);
+      }
+    };
+  }, []);
 
   // Marquee (Seleção em lote por arrasto)
   const [marqueeBox, setMarqueeBox] = useState<MarqueeBox | null>(null);
@@ -952,55 +998,94 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     async (e?: ClipboardEvent, customTargetCenter?: { x: number; y: number }) => {
       if (readOnly || canCommentOnly) return;
 
-      // 1. Verificar se o evento contém imagem (ex: Print Screen ou cópia da web)
+      // 1. Verificar se o evento contém arquivos (imagens ou tentativas de colar arquivos não suportados como PDF)
       if (e && e.clipboardData) {
-        const items = Array.from(e.clipboardData.items || []);
-        const imageItem = items.find((item) => item.type.startsWith('image/'));
+        const rawFiles: File[] = [];
+        if (e.clipboardData.files?.length) {
+          rawFiles.push(...Array.from(e.clipboardData.files));
+        }
+        if (rawFiles.length === 0 && e.clipboardData.items?.length) {
+          for (const item of Array.from(e.clipboardData.items)) {
+            if (item.kind === 'file') {
+              const f = item.getAsFile();
+              if (f) rawFiles.push(f);
+            }
+          }
+        }
 
-        if (imageItem) {
-          e.preventDefault();
-          const file = imageItem.getAsFile();
-          if (file) {
-            try {
-              const dataUrl = await fileToDataUrl(file);
-              const dims = await getImageDimensions(dataUrl);
-
-              const targetX = customTargetCenter
-                ? customTargetCenter.x
-                : mouseWorldPosRef.current && isMouseOverCanvasRef.current
-                  ? mouseWorldPosRef.current.x
-                  : Math.round((-stagePosRef.current.x + window.innerWidth / 2) / scaleRef.current);
-              const targetY = customTargetCenter
-                ? customTargetCenter.y
-                : mouseWorldPosRef.current && isMouseOverCanvasRef.current
-                  ? mouseWorldPosRef.current.y
-                  : Math.round((-stagePosRef.current.y + window.innerHeight / 2) / scaleRef.current);
-
-              const now = Date.now();
-              const imageElement: CanvasElement = {
-                id: 'elem_' + Math.random().toString(36).substring(2, 11),
-                type: 'sticker',
-                src: dataUrl,
-                alt: 'Imagem colada',
-                x: Math.round(targetX - dims.width / 2),
-                y: Math.round(targetY - dims.height / 2),
-                width: dims.width,
-                height: dims.height,
-                zIndex: elements.length + 1,
-                updatedBy: currentUser.uid,
-                updatedByName: currentUser.displayName,
-                updatedAt: now,
-              };
-
-              if (onBatchAddElements) {
-                await onBatchAddElements([imageElement]);
-              } else {
-                await onAddElement(imageElement);
-              }
-              onSelectionChange([imageElement.id]);
+        if (rawFiles.length > 0) {
+          const validation = validateDroppedFiles(rawFiles);
+          if (validation.validFiles.length === 0) {
+            if (validation.hasPdf) {
+              e.preventDefault();
+              const { title, message } = formatUnsupportedFileMessage(validation);
+              showCanvasToast(title, message, 'warning', 7000);
               return;
+            }
+          } else {
+            e.preventDefault();
+            try {
+              const processed = await processImageFiles(validation.validFiles);
+              if (processed.length > 0) {
+                saveRecentUploadedImages(processed);
+
+                const targetX = customTargetCenter
+                  ? customTargetCenter.x
+                  : mouseWorldPosRef.current && isMouseOverCanvasRef.current
+                    ? mouseWorldPosRef.current.x
+                    : Math.round((-stagePosRef.current.x + window.innerWidth / 2) / scaleRef.current);
+                const targetY = customTargetCenter
+                  ? customTargetCenter.y
+                  : mouseWorldPosRef.current && isMouseOverCanvasRef.current
+                    ? mouseWorldPosRef.current.y
+                    : Math.round((-stagePosRef.current.y + window.innerHeight / 2) / scaleRef.current);
+
+                const positions = computeImageGridLayout(processed, { x: targetX, y: targetY });
+                const now = Date.now();
+                const imageElements: CanvasElement[] = processed.map((img, idx) => ({
+                  id: 'elem_' + Math.random().toString(36).substring(2, 11) + idx,
+                  type: img.type,
+                  src: img.src,
+                  alt: img.alt || 'Imagem colada',
+                  x: positions[idx]?.x ?? Math.round(targetX - img.width / 2),
+                  y: positions[idx]?.y ?? Math.round(targetY - img.height / 2),
+                  width: img.width,
+                  height: img.height,
+                  zIndex: elements.length + idx + 1,
+                  updatedBy: currentUser.uid,
+                  updatedByName: currentUser.displayName,
+                  updatedAt: now,
+                }));
+
+                if (onBatchAddElements) {
+                  await onBatchAddElements(imageElements);
+                } else {
+                  for (const el of imageElements) {
+                    await onAddElement(el);
+                  }
+                }
+                onSelectionChange(imageElements.map((el) => el.id));
+
+                if (validation.unsupportedFiles.length > 0) {
+                  const skippedNames = validation.unsupportedNames.slice(0, 2).join(', ');
+                  showCanvasToast(
+                    'Alguns arquivos foram ignorados',
+                    validation.hasPdf
+                      ? `Imagens coladas com sucesso! Arquivos PDF (${skippedNames}) foram ignorados pois o quadro suporta apenas imagens.`
+                      : `Imagens coladas com sucesso! Arquivos não suportados (${skippedNames}) foram ignorados.`,
+                    'info',
+                    6000
+                  );
+                }
+                return;
+              }
             } catch (err) {
               console.warn('[Paste] Erro ao colar imagem:', err);
+              showCanvasToast(
+                'Erro ao colar imagem',
+                'Não foi possível processar a imagem da área de transferência.',
+                'error'
+              );
             }
           }
         }
@@ -1125,6 +1210,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       onBatchAddElements,
       onAddElement,
       onSelectionChange,
+      showCanvasToast,
     ]
   );
 
@@ -1326,6 +1412,10 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           if (e.key === 'p' || e.key === 'P') onSelectTool('pen');
           if (e.key === 't' || e.key === 'T') onSelectTool('text');
           if (e.key === 'e' || e.key === 'E') onSelectTool('eraser');
+          if ((e.key === 'i' || e.key === 'I') && onOpenStickers) {
+            e.preventDefault();
+            onOpenStickers();
+          }
         }
       }
     };
@@ -3080,54 +3170,111 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       ? selectedElements[0]
       : null;
 
-  // Criação rápida de post-it encostado ao selecionado (estilo FigJam)
+  // Elemento elegível para botões "+" de criação rápida nas 4 direções (Post-its e Formas Geométricas)
+  const selectedQuickAddElement =
+    selectedElements.length === 1 &&
+    ['sticky', 'rect', 'circle', 'diamond', 'triangle', 'star'].includes(selectedElements[0].type)
+      ? selectedElements[0]
+      : null;
+
+  // Criação rápida de post-it ou forma geométrica encostada ao selecionado (estilo FigJam / Miro)
   const handleQuickAddSticky = useCallback(async (direction: StickyDirection) => {
-    if (!selectedSticky || readOnly || selectedSticky.locked) return;
+    if (!selectedQuickAddElement || readOnly || selectedQuickAddElement.locked) return;
 
-    const width = selectedSticky.width || 180;
-    const height = selectedSticky.height || 180;
-    const rect = getAdjacentStickyRect(
-      { x: selectedSticky.x, y: selectedSticky.y, width, height },
-      direction
-    );
-    const fill = selectedSticky.fill || '#fff9b1';
+    if (selectedQuickAddElement.type === 'sticky') {
+      const width = selectedQuickAddElement.width || 180;
+      const height = selectedQuickAddElement.height || 180;
+      const rect = getAdjacentStickyRect(
+        { x: selectedQuickAddElement.x, y: selectedQuickAddElement.y, width, height },
+        direction
+      );
+      const fill = selectedQuickAddElement.fill || '#fff9b1';
 
-    const newId = await onAddElement({
-      type: 'sticky',
-      x: Math.round(rect.x),
-      y: Math.round(rect.y),
+      const newId = await onAddElement({
+        type: 'sticky',
+        x: Math.round(rect.x),
+        y: Math.round(rect.y),
+        width,
+        height,
+        fill,
+        text: '',
+        fontSize: selectedQuickAddElement.fontSize,
+        textAlign: selectedQuickAddElement.textAlign,
+        textColor: selectedQuickAddElement.textColor,
+        zIndex: elements.length + 1,
+        updatedBy: currentUser.uid,
+        updatedByName: currentUser.displayName,
+      });
+
+      if (!newId) return;
+
+      onSelectionChange([newId]);
+      setInlineEditing({
+        elementId: newId,
+        type: 'sticky',
+        worldX: Math.round(rect.x),
+        worldY: Math.round(rect.y),
+        width,
+        height,
+        text: '',
+        fill,
+        fontSize: selectedQuickAddElement.fontSize || 14,
+        textAlign: selectedQuickAddElement.textAlign || 'left',
+        textColor:
+          selectedQuickAddElement.textColor || getContrastTextColor(fill, '#0f172a', '#ffffff'),
+      });
+      return;
+    }
+
+    // Caso de Formas Geométricas (rect, circle, diamond, triangle, star)
+    if (canCommentOnly) return;
+
+    const isCircle = selectedQuickAddElement.type === 'circle';
+    const radius = isCircle
+      ? selectedQuickAddElement.radius ||
+        (selectedQuickAddElement.width ? selectedQuickAddElement.width / 2 : 60)
+      : undefined;
+    const width = isCircle && radius ? radius * 2 : selectedQuickAddElement.width || 160;
+    const height = isCircle && radius ? radius * 2 : selectedQuickAddElement.height || 100;
+    const originX = isCircle && radius ? selectedQuickAddElement.x - radius : selectedQuickAddElement.x;
+    const originY = isCircle && radius ? selectedQuickAddElement.y - radius : selectedQuickAddElement.y;
+
+    const rect = getAdjacentStickyRect({ x: originX, y: originY, width, height }, direction);
+    const targetX = isCircle && radius ? Math.round(rect.x + radius) : Math.round(rect.x);
+    const targetY = isCircle && radius ? Math.round(rect.y + radius) : Math.round(rect.y);
+    const fill = selectedQuickAddElement.fill || '#ffffff';
+    const stroke = selectedQuickAddElement.stroke || '#334155';
+    const strokeWidth = selectedQuickAddElement.strokeWidth || 2;
+
+    const newShapeId = await onAddElement({
+      type: selectedQuickAddElement.type,
+      x: targetX,
+      y: targetY,
       width,
       height,
+      ...(isCircle && radius ? { radius } : {}),
       fill,
+      stroke,
+      strokeWidth,
       text: '',
-      fontSize: selectedSticky.fontSize,
-      textAlign: selectedSticky.textAlign,
-      textColor: selectedSticky.textColor,
+      fontSize: selectedQuickAddElement.fontSize,
+      fontWeight: selectedQuickAddElement.fontWeight,
+      fontStyle: selectedQuickAddElement.fontStyle,
+      textDecoration: selectedQuickAddElement.textDecoration,
+      textAlign: selectedQuickAddElement.textAlign,
+      textColor: selectedQuickAddElement.textColor,
+      rotation: selectedQuickAddElement.rotation,
       zIndex: elements.length + 1,
       updatedBy: currentUser.uid,
       updatedByName: currentUser.displayName,
     });
 
-    if (!newId) return;
-
-    onSelectionChange([newId]);
-    setInlineEditing({
-      elementId: newId,
-      type: 'sticky',
-      worldX: Math.round(rect.x),
-      worldY: Math.round(rect.y),
-      width,
-      height,
-      text: '',
-      fill,
-      fontSize: selectedSticky.fontSize || 14,
-      textAlign: selectedSticky.textAlign || 'left',
-      textColor:
-        selectedSticky.textColor || getContrastTextColor(fill, '#0f172a', '#ffffff'),
-    });
+    if (!newShapeId) return;
+    onSelectionChange([newShapeId]);
   }, [
-    selectedSticky,
+    selectedQuickAddElement,
     readOnly,
+    canCommentOnly,
     onAddElement,
     elements.length,
     currentUser.uid,
@@ -3136,14 +3283,17 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
   ]);
 
   const canUseQuickAdd = Boolean(
-    selectedSticky &&
+    selectedQuickAddElement &&
     currentTool === 'select' &&
     !readOnly &&
-    !selectedSticky.locked &&
+    !selectedQuickAddElement.locked &&
     !inlineEditing &&
     !isTransforming &&
     !contextMenuState.isOpen &&
-    (!canCommentOnly || selectedSticky.updatedBy === currentUser.uid)
+    (canCommentOnly
+      ? selectedQuickAddElement.type === 'sticky' &&
+        selectedQuickAddElement.updatedBy === currentUser.uid
+      : true)
   );
 
   // Cursor customizado de alta precisão de acordo com a ferramenta ativa
@@ -3523,6 +3673,127 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     ? elements.find((elem) => elem.id === inlineEditing.elementId) || null
     : null;
 
+  const [isDraggingExternalFiles, setIsDraggingExternalFiles] = useState(false);
+  const dragFileCounterRef = useRef(0);
+
+  const hasDraggedFiles = (dt: DataTransfer | null): boolean => {
+    if (!dt || !dt.types) return false;
+    return Array.from(dt.types).includes('Files');
+  };
+
+  const handleCanvasDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+    if (readOnly || canCommentOnly || !hasDraggedFiles(e.dataTransfer)) return;
+    e.preventDefault();
+    dragFileCounterRef.current += 1;
+    setIsDraggingExternalFiles(true);
+  };
+
+  const handleCanvasDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    if (readOnly || canCommentOnly || !hasDraggedFiles(e.dataTransfer)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    if (!isDraggingExternalFiles) {
+      setIsDraggingExternalFiles(true);
+    }
+  };
+
+  const handleCanvasDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    if (readOnly || canCommentOnly) return;
+    e.preventDefault();
+    dragFileCounterRef.current = Math.max(0, dragFileCounterRef.current - 1);
+    if (dragFileCounterRef.current === 0 || !e.currentTarget.contains(e.relatedTarget as Node)) {
+      dragFileCounterRef.current = 0;
+      setIsDraggingExternalFiles(false);
+    }
+  };
+
+  const handleCanvasDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    dragFileCounterRef.current = 0;
+    setIsDraggingExternalFiles(false);
+    if (readOnly || canCommentOnly) return;
+    if (!e.dataTransfer?.files || e.dataTransfer.files.length === 0) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const allFiles = Array.from(e.dataTransfer.files);
+    const validation = validateDroppedFiles(allFiles);
+
+    if (validation.validFiles.length === 0) {
+      const { title, message } = formatUnsupportedFileMessage(validation);
+      showCanvasToast(title, message, 'warning', 7000);
+      return;
+    }
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const dropWorldX = Math.round(
+      (e.clientX - rect.left - stagePosRef.current.x) / scaleRef.current
+    );
+    const dropWorldY = Math.round(
+      (e.clientY - rect.top - stagePosRef.current.y) / scaleRef.current
+    );
+
+    try {
+      const processed = await processImageFiles(validation.validFiles);
+      if (processed.length === 0) {
+        showCanvasToast(
+          'Erro ao carregar imagem',
+          'Não foi possível processar o arquivo de imagem. Verifique se o arquivo não está corrompido.',
+          'error'
+        );
+        return;
+      }
+
+      saveRecentUploadedImages(processed);
+      const positions = computeImageGridLayout(processed, { x: dropWorldX, y: dropWorldY });
+      const now = Date.now();
+
+      const droppedElements: CanvasElement[] = processed.map((img, idx) => ({
+        id: 'elem_' + Math.random().toString(36).substring(2, 11) + idx,
+        type: img.type,
+        src: img.src,
+        alt: img.alt || 'Imagem arrastada',
+        x: positions[idx]?.x ?? Math.round(dropWorldX - img.width / 2),
+        y: positions[idx]?.y ?? Math.round(dropWorldY - img.height / 2),
+        width: img.width,
+        height: img.height,
+        zIndex: elementsRef.current.length + idx + 1,
+        updatedBy: currentUser.uid,
+        updatedByName: currentUser.displayName,
+        updatedAt: now,
+      }));
+
+      if (onBatchAddElements) {
+        await onBatchAddElements(droppedElements);
+      } else {
+        for (const el of droppedElements) {
+          await onAddElement(el);
+        }
+      }
+      onSelectionChange(droppedElements.map((el) => el.id));
+      onSelectTool('select');
+
+      if (validation.unsupportedFiles.length > 0) {
+        const skippedNames = validation.unsupportedNames.slice(0, 2).join(', ');
+        showCanvasToast(
+          'Alguns arquivos foram ignorados',
+          validation.hasPdf
+            ? `Imagens adicionadas com sucesso! Arquivos PDF (${skippedNames}) foram ignorados pois o quadro suporta apenas imagens.`
+            : `Imagens adicionadas com sucesso! Arquivos não suportados (${skippedNames}) foram ignorados.`,
+          'info',
+          6000
+        );
+      }
+    } catch (err) {
+      console.warn('[Drop] Erro ao soltar imagens no canvas:', err);
+      showCanvasToast(
+        'Falha no processamento',
+        'Ocorreu um erro ao carregar as imagens soltas no quadro.',
+        'error'
+      );
+    }
+  };
+
   return (
     <div
       onContextMenu={(e) => {
@@ -3534,6 +3805,10 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       onMouseDownCapture={(e) => {
         if (e.button === 1) e.preventDefault();
       }}
+      onDragEnter={handleCanvasDragEnter}
+      onDragOver={handleCanvasDragOver}
+      onDragLeave={handleCanvasDragLeave}
+      onDrop={handleCanvasDrop}
       className="relative w-full h-full select-none overflow-hidden bg-background"
       style={{ cursor: canvasCursor, touchAction: 'none' }}
       onMouseLeave={() => {
@@ -3546,6 +3821,63 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         setIsMouseDownState(false);
       }}
     >
+      {/* Overlay Visual de Drag & Drop de Imagens do Computador sobre o Canvas */}
+      {isDraggingExternalFiles && !readOnly && !canCommentOnly && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none fixed inset-3 z-50 rounded-2xl border-2 border-dashed border-primary bg-primary/8 backdrop-blur-[2px] flex items-center justify-center animate-in fade-in zoom-in-95 duration-150"
+        >
+          <div className="px-5 py-3 rounded-2xl bg-popover/95 text-popover-foreground border border-border shadow-2xl flex items-center gap-3">
+            <span className="text-xl">🖼️</span>
+            <div className="text-left">
+              <p className="text-xs sm:text-sm font-bold text-foreground">
+                Solte para adicionar imagens ao quadro
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                Suporta PNG, JPG, WebP, GIF e SVG (arquivos PDF não suportados)
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notificação de Feedback do Canvas (ex: PDF ou formatos não suportados) */}
+      {canvasToast && (
+        <div
+          role="alert"
+          className="fixed top-5 left-1/2 -translate-x-1/2 z-50 max-w-md w-[calc(100vw-32px)] pointer-events-auto animate-in fade-in slide-in-from-top-3 duration-200"
+        >
+          <div className="flex items-start gap-3 p-3.5 rounded-2xl bg-popover/95 text-popover-foreground border border-border shadow-2xl backdrop-blur-md">
+            <div
+              className={`mt-0.5 size-7 rounded-xl flex items-center justify-center shrink-0 text-sm ${
+                canvasToast.type === 'error'
+                  ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400'
+                  : canvasToast.type === 'warning'
+                  ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                  : 'bg-primary/15 text-primary'
+              }`}
+            >
+              {canvasToast.type === 'error' ? '❌' : canvasToast.type === 'warning' ? '⚠️' : 'ℹ️'}
+            </div>
+            <div className="flex-1 min-w-0 pr-1">
+              <p className="text-xs font-semibold text-foreground tracking-tight">
+                {canvasToast.title}
+              </p>
+              <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed break-words">
+                {canvasToast.message}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setCanvasToast(null)}
+              aria-label="Fechar notificação"
+              className="size-6 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/80 flex items-center justify-center text-xs shrink-0 transition-colors cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
       {/* Indicador de Alcance Circular da Borracha no Modo Parcial (controlado via DOM direto para 0ms de latência e 0 re-renders de React) */}
       <div
         ref={eraserCursorRef}
@@ -3657,9 +3989,9 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       )}
 
       {/* Balão de Hiperlink Flutuante Estilo Miro (exibido quando um elemento com link está selecionado) */}
-      {/* Botões "+" ao redor do post-it selecionado para criar cards encostados (estilo FigJam) */}
-      {canUseQuickAdd && selectedSticky && (
-        <StickyQuickAdd sticky={selectedSticky} onCreate={handleQuickAddSticky} />
+      {/* Botões "+" ao redor do post-it ou forma geométrica selecionada para criar elementos encostados (estilo FigJam) */}
+      {canUseQuickAdd && selectedQuickAddElement && (
+        <StickyQuickAdd sticky={selectedQuickAddElement} onCreate={handleQuickAddSticky} />
       )}
 
       {selectedElements.length === 1 && !inlineEditing && !isTransforming && (
