@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   ArrowLeft, 
   Share2, 
@@ -8,7 +8,7 @@ import {
   Search,
   Edit2,
   UserPen
-} from 'lucide-react';
+} from '@/components/ui/icons';
 import type { Board, CurrentUser, UserPresence } from '../../types/board';
 import type { SprintTemplate } from '../../utils/sprintTemplates';
 import { Button } from '@/components/ui/button';
@@ -21,6 +21,7 @@ import { MirioLogo } from '@/components/layout/MirioLogo';
 import { SprintTemplatesModal } from '@/components/whiteboard/SprintTemplatesModal';
 import { ShareModal } from '@/components/whiteboard/ShareModal';
 import { FacilitationMenu } from '@/components/whiteboard/FacilitationMenu';
+import { CanvasPreferencesMenu } from '@/components/whiteboard/CanvasPreferencesMenu';
 import type { GridType, GridSize } from '@/components/whiteboard/CanvasGrid';
 import { isBoardOwner } from '../../utils/permissions';
 
@@ -28,7 +29,7 @@ interface NavbarProps {
   title: string;
   board?: Board | null;
   onUpdateTitle: (newTitle: string) => void;
-  onUpdateBoardSettings?: (updates: Partial<Pick<Board, 'defaultPermission' | 'collaborators' | 'collaboratorEmails' | 'members' | 'removedMemberIds' | 'isPasswordProtected' | 'password'>>) => Promise<void>;
+  onUpdateBoardSettings?: (updates: Partial<Pick<Board, 'defaultPermission' | 'collaborators' | 'collaboratorEmails' | 'members' | 'removedMemberIds' | 'waitingRoomEnabled' | 'joinRequests' | 'isPasswordProtected' | 'password'>>) => Promise<void>;
   onBackToDashboard: () => void;
   currentUser: CurrentUser;
   onOpenEditProfile?: () => void;
@@ -59,6 +60,10 @@ interface NavbarProps {
   showRemoteCursors?: boolean;
   onToggleRemoteCursors?: (show?: boolean) => void;
   mirioReactionUnlocked?: boolean;
+  isShareModalOpen?: boolean;
+  onShareModalOpenChange?: (open: boolean) => void;
+  isCoffeeModalOpen?: boolean;
+  onCoffeeModalOpenChange?: (open: boolean) => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = React.memo(({
@@ -96,11 +101,23 @@ export const Navbar: React.FC<NavbarProps> = React.memo(({
   showRemoteCursors,
   onToggleRemoteCursors,
   mirioReactionUnlocked = false,
+  isShareModalOpen: controlledShareOpen,
+  onShareModalOpenChange: setControlledShareOpen,
+  isCoffeeModalOpen: controlledCoffeeOpen,
+  onCoffeeModalOpenChange: setControlledCoffeeOpen,
 }) => {
   const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [tempTitle, setTempTitle] = useState(title);
-  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [internalShareOpen, setInternalShareOpen] = useState(false);
+  const isShareModalOpen = controlledShareOpen !== undefined ? controlledShareOpen : internalShareOpen;
+  const setIsShareModalOpen =
+    controlledShareOpen !== undefined ? (setControlledShareOpen || (() => {})) : setInternalShareOpen;
+
+  const pendingJoinRequestsCount = useMemo(() => {
+    if (!board?.joinRequests) return 0;
+    return Object.values(board.joinRequests).filter((r) => r && r.status === 'pending').length;
+  }, [board?.joinRequests]);
 
   const handleTitleSubmit = () => {
     setIsEditingTitle(false);
@@ -161,6 +178,7 @@ export const Navbar: React.FC<NavbarProps> = React.memo(({
             autoFocus
             type="text"
             value={tempTitle}
+            onFocus={(e) => e.currentTarget.select()}
             onChange={(e) => setTempTitle(e.target.value)}
             onBlur={handleTitleSubmit}
             onKeyDown={(e) => {
@@ -180,10 +198,11 @@ export const Navbar: React.FC<NavbarProps> = React.memo(({
               setTempTitle(title);
               setIsEditingTitle(true);
             }}
-            title="Clique para renomear"
-            className="h-7 text-xs font-medium px-2 max-w-[160px] sm:max-w-[240px] truncate justify-start hover:bg-muted"
+            title="Clique para renomear o quadro"
+            className="group h-7 text-xs font-medium px-2 max-w-[160px] sm:max-w-[240px] truncate justify-start hover:bg-muted gap-1.5 cursor-pointer"
           >
             <span className="truncate">{title}</span>
+            <Edit2 className="size-3 text-muted-foreground/60 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
           </Button>
         )}
 
@@ -214,7 +233,10 @@ export const Navbar: React.FC<NavbarProps> = React.memo(({
         {!isReadOnly && !isCommentOnly && <SprintTemplatesModal onInsertTemplate={onInsertSprintTemplate} />}
 
         {/* Botão de Apoio PIX Buy Me A Coffee */}
-        <BuyMeACoffeeModal />
+        <BuyMeACoffeeModal
+          open={controlledCoffeeOpen}
+          onOpenChange={setControlledCoffeeOpen}
+        />
 
         {/* Avatares dos Usuários Conectados com Modo Seguir Cursor */}
         <div className="flex items-center bg-background/80 dark:bg-card/80 backdrop-blur-md px-2 py-1 rounded-lg shadow-xs border border-border gap-1">
@@ -331,18 +353,23 @@ export const Navbar: React.FC<NavbarProps> = React.memo(({
           )}
         </div>
 
-        {/* Menu Unificado de Facilitação & Configurações (Estilo Miro) */}
+        {/* Ferramentas de Colaboração & Facilitação (Timer, Votação, Apresentação, Reações) */}
         <FacilitationMenu
           boardId={board?.id || ''}
           userName={currentUser.displayName}
-          isAnonymous={currentUser.isAnonymous}
-          onOpenEditProfile={onOpenEditProfile}
+          isReadOnly={isReadOnly}
+          isCommentOnly={isCommentOnly}
           onToggleTimer={onToggleTimer || (() => {})}
           isTimerOpen={isTimerOpen}
           onOpenLeaderboard={onOpenVoting || (() => {})}
           hasVotes={hasActiveVote}
           isVotingActive={isVotingActive}
           onEnterPresentation={onEnterPresentation || (() => {})}
+          mirioReactionUnlocked={mirioReactionUnlocked}
+        />
+
+        {/* Preferências de Visualização e Grade do Canvas */}
+        <CanvasPreferencesMenu
           toolbarPosition={toolbarPosition}
           onChangeToolbarPosition={onChangeToolbarPosition || (() => {})}
           gridType={gridType}
@@ -355,38 +382,44 @@ export const Navbar: React.FC<NavbarProps> = React.memo(({
           onToggleGrid={onToggleGrid}
           showRemoteCursors={showRemoteCursors}
           onToggleRemoteCursors={onToggleRemoteCursors}
-          mirioReactionUnlocked={mirioReactionUnlocked}
         />
 
         {/* Botão de Compartilhar (Proprietários podem compartilhar seu quadro) */}
         {isBoardOwner(board || null, currentUser) && (
-          <>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon-sm"
-                  onClick={() => setIsShareModalOpen(true)}
-                  className="size-8 rounded-lg shadow-xs active:scale-[0.96] transition-transform text-muted-foreground hover:text-foreground cursor-pointer"
-                >
-                  <Share2 className="size-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Compartilhar Quadro</TooltipContent>
-            </Tooltip>
-
-            {/* Modal de Compartilhamento com Permissões e Gmail */}
-            <ShareModal
-              open={isShareModalOpen}
-              onOpenChange={setIsShareModalOpen}
-              board={board || null}
-              currentUser={currentUser}
-              remoteUsers={remoteUsers}
-              onUpdateBoardSettings={onUpdateBoardSettings}
-            />
-          </>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-sm"
+                onClick={() => setIsShareModalOpen(true)}
+                className="relative size-8 rounded-lg shadow-xs active:scale-[0.96] transition-transform text-muted-foreground hover:text-foreground cursor-pointer"
+              >
+                <Share2 className="size-3.5" />
+                {pendingJoinRequestsCount > 0 && (
+                  <span className="absolute -top-1 -right-1 size-4 rounded-full bg-primary text-primary-foreground text-[9px] font-bold flex items-center justify-center ring-2 ring-background animate-pulse">
+                    {pendingJoinRequestsCount}
+                  </span>
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {pendingJoinRequestsCount > 0 
+                ? `${pendingJoinRequestsCount} solicitação(ões) pendente(s)` 
+                : 'Compartilhar Quadro'}
+            </TooltipContent>
+          </Tooltip>
         )}
+
+        {/* Modal de Compartilhamento com Permissões e Gmail */}
+        <ShareModal
+          open={isShareModalOpen}
+          onOpenChange={setIsShareModalOpen}
+          board={board || null}
+          currentUser={currentUser}
+          remoteUsers={remoteUsers}
+          onUpdateBoardSettings={onUpdateBoardSettings}
+        />
 
         {/* Botão Sair */}
         <Tooltip>
