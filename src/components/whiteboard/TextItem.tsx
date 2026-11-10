@@ -2,7 +2,12 @@ import React, { useRef, useMemo } from 'react';
 import { Group, Text, Rect } from 'react-konva';
 import type Konva from 'konva';
 import type { CanvasElement } from '../../types/element';
-import { extractAllLinks, stripMarkdownLinks, layoutFormattedWords, normalizeUrl } from '../../utils/textLinks';
+import { normalizeUrl } from '../../utils/textLinks';
+import {
+  RICH_TEXT_FONT_FAMILY,
+  getElementBaseStyle,
+  layoutElementRichText,
+} from '../../utils/richText';
 
 interface TextItemProps {
   element: CanvasElement;
@@ -15,14 +20,14 @@ interface TextItemProps {
   onSelect: (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => void;
   onChange: (updates: Partial<CanvasElement>) => void;
   onStartEditing: (
-    id: string, 
-    x: number, 
-    y: number, 
-    width: number, 
-    height: number, 
-    text: string, 
-    fill?: string, 
-    fontSize?: number, 
+    id: string,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    text: string,
+    fill?: string,
+    fontSize?: number,
     textColor?: string
   ) => void;
 }
@@ -42,9 +47,50 @@ export const TextItem: React.FC<TextItemProps> = React.memo(({
   const groupRef = useRef<Konva.Group>(null);
   const text = element.text || '';
   const fontSize = element.fontSize || 20;
-  const fill = element.textColor || element.fill || (element.linkUrl ? '#2563eb' : '#0f172a');
   const width = element.width || 200;
   const isItemDraggable = draggable !== undefined ? draggable && !element.locked : !element.locked;
+  const textAlign = element.textAlign || 'left';
+
+  const baseStyle = useMemo(
+    () => getElementBaseStyle(element),
+    [
+      element.fontWeight,
+      element.fontStyle,
+      element.textDecoration,
+      element.textColor,
+      element.fill,
+    ]
+  );
+
+  // Layout com formatação por trecho (negrito, itálico, cor, links...).
+  const layout = useMemo(
+    () =>
+      layoutElementRichText(element, {
+        maxWidth: width,
+        fontSize,
+        align: textAlign,
+        lineHeight: 1.2,
+        fontFamily: RICH_TEXT_FONT_FAMILY,
+        baseColor: baseStyle.color,
+      }),
+    [
+      element.text,
+      element.richText,
+      element.links,
+      element.linkUrl,
+      element.fontWeight,
+      element.fontStyle,
+      element.textDecoration,
+      element.textColor,
+      element.fill,
+      width,
+      fontSize,
+      textAlign,
+      baseStyle.color,
+    ]
+  );
+
+  const textHeight = layout.height;
 
   const handleDblClick = () => {
     if (!canEdit) return;
@@ -53,42 +99,13 @@ export const TextItem: React.FC<TextItemProps> = React.memo(({
       element.x,
       element.y,
       width,
-      fontSize * 1.5,
+      textHeight,
       text,
       'transparent',
       fontSize,
-      fill
+      baseStyle.color
     );
   };
-
-  const isBold = element.fontWeight === 'bold';
-  const isItalic = element.fontStyle === 'italic';
-  const fontStyleStr = isBold && isItalic ? 'bold italic' : isBold ? 'bold' : isItalic ? 'italic' : 'normal';
-  const textAlign = element.textAlign || 'left';
-
-  const cleanText = stripMarkdownLinks(text);
-  const allLinks = useMemo(
-    () => extractAllLinks(text, element.linkUrl, element.links),
-    [text, element.linkUrl, element.links]
-  );
-  const hasLinks = allLinks.length > 0;
-
-  const defaultTextDark = element.fill === '#0f172a' || !element.fill;
-  const linkColor = defaultTextDark ? '#2563eb' : element.fill;
-
-  const formattedWords = useMemo(() => {
-    if (!hasLinks || !cleanText) return null;
-    return layoutFormattedWords(
-      cleanText,
-      width,
-      fontSize,
-      fontStyleStr,
-      textAlign,
-      1.2,
-      element.links,
-      element.linkUrl
-    );
-  }, [cleanText, hasLinks, width, fontSize, fontStyleStr, textAlign, element.links, element.linkUrl]);
 
   const clickTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isDraggingRef = useRef(false);
@@ -120,12 +137,23 @@ export const TextItem: React.FC<TextItemProps> = React.memo(({
     return null;
   }
 
+  const fontStyleName = (bold: boolean, italic: boolean) =>
+    bold && italic ? 'bold italic' : bold ? 'bold' : italic ? 'italic' : 'normal';
+
+  const decorationName = (underline: boolean, strikethrough: boolean) => {
+    if (underline && strikethrough) return 'underline line-through';
+    if (underline) return 'underline';
+    if (strikethrough) return 'line-through';
+    return '';
+  };
+
   return (
     <Group
       ref={groupRef}
       id={element.id}
       x={element.x}
       y={element.y}
+      rotation={element.rotation || 0}
       draggable={isItemDraggable}
       onClick={onSelect}
       onTap={onSelect}
@@ -151,21 +179,43 @@ export const TextItem: React.FC<TextItemProps> = React.memo(({
         node.scaleX(1);
         node.scaleY(1);
 
+        const nextWidth = Math.max(60, Math.round(width * scaleX));
+        const nextFontSize = Math.max(12, Math.round(fontSize * scaleY));
+        const nextLayout = layoutElementRichText(element, {
+          maxWidth: nextWidth,
+          fontSize: nextFontSize,
+          align: textAlign,
+          lineHeight: 1.2,
+          fontFamily: RICH_TEXT_FONT_FAMILY,
+          baseColor: baseStyle.color,
+        });
+
         onChange({
           x: Math.round(node.x()),
           y: Math.round(node.y()),
-          width: Math.max(60, Math.round(width * scaleX)),
-          fontSize: Math.max(12, Math.round(fontSize * scaleY)),
+          width: nextWidth,
+          height: Math.max(1, Math.round(nextLayout.height)),
+          fontSize: nextFontSize,
           rotation: Math.round(node.rotation()),
         });
       }}
     >
+      {/* Área invisível de hit-test para clique, duplo clique e arraste em toda a caixa de texto */}
+      <Rect
+        x={0}
+        y={0}
+        width={width}
+        height={textHeight}
+        fill="rgba(0, 0, 0, 0)"
+        perfectDrawEnabled={false}
+      />
+
       {isSelected && (
         <Rect
           x={-4}
           y={-4}
           width={width + 8}
-          height={fontSize * 1.4 + 8}
+          height={textHeight + 8}
           stroke={userSelectionColor}
           strokeWidth={1.5}
           dash={[3, 3]}
@@ -195,50 +245,39 @@ export const TextItem: React.FC<TextItemProps> = React.memo(({
         </Group>
       )}
 
-      {/* Conteúdo textual estilo Miro com suporte a hiperlinks sublinhados clicáveis */}
-      {formattedWords && formattedWords.length > 0 ? (
-        <Group>
-          {formattedWords.map((word) => (
+      {/* Conteúdo textual com formatação por trecho e links clicáveis */}
+      <Group>
+        {layout.tokens.map((token) => {
+          const isLink = Boolean(token.url);
+          return (
             <Text
-              key={word.id}
-              text={word.text}
-              x={word.x}
-              y={word.y}
+              key={token.id}
+              text={token.text}
+              x={token.x}
+              y={token.y}
               fontSize={fontSize}
-              fontFamily="system-ui, -apple-system, sans-serif"
-              fontStyle={fontStyleStr}
-              textDecoration={word.isLink ? 'underline' : (element.textDecoration || '')}
-              fill={word.isLink ? linkColor : fill}
-              onClick={word.isLink && word.url ? (e) => handleLinkClick(word.url!, e) : undefined}
-              onTap={word.isLink && word.url ? (e) => handleLinkClick(word.url!, e) : undefined}
-              onDblClick={word.isLink ? handleLinkDblClick : undefined}
-              onDblTap={word.isLink ? handleLinkDblClick : undefined}
-              onMouseEnter={word.isLink ? (e) => {
+              fontFamily={RICH_TEXT_FONT_FAMILY}
+              fontStyle={fontStyleName(token.bold, token.italic)}
+              textDecoration={decorationName(token.underline, token.strikethrough)}
+              fill={token.color}
+              lineHeight={1.2}
+              onClick={isLink ? (e) => handleLinkClick(token.url!, e) : undefined}
+              onTap={isLink ? (e) => handleLinkClick(token.url!, e) : undefined}
+              onDblClick={isLink ? handleLinkDblClick : undefined}
+              onDblTap={isLink ? handleLinkDblClick : undefined}
+              onMouseEnter={isLink ? (e) => {
                 const stage = e.target.getStage();
                 if (stage) stage.container().style.cursor = 'pointer';
               } : undefined}
-              onMouseLeave={word.isLink ? (e) => {
+              onMouseLeave={isLink ? (e) => {
                 const stage = e.target.getStage();
                 if (stage) stage.container().style.cursor = '';
               } : undefined}
               perfectDrawEnabled={false}
             />
-          ))}
-        </Group>
-      ) : (
-        <Text
-          text={cleanText}
-          fontSize={fontSize}
-          fill={fill}
-          width={width}
-          align={textAlign}
-          fontFamily="system-ui, -apple-system, sans-serif"
-          fontStyle={fontStyleStr}
-          textDecoration={element.textDecoration || ''}
-          lineHeight={1.2}
-          perfectDrawEnabled={false}
-        />
-      )}
+          );
+        })}
+      </Group>
 
       {/* Tag do colega que está com o texto selecionado */}
       {remoteSelector && (

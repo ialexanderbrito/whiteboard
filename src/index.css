@@ -386,3 +386,11 @@ html, body {
   }
 }
 
+
+/* Editor de texto rico: links continuam azuis e sublinhados dentro do contentEditable */
+.mirio-rich-editor a {
+  color: #2563eb;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
