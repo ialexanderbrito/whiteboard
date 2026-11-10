@@ -7,8 +7,6 @@ import {
   Upload,
   ImagePlus,
   Link2,
-  Clock,
-  Trash2,
   Sparkles,
   Loader2,
 } from '@/components/ui/icons';
@@ -28,14 +26,8 @@ import { useTheme } from '@/context/ThemeContext';
 import { getAppleEmojiUrl } from '@/utils/appleEmoji';
 import {
   processImageFiles,
-  getRecentUploadedImages,
-  saveRecentUploadedImages,
-  removeRecentUploadedImage,
-  clearRecentUploadedImages,
-  computeInitialCanvasDimensions,
   validateDroppedFiles,
   formatUnsupportedFileMessage,
-  type RecentUploadedImage,
 } from '@/utils/imageUpload';
 import { getImageDimensions } from '@/utils/clipboard';
 
@@ -228,9 +220,6 @@ export const StickersModal: React.FC<StickersModalProps> = ({
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const [isProcessingFiles, setIsProcessingFiles] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [recentImages, setRecentImages] = useState<RecentUploadedImage[]>(() =>
-    getRecentUploadedImages()
-  );
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -240,10 +229,8 @@ export const StickersModal: React.FC<StickersModalProps> = ({
     (import.meta.env.VITE_KLIPY_API_KEY as string) || DEFAULT_KLIPY_KEY;
   const giphyApiKey = import.meta.env.VITE_GIPHY_API_KEY as string;
 
-  // Recarrega a galeria de recentes sempre que o modal abre
   useEffect(() => {
     if (open) {
-      setRecentImages(getRecentUploadedImages());
       setUploadError(null);
       setIsDraggingFiles(false);
     }
@@ -418,9 +405,6 @@ export const StickersModal: React.FC<StickersModalProps> = ({
         return;
       }
 
-      const updatedRecents = saveRecentUploadedImages(processed);
-      setRecentImages(updatedRecents);
-
       if (onBatchInsertMedia) {
         onBatchInsertMedia(
           processed.map((img) => ({
@@ -450,34 +434,6 @@ export const StickersModal: React.FC<StickersModalProps> = ({
         fileInputRef.current.value = '';
       }
     }
-  };
-
-  const handleInsertRecentImage = (recent: RecentUploadedImage) => {
-    const dims = computeInitialCanvasDimensions(recent.width || 280, recent.height || 200);
-    if (onBatchInsertMedia) {
-      onBatchInsertMedia([
-        {
-          type: recent.type,
-          src: recent.src,
-          alt: recent.alt,
-          width: dims.width,
-          height: dims.height,
-        },
-      ]);
-    } else {
-      onInsertMedia(recent.type, recent.src, recent.alt, undefined, dims);
-    }
-    onOpenChange(false);
-  };
-
-  const handleRemoveRecent = (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
-    setRecentImages(removeRecentUploadedImage(id));
-  };
-
-  const handleClearAllRecents = () => {
-    clearRecentUploadedImages();
-    setRecentImages([]);
   };
 
   const handleSelectEmojiClick = (emojiData: EmojiClickData) => {
@@ -652,62 +608,6 @@ export const StickersModal: React.FC<StickersModalProps> = ({
               <p className="text-xs font-medium text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2">
                 {uploadError}
               </p>
-            )}
-
-            {/* Galeria de Imagens Enviadas Recentemente (Reuso com 1 Clique) */}
-            {recentImages.length > 0 && (
-              <div className="space-y-2 pt-0.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-                    <Clock className="size-3 text-primary" />
-                    <span>Recentes neste navegador ({recentImages.length})</span>
-                  </span>
-                  <button
-                    type="button"
-                    onClick={handleClearAllRecents}
-                    className="text-[11px] text-muted-foreground hover:text-destructive transition-colors flex items-center gap-1 cursor-pointer active:scale-[0.97]"
-                  >
-                    <Trash2 className="size-3" />
-                    <span>Limpar</span>
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-4 gap-2 max-h-[124px] overflow-y-auto pr-0.5">
-                  {recentImages.map((img, idx) => (
-                    <div
-                      key={img.id}
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => handleInsertRecentImage(img)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          handleInsertRecentImage(img);
-                        }
-                      }}
-                      style={{ animationDelay: `${idx * 35}ms` }}
-                      className="group relative aspect-video rounded-lg overflow-hidden border border-border/80 bg-muted/35 hover:border-primary transition-[transform,border-color] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.97] cursor-pointer flex items-center justify-center"
-                      title={`Inserir "${img.alt}" novamente`}
-                    >
-                      <img
-                        src={img.src}
-                        alt={img.alt}
-                        loading="lazy"
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-150"
-                      />
-                      <button
-                        type="button"
-                        onClick={(e) => handleRemoveRecent(e, img.id)}
-                        className="absolute top-1 right-1 size-5 rounded-md bg-black/65 text-white opacity-0 group-hover:opacity-100 hover:bg-destructive transition-opacity duration-150 flex items-center justify-center cursor-pointer"
-                        title="Remover dos recentes"
-                        aria-label="Remover imagem recente"
-                      >
-                        <X className="size-3" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
             )}
 
             {/* Divisor sutil + Inserção rápida por Link / URL */}

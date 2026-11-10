@@ -78,19 +78,9 @@ function getLocalVoting(rawBoardId: string): BoardVotingData {
   if (memoryVotesCache.has(boardId)) {
     return memoryVotesCache.get(boardId)!;
   }
-  try {
-    const raw = localStorage.getItem(`mirio_votes_${boardId}`);
-    const data = raw ? JSON.parse(raw) : { ...DEFAULT_VOTING };
-    if (!data.session) data.session = null;
-    if (!data.previousSessions) data.previousSessions = [];
-    if (!data.votesByUser) data.votesByUser = {};
-    memoryVotesCache.set(boardId, data);
-    return data;
-  } catch {
-    const fallback = { ...DEFAULT_VOTING };
-    memoryVotesCache.set(boardId, fallback);
-    return fallback;
-  }
+  const fallback = { ...DEFAULT_VOTING };
+  memoryVotesCache.set(boardId, fallback);
+  return fallback;
 }
 
 function saveLocalVoting(rawBoardId: string, data: BoardVotingData) {
@@ -101,11 +91,6 @@ function saveLocalVoting(rawBoardId: string, data: BoardVotingData) {
     votesByUser: data.votesByUser || {},
   };
   memoryVotesCache.set(boardId, safeData);
-  try {
-    localStorage.setItem(`mirio_votes_${boardId}`, JSON.stringify(safeData));
-  } catch {
-    // ignora falha de cota de storage
-  }
 }
 
 function notifySubscribers(rawBoardId: string, data: BoardVotingData) {

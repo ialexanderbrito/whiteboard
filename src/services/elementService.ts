@@ -46,6 +46,10 @@ function getCachedElements(rawBoardId: string): CanvasElement[] {
   if (memoryCache.has(boardId)) {
     return memoryCache.get(boardId)!;
   }
+  // Se o Firebase estiver ativo, o Firestore onSnapshot carregará direto do IndexedDB (0ms)
+  if (isFirebaseConfigured && db) {
+    return [];
+  }
   try {
     let raw = localStorage.getItem(getLocalKey(boardId));
     if (!raw) {
@@ -68,7 +72,14 @@ function persistElements(rawBoardId: string, elements: CanvasElement[]) {
   // Atualiza cache em memória instantaneamente (0ms de atraso na interface)
   memoryCache.set(boardId, elements);
 
-  // Debounce da gravação em disco para evitar travamentos de I/O em arrastos rápidos
+  // Quando o Firebase está configurado, o Firestore já persiste os elementos no IndexedDB
+  // (persistentLocalCache com persistentMultipleTabManager). Gravar no localStorage duplicaria
+  // megabytes de dados e estouraria a cota de 5MB do navegador.
+  if (isFirebaseConfigured && db) {
+    return;
+  }
+
+  // Debounce da gravação em disco para evitar travamentos de I/O em arrastos rápidos (modo offline)
   const existingTimer = persistTimers.get(boardId);
   if (existingTimer) {
     clearTimeout(existingTimer);

@@ -11,7 +11,6 @@ export function fileToDataUrl(file: File | Blob): Promise<string> {
 }
 
 export const RECENT_IMAGES_STORAGE_KEY = 'mirio_recent_uploaded_images';
-export const MAX_RECENT_IMAGES = 8;
 
 /**
  * Limite seguro de caracteres Base64 por imagem para nunca exceder o teto de 1 MiB
@@ -34,16 +33,6 @@ export interface ProcessedUploadImage {
   naturalWidth: number;
   naturalHeight: number;
   sizeBytes: number;
-}
-
-export interface RecentUploadedImage {
-  id: string;
-  type: 'sticker' | 'gif';
-  src: string;
-  alt: string;
-  width: number;
-  height: number;
-  createdAt: number;
 }
 
 const SUPPORTED_IMAGE_EXTENSIONS = /\.(png|jpe?g|webp|gif|svg|avif|bmp|ico)$/i;
@@ -347,79 +336,7 @@ export async function processImageFiles(
 }
 
 /**
- * Lê a galeria de imagens enviadas recentemente pelo usuário no navegador.
- */
-export function getRecentUploadedImages(): RecentUploadedImage[] {
-  if (typeof localStorage === 'undefined') return [];
-  try {
-    const raw = localStorage.getItem(RECENT_IMAGES_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (item): item is RecentUploadedImage =>
-        Boolean(item && typeof item.id === 'string' && typeof item.src === 'string')
-    );
-  } catch {
-    return [];
-  }
-}
-
-/**
- * Persiste imagens recém-enviadas no topo da galeria de recentes com proteção contra estouro de cota do localStorage.
- */
-export function saveRecentUploadedImages(
-  newItems: ReadonlyArray<Pick<ProcessedUploadImage, 'type' | 'src' | 'alt' | 'width' | 'height'>>
-): RecentUploadedImage[] {
-  if (typeof localStorage === 'undefined' || !newItems || newItems.length === 0) {
-    return getRecentUploadedImages();
-  }
-
-  const existing = getRecentUploadedImages();
-  const now = Date.now();
-
-  const additions: RecentUploadedImage[] = newItems.map((item, idx) => ({
-    id: `recent_img_${now}_${idx}_${Math.random().toString(36).substring(2, 7)}`,
-    type: item.type,
-    src: item.src,
-    alt: item.alt || 'Imagem enviada',
-    width: item.width || 240,
-    height: item.height || 180,
-    createdAt: now + idx,
-  }));
-
-  // Evita duplicar exatamente o mesmo Data URL
-  const additionsSrcSet = new Set(additions.map((a) => a.src));
-  const dedupedExisting = existing.filter((e) => !additionsSrcSet.has(e.src));
-  let merged = [...additions, ...dedupedExisting].slice(0, MAX_RECENT_IMAGES);
-
-  // Tenta salvar no localStorage; se a cota estiver próxima do limite, reduz a quantidade gradualmente
-  while (merged.length > 0) {
-    try {
-      localStorage.setItem(RECENT_IMAGES_STORAGE_KEY, JSON.stringify(merged));
-      return merged;
-    } catch {
-      merged = merged.slice(0, merged.length - 1);
-    }
-  }
-
-  return existing;
-}
-
-/**
- * Remove uma imagem específica da galeria de recentes.
- */
-export function removeRecentUploadedImage(id: string): RecentUploadedImage[] {
-  if (typeof localStorage === 'undefined') return [];
-  const next = getRecentUploadedImages().filter((item) => item.id !== id);
-  try {
-    localStorage.setItem(RECENT_IMAGES_STORAGE_KEY, JSON.stringify(next));
-  } catch {}
-  return next;
-}
-
-/**
- * Limpa todas as imagens recentes salvas localmente.
+ * Limpa o histórico de imagens recentes salvas localmente no navegador, liberando o espaço de armazenamento.
  */
 export function clearRecentUploadedImages(): void {
   if (typeof localStorage === 'undefined') return;
@@ -427,6 +344,7 @@ export function clearRecentUploadedImages(): void {
     localStorage.removeItem(RECENT_IMAGES_STORAGE_KEY);
   } catch {}
 }
+
 
 export interface FileValidationResult {
   validFiles: File[];

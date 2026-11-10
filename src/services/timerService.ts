@@ -58,23 +58,20 @@ function cleanBoardId(rawId: string): string {
 // Ouvintes locais na mesma aba para resposta imediata
 const localListeners = new Map<string, Set<(state: BoardTimerState) => void>>();
 
+// Cache em memória por quadro (evita poluir o localStorage com chaves órfãs a cada visita)
+const timerMemoryCache = new Map<string, BoardTimerState>();
+
 function getLocalState(rawBoardId: string): BoardTimerState {
   const boardId = cleanBoardId(rawBoardId);
-  try {
-    const raw = localStorage.getItem(`mirio_timer_${boardId}`);
-    return raw ? sanitizeTimerState(JSON.parse(raw)) : { ...DEFAULT_TIMER };
-  } catch {
-    return { ...DEFAULT_TIMER };
+  if (timerMemoryCache.has(boardId)) {
+    return timerMemoryCache.get(boardId)!;
   }
+  return { ...DEFAULT_TIMER };
 }
 
 function saveLocalState(rawBoardId: string, state: BoardTimerState) {
   const boardId = cleanBoardId(rawBoardId);
-  try {
-    localStorage.setItem(`mirio_timer_${boardId}`, JSON.stringify(state));
-  } catch {
-    // ignora falhas em quota de storage
-  }
+  timerMemoryCache.set(boardId, state);
 }
 
 function notifySubscribers(rawBoardId: string, state: BoardTimerState) {

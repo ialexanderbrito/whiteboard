@@ -8,14 +8,12 @@ import {
   computeInitialCanvasDimensions,
   computeImageGridLayout,
   estimateDataUrlBytes,
-  getRecentUploadedImages,
-  saveRecentUploadedImages,
-  removeRecentUploadedImage,
   clearRecentUploadedImages,
   validateDroppedFiles,
   formatUnsupportedFileMessage,
-  MAX_RECENT_IMAGES,
+  RECENT_IMAGES_STORAGE_KEY,
 } from '../src/utils/imageUpload.ts';
+import { cleanupObsoleteStorage } from '../src/utils/storageCleanup.ts';
 
 const readSource = (relPath) =>
   fs.readFileSync(path.resolve(process.cwd(), relPath), 'utf8');
@@ -72,48 +70,38 @@ test('estimateDataUrlBytes estimates Base64 payload size accurately', () => {
   assert.equal(bytes, 3000);
 });
 
-test('Recent uploaded images storage persists, deduplicates, removes, and clears items in localStorage', () => {
+test('clearRecentUploadedImages and cleanupObsoleteStorage remove legacy Base64 images from localStorage', () => {
   const store = new Map();
   globalThis.localStorage = {
+    length: 0,
+    key: (i) => Array.from(store.keys())[i] || null,
     getItem: (k) => (store.has(k) ? store.get(k) : null),
-    setItem: (k, v) => store.set(k, String(v)),
-    removeItem: (k) => store.delete(k),
+    setItem: (k, v) => {
+      store.set(k, String(v));
+      globalThis.localStorage.length = store.size;
+    },
+    removeItem: (k) => {
+      store.delete(k);
+      globalThis.localStorage.length = store.size;
+    },
   };
 
+  // Simula lixo de imagem Base64 acumulado no storage
+  localStorage.setItem(RECENT_IMAGES_STORAGE_KEY, JSON.stringify([{ id: '1', src: 'data:image/webp;base64,AAA' }]));
+  localStorage.setItem('mirio_timer_xyz', JSON.stringify({ running: false }));
+  localStorage.setItem('mirio_votes_abc', JSON.stringify({ session: null }));
+  localStorage.setItem('mirio_theme', 'dark');
+
+  assert.equal(localStorage.getItem(RECENT_IMAGES_STORAGE_KEY) !== null, true);
   clearRecentUploadedImages();
-  assert.deepEqual(getRecentUploadedImages(), []);
+  assert.equal(localStorage.getItem(RECENT_IMAGES_STORAGE_KEY), null);
 
-  const afterSave = saveRecentUploadedImages([
-    { type: 'sticker', src: 'data:image/webp;base64,AAA', alt: 'Print 1', width: 300, height: 200 },
-    { type: 'gif', src: 'data:image/gif;base64,BBB', alt: 'Anim 2', width: 220, height: 160 },
-  ]);
-  assert.equal(afterSave.length, 2);
-  assert.equal(afterSave[0].alt, 'Print 1');
-
-  // Deduplicates identical src
-  const afterDup = saveRecentUploadedImages([
-    { type: 'sticker', src: 'data:image/webp;base64,AAA', alt: 'Print 1 Atualizado', width: 300, height: 200 },
-  ]);
-  assert.equal(afterDup.length, 2);
-  assert.equal(afterDup[0].alt, 'Print 1 Atualizado');
-
-  // Respects MAX_RECENT_IMAGES cap
-  const many = Array.from({ length: 12 }, (_, i) => ({
-    type: 'sticker',
-    src: `data:image/webp;base64,IMG_${i}`,
-    alt: `Img ${i}`,
-    width: 200,
-    height: 150,
-  }));
-  const capped = saveRecentUploadedImages(many);
-  assert.equal(capped.length, MAX_RECENT_IMAGES);
-
-  // Removes single item
-  const afterRemove = removeRecentUploadedImage(capped[0].id);
-  assert.equal(afterRemove.length, MAX_RECENT_IMAGES - 1);
-
-  clearRecentUploadedImages();
-  assert.deepEqual(getRecentUploadedImages(), []);
+  // Testa limpeza automática geral de dados obsoletos
+  cleanupObsoleteStorage();
+  assert.equal(localStorage.getItem('mirio_timer_xyz'), null);
+  assert.equal(localStorage.getItem('mirio_votes_abc'), null);
+  // Mantém preferências legítimas
+  assert.equal(localStorage.getItem('mirio_theme'), 'dark');
 });
 
 test('StickersModal integrates 3 unified tabs ("Imagens & Upload", "Emojis", "GIFs") and multiple file upload', () => {
