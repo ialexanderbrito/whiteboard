@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   MousePointer,
@@ -6,6 +6,11 @@ import {
   StickyNote,
   Square,
   Circle,
+  Diamond,
+  Triangle,
+  Star,
+  Minus,
+  Wand2,
   ArrowUpRight,
   Pen,
   Type,
@@ -19,6 +24,10 @@ import {
   LayoutTemplate,
   Download,
   Share2,
+  Copy,
+  Maximize2,
+  Undo2,
+  Redo2,
   RotateCcw,
   Sun,
   Moon,
@@ -49,7 +58,9 @@ import {
   EyeOff,
   Palette,
   SlidersHorizontal,
-} from 'lucide-react';
+  Users,
+  KeyRound,
+} from '@/components/ui/icons';
 import {
   CommandDialog,
   CommandInput,
@@ -60,6 +71,9 @@ import {
   CommandShortcut,
   CommandSeparator,
 } from '@/components/ui/command';
+import { BuyMeACoffeeModal } from '@/components/layout/BuyMeACoffeeModal';
+import { cleanBoardId } from '@/services/boardService';
+import { SPRINT_TEMPLATES, type SprintTemplate } from '@/utils/sprintTemplates';
 import type { ToolType, CanvasElement } from '@/types/element';
 import type { AlignmentType } from '@/utils/alignment';
 import type { Board } from '@/types/board';
@@ -68,22 +82,32 @@ import type { GridType, GridSize } from '@/components/whiteboard/CanvasGrid';
 export interface CommandPaletteBoardContext {
   boardTitle?: string;
   isAnonymous?: boolean;
+  isReadOnly?: boolean;
+  isCommentOnly?: boolean;
   frames?: CanvasElement[];
   currentTool?: ToolType;
   selectedCount?: number;
+  canUndo?: boolean;
+  canRedo?: boolean;
+  onUndo?: () => void;
+  onRedo?: () => void;
+  onFitToContent?: () => void;
   onAlignElements?: (type: AlignmentType) => void;
   onOpenEditProfile?: () => void;
   onSelectTool?: (tool: ToolType) => void;
   onJumpToFrame?: (frame: CanvasElement) => void;
+  onToggleTimer?: () => void;
   onStartTimer?: (seconds: number) => void;
   onOpenVoting?: () => void;
   onEnterPresentation?: () => void;
   onOpenTemplates?: () => void;
   onOpenStickers?: () => void;
   onOpenShortcuts?: () => void;
+  onOpenCoffee?: () => void;
   onExportPNG?: () => void;
   onExportJSON?: () => void;
   onShare?: () => void;
+  onCopyLink?: () => void;
   onResetZoom?: () => void;
   onOpenCursorChat?: () => void;
   onBackToDashboard?: () => void;
@@ -106,11 +130,14 @@ export interface CommandPaletteDashboardContext {
   boards?: Board[];
   isAnonymous?: boolean;
   onCreateBoard?: () => void;
+  onCreateFromTemplate?: (template: SprintTemplate) => void;
   onOpenEditProfile?: () => void;
   onToggleViewMode?: () => void;
   viewMode?: 'grid' | 'table';
   onOpenCoffee?: () => void;
   onOpenShortcuts?: () => void;
+  onOpenBoardPermissions?: (board: Board) => void;
+  onOpenBoardPassword?: (board: Board) => void;
   onToggleTheme?: () => void;
   isDarkMode?: boolean;
   onLogout?: () => void;
@@ -130,6 +157,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   dashboardContext,
 }) => {
   const navigate = useNavigate();
+  const [isInternalCoffeeOpen, setIsInternalCoffeeOpen] = useState(false);
   const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 
   const formatKey = (key: string) => {
@@ -139,12 +167,12 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     return key;
   };
 
-  // Atalho global Cmd+K / Ctrl+K
+  // Atalho global Cmd+K / Ctrl+K (funciona inclusive quando focado no campo de busca)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
-        const target = e.target as HTMLElement;
-        if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || (target as any).isContentEditable)) {
+        const target = e.target as HTMLElement | null;
+        if (!open && target && (target.tagName === 'TEXTAREA' || target.isContentEditable)) {
           return;
         }
         e.preventDefault();
@@ -159,8 +187,28 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   const handleSelect = (callback?: () => void) => {
     onOpenChange(false);
     if (callback) {
-      // Executa a ação imediatamente
+      // Executa no próximo tick após o fechamento do CommandDialog para evitar
+      // conflito de FocusScope / aria-hidden entre dois Radix Dialogs simultâneos
+      setTimeout(() => {
+        callback();
+      }, 15);
+    }
+  };
+
+  const handleSelectImmediate = (callback?: () => void) => {
+    onOpenChange(false);
+    if (callback) {
       callback();
+    }
+  };
+
+  const handleOpenCoffeeModal = () => {
+    if (dashboardContext?.onOpenCoffee) {
+      dashboardContext.onOpenCoffee();
+    } else if (boardContext?.onOpenCoffee) {
+      boardContext.onOpenCoffee();
+    } else {
+      setIsInternalCoffeeOpen(true);
     }
   };
 
@@ -181,7 +229,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   }, [boardContext?.frames]);
 
   return (
-    <CommandDialog open={open} onOpenChange={onOpenChange}>
+    <>
+      <CommandDialog open={open} onOpenChange={onOpenChange}>
       {/* Header Contextual com Badge Elegante */}
       <div className="flex items-center justify-between px-4 pt-3 pb-1 border-b border-border/40 bg-muted/20">
         <div className="flex items-center gap-2">
@@ -367,136 +416,220 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                 </CommandShortcut>
               </CommandItem>
 
-              <CommandItem
-                onSelect={() => handleSelect(() => boardContext.onSelectTool?.('sticky'))}
-                className="group"
-              >
-                <div className="flex size-6 items-center justify-center rounded-lg bg-amber-500/10 text-amber-500 group-data-[selected=true]:bg-amber-500 group-data-[selected=true]:text-white transition-colors">
-                  <StickyNote className="size-3.5" />
-                </div>
-                <span>Post-it (Sticky Note)</span>
-                <CommandShortcut>
-                  <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] font-bold">N</kbd>
-                </CommandShortcut>
-              </CommandItem>
+              {!boardContext.isReadOnly && (
+                <CommandItem
+                  onSelect={() => handleSelect(() => boardContext.onSelectTool?.('sticky'))}
+                  className="group"
+                >
+                  <div className="flex size-6 items-center justify-center rounded-lg bg-amber-500/10 text-amber-500 group-data-[selected=true]:bg-amber-500 group-data-[selected=true]:text-white transition-colors">
+                    <StickyNote className="size-3.5" />
+                  </div>
+                  <span>Post-it (Sticky Note)</span>
+                  <CommandShortcut>
+                    <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] font-bold">N</kbd>
+                  </CommandShortcut>
+                </CommandItem>
+              )}
+
+              {!boardContext.isReadOnly && !boardContext.isCommentOnly && (
+                <>
+                  <CommandItem
+                    onSelect={() => handleSelect(() => boardContext.onSelectTool?.('rect'))}
+                    className="group"
+                  >
+                    <div className="flex size-6 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500 group-data-[selected=true]:bg-blue-500 group-data-[selected=true]:text-white transition-colors">
+                      <Square className="size-3.5" />
+                    </div>
+                    <span>Retângulo</span>
+                    <CommandShortcut>
+                      <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] font-bold">R</kbd>
+                    </CommandShortcut>
+                  </CommandItem>
+
+                  <CommandItem
+                    onSelect={() => handleSelect(() => boardContext.onSelectTool?.('circle'))}
+                    className="group"
+                  >
+                    <div className="flex size-6 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500 group-data-[selected=true]:bg-blue-500 group-data-[selected=true]:text-white transition-colors">
+                      <Circle className="size-3.5" />
+                    </div>
+                    <span>Círculo</span>
+                    <CommandShortcut>
+                      <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] font-bold">O</kbd>
+                    </CommandShortcut>
+                  </CommandItem>
+
+                  <CommandItem
+                    onSelect={() => handleSelect(() => boardContext.onSelectTool?.('diamond'))}
+                    className="group"
+                  >
+                    <div className="flex size-6 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500 group-data-[selected=true]:bg-blue-500 group-data-[selected=true]:text-white transition-colors">
+                      <Diamond className="size-3.5" />
+                    </div>
+                    <span>Losango / Decisão</span>
+                    <CommandShortcut>
+                      <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] font-bold">D</kbd>
+                    </CommandShortcut>
+                  </CommandItem>
+
+                  <CommandItem
+                    onSelect={() => handleSelect(() => boardContext.onSelectTool?.('triangle'))}
+                    className="group"
+                  >
+                    <div className="flex size-6 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500 group-data-[selected=true]:bg-blue-500 group-data-[selected=true]:text-white transition-colors">
+                      <Triangle className="size-3.5" />
+                    </div>
+                    <span>Triângulo</span>
+                  </CommandItem>
+
+                  <CommandItem
+                    onSelect={() => handleSelect(() => boardContext.onSelectTool?.('star'))}
+                    className="group"
+                  >
+                    <div className="flex size-6 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500 group-data-[selected=true]:bg-blue-500 group-data-[selected=true]:text-white transition-colors">
+                      <Star className="size-3.5" />
+                    </div>
+                    <span>Estrela</span>
+                  </CommandItem>
+
+                  <CommandItem
+                    onSelect={() => handleSelect(() => boardContext.onSelectTool?.('arrow'))}
+                    className="group"
+                  >
+                    <div className="flex size-6 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500 group-data-[selected=true]:bg-blue-500 group-data-[selected=true]:text-white transition-colors">
+                      <ArrowUpRight className="size-3.5" />
+                    </div>
+                    <span>Seta Conectora</span>
+                    <CommandShortcut>
+                      <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] font-bold">A</kbd>
+                    </CommandShortcut>
+                  </CommandItem>
+
+                  <CommandItem
+                    onSelect={() => handleSelect(() => boardContext.onSelectTool?.('line'))}
+                    className="group"
+                  >
+                    <div className="flex size-6 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500 group-data-[selected=true]:bg-blue-500 group-data-[selected=true]:text-white transition-colors">
+                      <Minus className="size-3.5" />
+                    </div>
+                    <span>Linha Reta</span>
+                    <CommandShortcut>
+                      <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] font-bold">L</kbd>
+                    </CommandShortcut>
+                  </CommandItem>
+
+                  <CommandItem
+                    onSelect={() => handleSelect(() => boardContext.onSelectTool?.('pen'))}
+                    className="group"
+                  >
+                    <div className="flex size-6 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500 group-data-[selected=true]:bg-blue-500 group-data-[selected=true]:text-white transition-colors">
+                      <Pen className="size-3.5" />
+                    </div>
+                    <span>Caneta / Desenho Livre</span>
+                    <CommandShortcut>
+                      <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] font-bold">P</kbd>
+                    </CommandShortcut>
+                  </CommandItem>
+
+                  <CommandItem
+                    onSelect={() => handleSelect(() => boardContext.onSelectTool?.('text'))}
+                    className="group"
+                  >
+                    <div className="flex size-6 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500 group-data-[selected=true]:bg-blue-500 group-data-[selected=true]:text-white transition-colors">
+                      <Type className="size-3.5" />
+                    </div>
+                    <span>Caixa de Texto</span>
+                    <CommandShortcut>
+                      <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] font-bold">T</kbd>
+                    </CommandShortcut>
+                  </CommandItem>
+
+                  <CommandItem
+                    onSelect={() => handleSelect(() => boardContext.onSelectTool?.('frame'))}
+                    className="group"
+                  >
+                    <div className="flex size-6 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-500 group-data-[selected=true]:bg-indigo-500 group-data-[selected=true]:text-white transition-colors">
+                      <Frame className="size-3.5" />
+                    </div>
+                    <span>Nova Moldura / Raia</span>
+                    <CommandShortcut>
+                      <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] font-bold">F</kbd>
+                    </CommandShortcut>
+                  </CommandItem>
+
+                  <CommandItem
+                    onSelect={() => handleSelect(() => boardContext.onSelectTool?.('eraser'))}
+                    className="group"
+                  >
+                    <div className="flex size-6 items-center justify-center rounded-lg bg-rose-500/10 text-rose-500 group-data-[selected=true]:bg-rose-500 group-data-[selected=true]:text-white transition-colors">
+                      <Eraser className="size-3.5" />
+                    </div>
+                    <span>Borracha (Eraser)</span>
+                    <CommandShortcut>
+                      <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] font-bold">E</kbd>
+                    </CommandShortcut>
+                  </CommandItem>
+
+                  {boardContext.onOpenStickers && (
+                    <CommandItem
+                      onSelect={() => handleSelect(boardContext.onOpenStickers)}
+                      className="group"
+                    >
+                      <div className="flex size-6 items-center justify-center rounded-lg bg-amber-500/10 text-amber-500 group-data-[selected=true]:bg-amber-500 group-data-[selected=true]:text-white transition-colors">
+                        <Smile className="size-3.5" />
+                      </div>
+                      <span>Imagens do Computador, Stickers, Emojis & GIFs</span>
+                      <CommandShortcut>
+                        <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] font-bold">I</kbd>
+                      </CommandShortcut>
+                    </CommandItem>
+                  )}
+                </>
+              )}
 
               <CommandItem
-                onSelect={() => handleSelect(() => boardContext.onSelectTool?.('rect'))}
-                className="group"
-              >
-                <div className="flex size-6 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500 group-data-[selected=true]:bg-blue-500 group-data-[selected=true]:text-white transition-colors">
-                  <Square className="size-3.5" />
-                </div>
-                <span>Retângulo</span>
-                <CommandShortcut>
-                  <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] font-bold">R</kbd>
-                </CommandShortcut>
-              </CommandItem>
-
-              <CommandItem
-                onSelect={() => handleSelect(() => boardContext.onSelectTool?.('circle'))}
-                className="group"
-              >
-                <div className="flex size-6 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500 group-data-[selected=true]:bg-blue-500 group-data-[selected=true]:text-white transition-colors">
-                  <Circle className="size-3.5" />
-                </div>
-                <span>Círculo</span>
-                <CommandShortcut>
-                  <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] font-bold">O</kbd>
-                </CommandShortcut>
-              </CommandItem>
-
-              <CommandItem
-                onSelect={() => handleSelect(() => boardContext.onSelectTool?.('arrow'))}
-                className="group"
-              >
-                <div className="flex size-6 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500 group-data-[selected=true]:bg-blue-500 group-data-[selected=true]:text-white transition-colors">
-                  <ArrowUpRight className="size-3.5" />
-                </div>
-                <span>Seta Conectora</span>
-                <CommandShortcut>
-                  <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] font-bold">A</kbd>
-                </CommandShortcut>
-              </CommandItem>
-
-              <CommandItem
-                onSelect={() => handleSelect(() => boardContext.onSelectTool?.('pen'))}
-                className="group"
-              >
-                <div className="flex size-6 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500 group-data-[selected=true]:bg-blue-500 group-data-[selected=true]:text-white transition-colors">
-                  <Pen className="size-3.5" />
-                </div>
-                <span>Caneta / Desenho Livre</span>
-                <CommandShortcut>
-                  <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] font-bold">P</kbd>
-                </CommandShortcut>
-              </CommandItem>
-
-              <CommandItem
-                onSelect={() => handleSelect(() => boardContext.onSelectTool?.('text'))}
-                className="group"
-              >
-                <div className="flex size-6 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500 group-data-[selected=true]:bg-blue-500 group-data-[selected=true]:text-white transition-colors">
-                  <Type className="size-3.5" />
-                </div>
-                <span>Caixa de Texto</span>
-                <CommandShortcut>
-                  <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] font-bold">T</kbd>
-                </CommandShortcut>
-              </CommandItem>
-
-              <CommandItem
-                onSelect={() => handleSelect(() => boardContext.onSelectTool?.('frame'))}
-                className="group"
-              >
-                <div className="flex size-6 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-500 group-data-[selected=true]:bg-indigo-500 group-data-[selected=true]:text-white transition-colors">
-                  <Frame className="size-3.5" />
-                </div>
-                <span>Nova Moldura / Raia</span>
-                <CommandShortcut>
-                  <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] font-bold">F</kbd>
-                </CommandShortcut>
-              </CommandItem>
-
-              <CommandItem
-                onSelect={() => handleSelect(() => boardContext.onSelectTool?.('eraser'))}
+                onSelect={() => handleSelect(() => boardContext.onSelectTool?.('laser'))}
                 className="group"
               >
                 <div className="flex size-6 items-center justify-center rounded-lg bg-rose-500/10 text-rose-500 group-data-[selected=true]:bg-rose-500 group-data-[selected=true]:text-white transition-colors">
-                  <Eraser className="size-3.5" />
+                  <Wand2 className="size-3.5" />
                 </div>
-                <span>Borracha (Eraser)</span>
+                <span>Apontador Laser Colaborativo</span>
                 <CommandShortcut>
-                  <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] font-bold">E</kbd>
+                  <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] font-bold">K</kbd>
                 </CommandShortcut>
               </CommandItem>
 
-              <CommandItem
-                onSelect={() => handleSelect(boardContext.onOpenStickers)}
-                className="group"
-              >
-                <div className="flex size-6 items-center justify-center rounded-lg bg-amber-500/10 text-amber-500 group-data-[selected=true]:bg-amber-500 group-data-[selected=true]:text-white transition-colors">
-                  <Smile className="size-3.5" />
-                </div>
-                <span>Stickers, Emojis & GIFs</span>
-              </CommandItem>
-
-              <CommandItem
-                onSelect={() => handleSelect(boardContext.onOpenCursorChat)}
-                className="group"
-              >
-                <div className="flex size-6 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-500 group-data-[selected=true]:bg-cyan-500 group-data-[selected=true]:text-white transition-colors">
-                  <MessageSquare className="size-3.5" />
-                </div>
-                <span>Chat do Cursor ao Vivo</span>
-                <CommandShortcut>
-                  <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] font-bold">/</kbd>
-                </CommandShortcut>
-              </CommandItem>
+              {boardContext.onOpenCursorChat && (
+                <CommandItem
+                  onSelect={() => handleSelect(boardContext.onOpenCursorChat)}
+                  className="group"
+                >
+                  <div className="flex size-6 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-500 group-data-[selected=true]:bg-cyan-500 group-data-[selected=true]:text-white transition-colors">
+                    <MessageSquare className="size-3.5" />
+                  </div>
+                  <span>Chat do Cursor ao Vivo</span>
+                  <CommandShortcut>
+                    <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] font-bold">/</kbd>
+                  </CommandShortcut>
+                </CommandItem>
+              )}
             </CommandGroup>
 
             {/* Facilitação & Sprints de Equipe */}
             <CommandGroup heading="Facilitação & Sprints">
+              {boardContext.onToggleTimer && (
+                <CommandItem
+                  onSelect={() => handleSelect(boardContext.onToggleTimer)}
+                  className="group"
+                >
+                  <div className="flex size-6 items-center justify-center rounded-lg bg-purple-500/10 text-purple-500 group-data-[selected=true]:bg-purple-500 group-data-[selected=true]:text-white transition-colors">
+                    <Timer className="size-3.5" />
+                  </div>
+                  <span>Abrir / Fechar Cronômetro Colaborativo (Timer)</span>
+                </CommandItem>
+              )}
+
               <CommandItem
                 onSelect={() => handleSelect(() => boardContext.onStartTimer?.(300))}
                 className="group"
@@ -527,83 +660,155 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                 <span>Iniciar Timer Pomodoro (25 Minutos)</span>
               </CommandItem>
 
-              <CommandItem
-                onSelect={() => handleSelect(boardContext.onOpenVoting)}
-                className="group"
-              >
-                <div className="flex size-6 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500 group-data-[selected=true]:bg-emerald-500 group-data-[selected=true]:text-white transition-colors">
-                  <Vote className="size-3.5" />
-                </div>
-                <span>Sessão de Votação (Dot Voting)</span>
-              </CommandItem>
+              {boardContext.onOpenVoting && (
+                <CommandItem
+                  onSelect={() => handleSelect(boardContext.onOpenVoting)}
+                  className="group"
+                >
+                  <div className="flex size-6 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500 group-data-[selected=true]:bg-emerald-500 group-data-[selected=true]:text-white transition-colors">
+                    <Vote className="size-3.5" />
+                  </div>
+                  <span>Sessão de Votação (Dot Voting)</span>
+                </CommandItem>
+              )}
 
-              <CommandItem
-                onSelect={() => handleSelect(boardContext.onEnterPresentation)}
-                className="group"
-              >
-                <div className="flex size-6 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-500 group-data-[selected=true]:bg-indigo-500 group-data-[selected=true]:text-white transition-colors">
-                  <Tv className="size-3.5" />
-                </div>
-                <span>Iniciar Modo Apresentação de Slides</span>
-              </CommandItem>
+              {boardContext.onEnterPresentation && (
+                <CommandItem
+                  onSelect={() => handleSelectImmediate(boardContext.onEnterPresentation)}
+                  className="group"
+                >
+                  <div className="flex size-6 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-500 group-data-[selected=true]:bg-indigo-500 group-data-[selected=true]:text-white transition-colors">
+                    <Tv className="size-3.5" />
+                  </div>
+                  <span>Iniciar Modo Apresentação de Slides</span>
+                </CommandItem>
+              )}
 
-              <CommandItem
-                onSelect={() => handleSelect(boardContext.onOpenTemplates)}
-                className="group"
-              >
-                <div className="flex size-6 items-center justify-center rounded-lg bg-purple-500/10 text-purple-500 group-data-[selected=true]:bg-purple-500 group-data-[selected=true]:text-white transition-colors">
-                  <LayoutTemplate className="size-3.5" />
-                </div>
-                <span>Inserir Templates de Sprint (Scrum, Retro, Kanban)</span>
-              </CommandItem>
+              {!boardContext.isReadOnly && !boardContext.isCommentOnly && boardContext.onOpenTemplates && (
+                <CommandItem
+                  onSelect={() => handleSelect(boardContext.onOpenTemplates)}
+                  className="group"
+                >
+                  <div className="flex size-6 items-center justify-center rounded-lg bg-purple-500/10 text-purple-500 group-data-[selected=true]:bg-purple-500 group-data-[selected=true]:text-white transition-colors">
+                    <LayoutTemplate className="size-3.5" />
+                  </div>
+                  <span>Inserir Templates de Sprint (Scrum, Retro, Kanban)</span>
+                </CommandItem>
+              )}
             </CommandGroup>
 
             {/* Ações do Quadro & Navegação */}
             <CommandGroup heading="Ações do Quadro">
-              <CommandItem
-                onSelect={() => handleSelect(boardContext.onExportPNG)}
-                className="group"
-              >
-                <div className="flex size-6 items-center justify-center rounded-lg bg-teal-500/10 text-teal-500 group-data-[selected=true]:bg-teal-500 group-data-[selected=true]:text-white transition-colors">
-                  <Download className="size-3.5" />
-                </div>
-                <span>Exportar Quadro como Imagem (PNG)</span>
-              </CommandItem>
+              {boardContext.onShare && (
+                <CommandItem
+                  onSelect={() => handleSelect(boardContext.onShare)}
+                  className="group"
+                >
+                  <div className="flex size-6 items-center justify-center rounded-lg bg-sky-500/10 text-sky-500 group-data-[selected=true]:bg-sky-500 group-data-[selected=true]:text-white transition-colors">
+                    <Share2 className="size-3.5" />
+                  </div>
+                  <span>Compartilhar Quadro & Permissões</span>
+                </CommandItem>
+              )}
 
-              <CommandItem
-                onSelect={() => handleSelect(boardContext.onExportJSON)}
-                className="group"
-              >
-                <div className="flex size-6 items-center justify-center rounded-lg bg-teal-500/10 text-teal-500 group-data-[selected=true]:bg-teal-500 group-data-[selected=true]:text-white transition-colors">
-                  <FileText className="size-3.5" />
-                </div>
-                <span>Exportar Backup do Quadro (JSON)</span>
-              </CommandItem>
+              {boardContext.onCopyLink && (
+                <CommandItem
+                  onSelect={() => handleSelectImmediate(boardContext.onCopyLink)}
+                  className="group"
+                >
+                  <div className="flex size-6 items-center justify-center rounded-lg bg-sky-500/10 text-sky-500 group-data-[selected=true]:bg-sky-500 group-data-[selected=true]:text-white transition-colors">
+                    <Copy className="size-3.5" />
+                  </div>
+                  <span>Copiar Link de Acesso do Quadro</span>
+                </CommandItem>
+              )}
 
-              <CommandItem
-                onSelect={() => handleSelect(boardContext.onShare)}
-                className="group"
-              >
-                <div className="flex size-6 items-center justify-center rounded-lg bg-sky-500/10 text-sky-500 group-data-[selected=true]:bg-sky-500 group-data-[selected=true]:text-white transition-colors">
-                  <Share2 className="size-3.5" />
-                </div>
-                <span>Compartilhar Quadro & Permissões</span>
-              </CommandItem>
+              {boardContext.onUndo && boardContext.canUndo && (
+                <CommandItem
+                  onSelect={() => handleSelect(boardContext.onUndo)}
+                  className="group"
+                >
+                  <div className="flex size-6 items-center justify-center rounded-lg bg-muted text-muted-foreground group-data-[selected=true]:bg-primary group-data-[selected=true]:text-primary-foreground transition-colors">
+                    <Undo2 className="size-3.5" />
+                  </div>
+                  <span>Desfazer Última Ação (Undo)</span>
+                  <CommandShortcut>
+                    <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] font-bold">
+                      {formatKey('Ctrl')}+Z
+                    </kbd>
+                  </CommandShortcut>
+                </CommandItem>
+              )}
 
-              <CommandItem
-                onSelect={() => handleSelect(boardContext.onResetZoom)}
-                className="group"
-              >
-                <div className="flex size-6 items-center justify-center rounded-lg bg-muted text-muted-foreground group-data-[selected=true]:bg-primary group-data-[selected=true]:text-primary-foreground transition-colors">
-                  <RotateCcw className="size-3.5" />
-                </div>
-                <span>Redefinir Zoom para 100%</span>
-                <CommandShortcut>
-                  <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] font-bold">
-                    {formatKey('Ctrl')}+0
-                  </kbd>
-                </CommandShortcut>
-              </CommandItem>
+              {boardContext.onRedo && boardContext.canRedo && (
+                <CommandItem
+                  onSelect={() => handleSelect(boardContext.onRedo)}
+                  className="group"
+                >
+                  <div className="flex size-6 items-center justify-center rounded-lg bg-muted text-muted-foreground group-data-[selected=true]:bg-primary group-data-[selected=true]:text-primary-foreground transition-colors">
+                    <Redo2 className="size-3.5" />
+                  </div>
+                  <span>Refazer Ação (Redo)</span>
+                  <CommandShortcut>
+                    <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] font-bold">
+                      {formatKey('Ctrl')}+Y
+                    </kbd>
+                  </CommandShortcut>
+                </CommandItem>
+              )}
+
+              {boardContext.onFitToContent && (
+                <CommandItem
+                  onSelect={() => handleSelect(boardContext.onFitToContent)}
+                  className="group"
+                >
+                  <div className="flex size-6 items-center justify-center rounded-lg bg-muted text-muted-foreground group-data-[selected=true]:bg-primary group-data-[selected=true]:text-primary-foreground transition-colors">
+                    <Maximize2 className="size-3.5" />
+                  </div>
+                  <span>Centralizar e Ajustar Conteúdo na Tela</span>
+                </CommandItem>
+              )}
+
+              {boardContext.onResetZoom && (
+                <CommandItem
+                  onSelect={() => handleSelect(boardContext.onResetZoom)}
+                  className="group"
+                >
+                  <div className="flex size-6 items-center justify-center rounded-lg bg-muted text-muted-foreground group-data-[selected=true]:bg-primary group-data-[selected=true]:text-primary-foreground transition-colors">
+                    <RotateCcw className="size-3.5" />
+                  </div>
+                  <span>Redefinir Zoom para 100%</span>
+                  <CommandShortcut>
+                    <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] font-bold">
+                      {formatKey('Ctrl')}+0
+                    </kbd>
+                  </CommandShortcut>
+                </CommandItem>
+              )}
+
+              {boardContext.onExportPNG && (
+                <CommandItem
+                  onSelect={() => handleSelectImmediate(boardContext.onExportPNG)}
+                  className="group"
+                >
+                  <div className="flex size-6 items-center justify-center rounded-lg bg-teal-500/10 text-teal-500 group-data-[selected=true]:bg-teal-500 group-data-[selected=true]:text-white transition-colors">
+                    <Download className="size-3.5" />
+                  </div>
+                  <span>Exportar Quadro como Imagem (PNG)</span>
+                </CommandItem>
+              )}
+
+              {boardContext.onExportJSON && (
+                <CommandItem
+                  onSelect={() => handleSelectImmediate(boardContext.onExportJSON)}
+                  className="group"
+                >
+                  <div className="flex size-6 items-center justify-center rounded-lg bg-teal-500/10 text-teal-500 group-data-[selected=true]:bg-teal-500 group-data-[selected=true]:text-white transition-colors">
+                    <FileText className="size-3.5" />
+                  </div>
+                  <span>Exportar Backup do Quadro (JSON)</span>
+                </CommandItem>
+              )}
             </CommandGroup>
 
             {/* Visualização & Grade do Canvas */}
@@ -798,7 +1003,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                 {dashboardContext.boards.map((b) => (
                   <CommandItem
                     key={b.id}
-                    onSelect={() => handleSelect(() => navigate(`/b/${b.id}`))}
+                    value={`${b.title || 'Quadro sem título'} ${b.ownerName || ''} ${b.id}`}
+                    onSelect={() => handleSelect(() => navigate(`/b/${cleanBoardId(b.id)}`))}
                     className="group"
                   >
                     <div className="flex size-6 items-center justify-center rounded-lg bg-primary/10 text-primary group-data-[selected=true]:bg-primary group-data-[selected=true]:text-primary-foreground transition-colors">
@@ -821,6 +1027,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
             <CommandGroup heading="Ações do Painel">
               <CommandItem
+                keywords={['novo', 'criar', 'quadro', 'board', 'blank']}
                 onSelect={() => handleSelect(dashboardContext.onCreateBoard)}
                 className="group"
               >
@@ -831,6 +1038,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
               </CommandItem>
 
               <CommandItem
+                keywords={['grade', 'lista', 'tabela', 'grid', 'visualização', 'layout']}
                 onSelect={() => handleSelect(dashboardContext.onToggleViewMode)}
                 className="group"
               >
@@ -846,8 +1054,51 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                 </span>
               </CommandItem>
 
+              {dashboardContext.boards &&
+                dashboardContext.boards.length > 0 &&
+                dashboardContext.onOpenBoardPermissions && (
+                  <CommandItem
+                    keywords={['permissões', 'acesso', 'compartilhar', 'colaboradores', 'membros']}
+                    onSelect={() =>
+                      handleSelect(() =>
+                        dashboardContext.onOpenBoardPermissions?.(dashboardContext.boards![0])
+                      )
+                    }
+                    className="group"
+                  >
+                    <div className="flex size-6 items-center justify-center rounded-lg bg-sky-500/10 text-sky-500 group-data-[selected=true]:bg-sky-500 group-data-[selected=true]:text-white transition-colors">
+                      <Users className="size-3.5" />
+                    </div>
+                    <span>
+                      Gerenciar Permissões de Acesso ({dashboardContext.boards[0].title || 'Quadro recente'})
+                    </span>
+                  </CommandItem>
+                )}
+
+              {dashboardContext.boards &&
+                dashboardContext.boards.length > 0 &&
+                dashboardContext.onOpenBoardPassword && (
+                  <CommandItem
+                    keywords={['senha', 'proteção', 'cadeado', 'privacidade', 'password']}
+                    onSelect={() =>
+                      handleSelect(() =>
+                        dashboardContext.onOpenBoardPassword?.(dashboardContext.boards![0])
+                      )
+                    }
+                    className="group"
+                  >
+                    <div className="flex size-6 items-center justify-center rounded-lg bg-amber-500/10 text-amber-500 group-data-[selected=true]:bg-amber-500 group-data-[selected=true]:text-white transition-colors">
+                      <KeyRound className="size-3.5" />
+                    </div>
+                    <span>
+                      Configurar Proteção por Senha ({dashboardContext.boards[0].title || 'Quadro recente'})
+                    </span>
+                  </CommandItem>
+                )}
+
               <CommandItem
-                onSelect={() => handleSelect(dashboardContext.onOpenCoffee)}
+                keywords={['apoiar', 'pix', 'café', 'coffee', 'doar', 'contribuir']}
+                onSelect={() => handleSelect(handleOpenCoffeeModal)}
                 className="group"
               >
                 <div className="flex size-6 items-center justify-center rounded-lg bg-amber-500/10 text-amber-500 group-data-[selected=true]:bg-amber-500 group-data-[selected=true]:text-white transition-colors">
@@ -856,6 +1107,30 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                 <span>Apoiar o Projeto Mirio (PIX)</span>
               </CommandItem>
             </CommandGroup>
+
+            {dashboardContext.onCreateFromTemplate && (
+              <CommandGroup heading="Começar com Template (1 Clique)">
+                {SPRINT_TEMPLATES.map((tmpl) => (
+                  <CommandItem
+                    key={tmpl.id}
+                    value={`template ${tmpl.shortTitle || tmpl.title} ${tmpl.badge} ${tmpl.category}`}
+                    keywords={['template', 'modelo', tmpl.id, tmpl.category]}
+                    onSelect={() => handleSelect(() => dashboardContext.onCreateFromTemplate?.(tmpl))}
+                    className="group"
+                  >
+                    <div className="flex size-6 items-center justify-center rounded-lg bg-purple-500/10 text-purple-500 group-data-[selected=true]:bg-purple-500 group-data-[selected=true]:text-white transition-colors">
+                      <LayoutTemplate className="size-3.5" />
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="font-medium text-foreground">
+                        Criar: {tmpl.shortTitle || tmpl.title}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground">{tmpl.badge}</span>
+                    </div>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
           </>
         )}
 
@@ -864,8 +1139,22 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         {/* ============================================================== */}
         <CommandSeparator />
         <CommandGroup heading="Sistema & Preferências">
+          {isBoard && (
+            <CommandItem
+              keywords={['apoiar', 'pix', 'café', 'coffee', 'doar', 'contribuir']}
+              onSelect={() => handleSelect(handleOpenCoffeeModal)}
+              className="group"
+            >
+              <div className="flex size-6 items-center justify-center rounded-lg bg-amber-500/10 text-amber-500 group-data-[selected=true]:bg-amber-500 group-data-[selected=true]:text-white transition-colors">
+                <Coffee className="size-3.5" />
+              </div>
+              <span>Apoiar o Projeto Mirio (PIX)</span>
+            </CommandItem>
+          )}
+
           {(boardContext?.onOpenEditProfile || dashboardContext?.onOpenEditProfile) && (
             <CommandItem
+              keywords={['perfil', 'nome', 'cor', 'cursor', 'convidado', 'conta']}
               onSelect={() =>
                 handleSelect(boardContext?.onOpenEditProfile || dashboardContext?.onOpenEditProfile)
               }
@@ -891,6 +1180,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
           {(boardContext?.onToggleTheme || dashboardContext?.onToggleTheme) && (
             <CommandItem
+              keywords={['tema', 'escuro', 'claro', 'dark', 'light', 'aparência']}
               onSelect={() =>
                 handleSelect(boardContext?.onToggleTheme || dashboardContext?.onToggleTheme)
               }
@@ -912,6 +1202,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
           {(boardContext?.onOpenShortcuts || dashboardContext?.onOpenShortcuts) && (
             <CommandItem
+              keywords={['atalhos', 'teclado', 'ajuda', 'comandos', 'shortcuts']}
               onSelect={() =>
                 handleSelect(boardContext?.onOpenShortcuts || dashboardContext?.onOpenShortcuts)
               }
@@ -929,6 +1220,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
           {isBoard && boardContext?.onBackToDashboard && (
             <CommandItem
+              keywords={['voltar', 'painel', 'dashboard', 'quadros', 'início']}
               onSelect={() => handleSelect(boardContext.onBackToDashboard)}
               className="group"
             >
@@ -941,6 +1233,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
           {(boardContext?.onLogout || dashboardContext?.onLogout) && (
             <CommandItem
+              keywords={['sair', 'logout', 'desconectar', 'conta']}
               onSelect={() => handleSelect(boardContext?.onLogout || dashboardContext?.onLogout)}
               className="group text-rose-500 data-[selected=true]:text-rose-500"
             >
@@ -974,5 +1267,13 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         </div>
       </div>
     </CommandDialog>
+
+    {/* Fallback integrado para garantir abertura do Modal PIX em qualquer contexto */}
+    <BuyMeACoffeeModal
+      open={isInternalCoffeeOpen}
+      onOpenChange={setIsInternalCoffeeOpen}
+      hideTrigger
+    />
+  </>
   );
 };
