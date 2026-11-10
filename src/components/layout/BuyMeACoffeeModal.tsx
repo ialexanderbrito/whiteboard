@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { generatePixPayload } from '@/utils/pix';
 
 const PIX_KEY = 'pix@ialexanderbrito.dev';
@@ -108,7 +109,7 @@ export const BuyMeACoffeeModal: React.FC<BuyMeACoffeeModalProps> = ({
     <Button
       variant="outline"
       size="sm"
-      className={`group h-8 gap-2 px-2.5 text-xs font-medium rounded-lg border-border/80 bg-background/80 dark:bg-card/80 backdrop-blur-md shadow-2xs hover:bg-muted/80 active:scale-[0.97] transition-all duration-150 cursor-pointer ${className || ''}`}
+      className={`group h-8 gap-2 px-2.5 text-xs font-medium rounded-lg border border-border bg-background/80 dark:bg-card/80 backdrop-blur-md shadow-xs hover:bg-muted/80 active:scale-[0.97] transition-[transform,background-color,border-color,color] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] cursor-pointer ${className || ''}`}
     >
       <div className="flex size-4 items-center justify-center rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 group-hover:scale-105 transition-transform duration-150">
         <Coffee className="size-3" />
@@ -123,9 +124,14 @@ export const BuyMeACoffeeModal: React.FC<BuyMeACoffeeModalProps> = ({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       {!hideTrigger && (
-        <DialogTrigger asChild>
-          {trigger || defaultTrigger}
-        </DialogTrigger>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DialogTrigger asChild>
+              {trigger || defaultTrigger}
+            </DialogTrigger>
+          </TooltipTrigger>
+          <TooltipContent>Apoiar o Projeto Mirio (PIX)</TooltipContent>
+        </Tooltip>
       )}
 
       <DialogContent className="max-w-[320px] p-5 gap-3.5">

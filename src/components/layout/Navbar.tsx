@@ -310,7 +310,7 @@ export const Navbar: React.FC<NavbarProps> = React.memo(({
                   <button
                     type="button"
                     onClick={() => onFollowUser(user.userId, userName)}
-                    className={`relative rounded-full transition-transform hover:scale-105 active:scale-95 ${
+                    className={`relative rounded-full transition-transform hover:scale-105 active:scale-95 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1 ${
                       isBeingFollowed ? 'ring-2 ring-emerald-500' : ''
                     }`}
                   >
@@ -390,10 +390,13 @@ export const Navbar: React.FC<NavbarProps> = React.memo(({
             <TooltipTrigger asChild>
               <Button
                 type="button"
-                variant="outline"
+                variant="ghost"
                 size="icon-sm"
+                aria-label="Compartilhar Quadro"
                 onClick={() => setIsShareModalOpen(true)}
-                className="relative size-8 rounded-lg shadow-xs active:scale-[0.96] transition-transform text-muted-foreground hover:text-foreground cursor-pointer"
+                className={`relative size-8 rounded-lg border border-border bg-background/80 dark:bg-card/80 backdrop-blur-md shadow-xs transition-[transform,background-color,border-color,color] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.97] text-muted-foreground hover:text-foreground hover:bg-muted/80 cursor-pointer ${
+                  isShareModalOpen ? 'bg-muted/90 border-foreground/30 text-foreground ring-1 ring-border' : ''
+                }`}
               >
                 <Share2 className="size-3.5" />
                 {pendingJoinRequestsCount > 0 && (
@@ -427,8 +430,9 @@ export const Navbar: React.FC<NavbarProps> = React.memo(({
             <Button
               variant="ghost"
               size="icon-sm"
+              aria-label="Sair da Conta"
               onClick={onLogout}
-              className="size-8 text-muted-foreground hover:text-destructive rounded-lg border border-border bg-background/80 dark:bg-card/80 backdrop-blur-md"
+              className="size-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 hover:border-destructive/30 rounded-lg border border-border bg-background/80 dark:bg-card/80 backdrop-blur-md shadow-xs transition-[transform,background-color,border-color,color] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.97] cursor-pointer"
             >
               <LogOut className="size-3.5" />
             </Button>

@@ -65,11 +65,11 @@ export const CanvasPreferencesMenu: React.FC<CanvasPreferencesMenuProps> = ({
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
             <Button
-              variant="outline"
+              variant="ghost"
               size="icon-sm"
               aria-label="Preferências de Visualização"
-              className={`size-8 rounded-lg shadow-xs transition-[transform,background-color,border-color,color] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.97] text-muted-foreground hover:text-foreground cursor-pointer ${
-                open ? 'bg-muted border-foreground/30 text-foreground ring-1 ring-border' : ''
+              className={`size-8 rounded-lg border border-border bg-background/80 dark:bg-card/80 backdrop-blur-md shadow-xs transition-[transform,background-color,border-color,color] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.97] text-muted-foreground hover:text-foreground hover:bg-muted/80 cursor-pointer ${
+                open ? 'bg-muted/90 border-foreground/30 text-foreground ring-1 ring-border' : ''
               }`}
             >
               <SlidersHorizontal className="size-3.5" />

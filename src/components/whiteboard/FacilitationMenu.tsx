@@ -17,7 +17,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { reactionService } from '@/services/reactionService';
 import { getAppleEmojiUrl } from '@/utils/appleEmoji';
 import { playReactionPopSound } from '@/utils/audioChime';
-import { MIRIO_REACTION, getReactionImageUrl } from '@/utils/mirioReaction';
+import { MIRIO_REACTION, getReactionImageUrl, isMirioReaction } from '@/utils/mirioReaction';
 
 export interface FacilitationMenuProps {
   boardId: string;
@@ -58,6 +58,9 @@ export const FacilitationMenu: React.FC<FacilitationMenuProps> = ({
   const [open, setOpen] = useState(false);
 
   const handleSendReaction = async (emoji: string, e: React.MouseEvent<HTMLButtonElement>) => {
+    if (isMirioReaction(emoji) && !mirioReactionUnlocked) {
+      return;
+    }
     const rect = e.currentTarget.getBoundingClientRect();
     const origin = {
       x: rect.left + rect.width / 2,
@@ -82,15 +85,15 @@ export const FacilitationMenu: React.FC<FacilitationMenuProps> = ({
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
             <Button
-              variant="outline"
+              variant="ghost"
               size="icon-sm"
               aria-label={tooltipLabel}
-              className={`relative size-8 rounded-lg shadow-xs transition-[transform,background-color,border-color,color] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.97] cursor-pointer ${
+              className={`relative size-8 rounded-lg border border-border bg-background/80 dark:bg-card/80 backdrop-blur-md shadow-xs transition-[transform,background-color,border-color,color] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.97] cursor-pointer ${
                 hasActiveFacilitation
-                  ? 'text-primary border-primary/40 bg-primary/5 hover:bg-primary/10'
-                  : 'text-muted-foreground hover:text-foreground'
+                  ? 'text-primary border-primary/40 bg-primary/10 dark:bg-primary/20 hover:bg-primary/15'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/80'
               } ${
-                open ? 'bg-muted border-foreground/30 text-foreground ring-1 ring-border' : ''
+                open ? 'bg-muted/90 border-foreground/30 text-foreground ring-1 ring-border' : ''
               }`}
             >
               <Sparkles className="size-3.5" />
@@ -146,6 +149,7 @@ export const FacilitationMenu: React.FC<FacilitationMenuProps> = ({
           <div className="flex items-center justify-between p-1 bg-muted/40 rounded-xl border border-border/60">
             {[...QUICK_GLOBAL_REACTIONS, ...(mirioReactionUnlocked ? [{ emoji: MIRIO_REACTION, label: 'Mirio' }] : [])].map((r) => {
               const imageUrl = getReactionImageUrl(r.emoji) || getAppleEmojiUrl(r.emoji);
+
               return (
                 <button
                   key={r.emoji}
