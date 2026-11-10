@@ -1,5 +1,5 @@
 import React, { useLayoutEffect, useRef } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus } from '@/components/ui/icons';
 import type { CanvasElement } from '../../types/element';
 import { getElementWorldBounds } from '../../utils/elementBounds';
 import type { StickyDirection } from '../../utils/stickyPlacement';
@@ -98,6 +98,8 @@ export const StickyQuickAdd: React.FC<StickyQuickAddProps> = React.memo(({
     return subscribeViewport(place);
   }, [sticky]);
 
+  const itemLabel = sticky.type === 'sticky' ? 'post-it' : 'forma';
+
   return (
     <div className="pointer-events-none absolute inset-0 z-40 overflow-visible select-none animate-in fade-in-0 duration-150">
       {DIRECTIONS.map(({ direction, label }) => (
@@ -108,8 +110,8 @@ export const StickyQuickAdd: React.FC<StickyQuickAddProps> = React.memo(({
           }}
           type="button"
           disabled={disabled}
-          aria-label={`Adicionar post-it ${label}`}
-          title={`Adicionar post-it ${label}`}
+          aria-label={`Adicionar ${itemLabel} ${label}`}
+          title={`Adicionar ${itemLabel} ${label}`}
           onPointerDown={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
           onDoubleClick={(e) => e.stopPropagation()}

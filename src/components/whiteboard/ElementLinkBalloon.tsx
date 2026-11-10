@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Globe, ExternalLink, Copy, Check, Trash2, Edit3 } from 'lucide-react';
+import { Globe, ExternalLink, Copy, Check, Trash2, Edit3 } from '@/components/ui/icons';
 import type { CanvasElement } from '../../types/element';
 import { getElementWorldBounds } from '../../utils/elementBounds';
 import { extractAllLinks, getDomainFromUrl } from '../../utils/textLinks';
@@ -50,14 +50,16 @@ export const ElementLinkBalloon: React.FC<ElementLinkBalloonProps> = ({
     const screenY = bounds.y * viewport.scale + viewport.y;
 
     const isSticky = element.type === 'sticky';
+    const isShapeWithQuickAdd =
+      ['rect', 'circle', 'diamond', 'triangle', 'star'].includes(element.type) &&
+      stickyBottomOffset > 46;
+    const bottomGap = isSticky ? stickyBottomOffset : isShapeWithQuickAdd ? 44 : 10;
     const isNearBottom =
-      screenY + elemHeight + (isSticky ? stickyBottomOffset + 44 : 60) >
+      screenY + elemHeight + bottomGap + 44 >
       (typeof window !== 'undefined' ? window.innerHeight : 800);
     const balloonTop = isNearBottom
       ? Math.max(60, screenY - 48)
-      : isSticky
-      ? screenY + elemHeight + stickyBottomOffset
-      : screenY + elemHeight + 10;
+      : screenY + elemHeight + bottomGap;
 
     node.style.left = `${screenX + elemWidth / 2}px`;
     node.style.top = `${balloonTop}px`;
@@ -80,12 +82,14 @@ export const ElementLinkBalloon: React.FC<ElementLinkBalloonProps> = ({
   const screenY = bounds.y * scale + stagePos.y;
 
   const isSticky = element.type === 'sticky';
-  const isNearBottom = screenY + elemHeight + (isSticky ? stickyBottomOffset + 44 : 60) > (typeof window !== 'undefined' ? window.innerHeight : 800);
+  const isShapeWithQuickAdd =
+    ['rect', 'circle', 'diamond', 'triangle', 'star'].includes(element.type) &&
+    stickyBottomOffset > 46;
+  const bottomGap = isSticky ? stickyBottomOffset : isShapeWithQuickAdd ? 44 : 10;
+  const isNearBottom = screenY + elemHeight + bottomGap + 44 > (typeof window !== 'undefined' ? window.innerHeight : 800);
   const balloonTop = isNearBottom
     ? Math.max(60, screenY - 48)
-    : isSticky
-    ? screenY + elemHeight + stickyBottomOffset
-    : screenY + elemHeight + 10;
+    : screenY + elemHeight + bottomGap;
   const balloonCenterX = screenX + elemWidth / 2;
 
   const handleCopy = (url: string, e: React.MouseEvent) => {

@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import {
   getAdjacentStickyRect,
   STICKY_QUICK_ADD_GAP,
@@ -51,4 +53,28 @@ test('getAdjacentStickyRect: accepts a custom gap and preserves custom sizes', (
     width: 260,
     height: 120,
   });
+});
+
+test('StickyQuickAdd and WhiteboardCanvas support "+" quick-add on both sticky notes and geometric shapes', () => {
+  const canvasSource = fs.readFileSync(
+    path.resolve('src/components/whiteboard/WhiteboardCanvas.tsx'),
+    'utf8'
+  );
+  const quickAddSource = fs.readFileSync(
+    path.resolve('src/components/whiteboard/StickyQuickAdd.tsx'),
+    'utf8'
+  );
+
+  assert.ok(
+    canvasSource.includes("['sticky', 'rect', 'circle', 'diamond', 'triangle', 'star'].includes(selectedElements[0].type)"),
+    'WhiteboardCanvas should enable quick-add for sticky notes and all geometric shapes'
+  );
+  assert.ok(
+    canvasSource.includes('<StickyQuickAdd sticky={selectedQuickAddElement} onCreate={handleQuickAddSticky} />'),
+    'WhiteboardCanvas should pass selectedQuickAddElement to StickyQuickAdd'
+  );
+  assert.ok(
+    quickAddSource.includes("const itemLabel = sticky.type === 'sticky' ? 'post-it' : 'forma'"),
+    'StickyQuickAdd should use appropriate accessible label for shapes vs sticky notes'
+  );
 });
