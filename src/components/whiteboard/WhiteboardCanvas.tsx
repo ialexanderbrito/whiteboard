@@ -977,7 +977,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     if (selectedIds.length > 0) {
       const nodes: Konva.Node[] = [];
       selectedIds.forEach((id) => {
-        if (inlineEditing?.elementId === id && inlineEditing.type === 'text') {
+        if (inlineEditing?.elementId === id) {
           return;
         }
         const elem = elements.find((e) => e.id === id);
@@ -1419,6 +1419,17 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         onSelectionChange([]);
       }
 
+      // Iniciar edição de texto no elemento selecionado com Enter (Post-it, Forma, Texto)
+      if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+        if (!readOnly && !canCommentOnly && selectedElements.length === 1 && !inlineEditing) {
+          const sel = selectedElements[0];
+          if (!sel.locked && ['sticky', 'text', 'rect', 'circle', 'diamond', 'triangle', 'star', 'frame'].includes(sel.type)) {
+            e.preventDefault();
+            handleStartEditingElement(sel.id);
+            return;
+          }
+        }
+      }
 
       // Atalho de Ajuda / Atalhos (?)
       if ((e.key === '?' || (e.shiftKey && e.key === '/')) && onOpenShortcuts) {
@@ -2490,16 +2501,6 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           updatedByName: currentUser.displayName,
         });
         onSelectionChange([id]);
-        setInlineEditing({
-          elementId: id,
-          type: 'sticky',
-          worldX: posX,
-          worldY: posY,
-          width: 180,
-          height: 180,
-          text: '',
-          fill: selectedColor || '#fff9b1',
-        });
         onSelectTool('select');
       } else if (currentTool === 'frame') {
         const id = await onAddElement({
@@ -3345,20 +3346,6 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       if (!newId) return;
 
       onSelectionChange([newId]);
-      setInlineEditing({
-        elementId: newId,
-        type: 'sticky',
-        worldX: Math.round(rect.x),
-        worldY: Math.round(rect.y),
-        width,
-        height,
-        text: '',
-        fill,
-        fontSize: selectedQuickAddElement.fontSize || 14,
-        textAlign: selectedQuickAddElement.textAlign || 'left',
-        textColor:
-          selectedQuickAddElement.textColor || getContrastTextColor(fill, '#0f172a', '#ffffff'),
-      });
       return;
     }
 
@@ -3528,16 +3515,6 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       updatedByName: currentUser.displayName,
     });
     onSelectionChange([id]);
-    setInlineEditing({
-      elementId: id,
-      type: 'sticky',
-      worldX: posX,
-      worldY: posY,
-      width: 180,
-      height: 180,
-      text: '',
-      fill: stickyColor,
-    });
     onSelectTool('select');
   };
 
@@ -5026,13 +5003,23 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           className={`absolute z-50 font-sans resize-none ${
             inlineEditing.type === 'frame'
               ? 'px-2.5 py-1 rounded-t-md outline-none text-xs font-bold bg-slate-800 text-white border border-primary shadow-sm leading-normal'
+              : inlineEditing.type === 'sticky'
+              ? 'p-3 rounded-[3px] outline-none font-sans leading-snug shadow-md border border-black/10'
               : 'p-3 rounded-sm outline-none font-sans leading-snug shadow-md border-2 border-primary/60'
           }`}
           style={{
             left: `${inlineEditing.worldX * scale + stagePos.x}px`,
             top: `${inlineEditing.worldY * scale + stagePos.y}px`,
-            width: `${Math.max(140, inlineEditing.width * scale)}px`,
-            height: `${Math.max(32, inlineEditing.height * scale)}px`,
+            width: `${
+              inlineEditing.type === 'sticky'
+                ? inlineEditing.width * scale
+                : Math.max(140, inlineEditing.width * scale)
+            }px`,
+            height: `${
+              inlineEditing.type === 'sticky'
+                ? inlineEditing.height * scale
+                : Math.max(32, inlineEditing.height * scale)
+            }px`,
             backgroundColor:
               inlineEditing.type === 'frame'
                 ? '#1e293b'
@@ -5040,8 +5027,8 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
             color:
               inlineEditing.textColor || (inlineEditing.type === 'frame' ? '#ffffff' : '#0f172a'),
             fontSize: `${Math.max(
-              12,
-              (inlineEditing.fontSize || (inlineEditing.type === 'frame' ? 13 : 15)) * scale
+              10,
+              (inlineEditing.fontSize || (inlineEditing.type === 'frame' ? 13 : 14)) * scale
             )}px`,
             textAlign: inlineEditing.textAlign || (['rect', 'circle', 'diamond', 'triangle', 'star'].includes(inlineEditing.type || '') ? 'center' : 'left'),
             caretColor: '#2563eb',
