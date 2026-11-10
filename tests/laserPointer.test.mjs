@@ -84,3 +84,33 @@ test('Laser pointer: presence payload format conforms to UserPresence schema', (
   assert.equal(presenceMock.laser.points.length, 2);
   assert.equal(typeof presenceMock.laser.timestamp, 'number');
 });
+
+test('WhiteboardCanvas: allows Mover (pan) and Laser tools in readOnly mode', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const canvasPath = path.resolve('src/components/whiteboard/WhiteboardCanvas.tsx');
+  const rawContent = fs.readFileSync(canvasPath, 'utf-8');
+  const content = rawContent.replace(/\r\n/g, '\n');
+
+  // Stage deve ser draggable quando isDraggableStage for true, sem o bloqueador "!readOnly &&"
+  assert.ok(
+    content.includes('draggable={isDraggableStage}'),
+    'Stage deve ser arrastável na ferramenta Pan mesmo para usuários em modo somente leitura (readOnly)'
+  );
+  assert.ok(
+    !content.includes('draggable={!readOnly && isDraggableStage}'),
+    'Não deve bloquear o arraste do palco quando readOnly for true'
+  );
+
+  // No handleMouseMove, o laser deve ser executado mesmo quando readOnly for true
+  const laserIndex = content.indexOf("if (currentTool === 'laser')");
+  const readOnlyBlockIndex = content.indexOf(
+    '// Se estiver em modo somente leitura (view): bloqueia ferramentas de criação e modificação de elementos\n    if (readOnly) {\n      return;\n    }'
+  );
+  assert.ok(laserIndex !== -1, 'handleMouseMove deve conter lógica do apontador laser');
+  assert.ok(readOnlyBlockIndex !== -1, 'handleMouseMove deve conter bloqueio de escrita para readOnly');
+  assert.ok(
+    laserIndex < readOnlyBlockIndex,
+    'O Apontador Laser deve ser processado ANTES do bloqueio de escrita readOnly no handleMouseMove'
+  );
+});

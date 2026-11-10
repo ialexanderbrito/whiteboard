@@ -2519,6 +2519,11 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       return;
     }
 
+    // Se estiver em modo somente leitura (view): bloqueia ferramentas de criação e modificação de elementos
+    if (readOnly) {
+      return;
+    }
+
     // Modo Borracha com arraste contínuo
     if (isErasing.current && isEraserActive) {
       const p1 = lastErasePosRef.current || worldPos;
@@ -4287,7 +4292,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         ref={stageRef}
         width={window.innerWidth}
         height={window.innerHeight}
-        draggable={!readOnly && isDraggableStage}
+        draggable={isDraggableStage}
         onDragStart={(e) => {
           if (isMiddlePanning.current) {
             e.cancelBubble = true;
