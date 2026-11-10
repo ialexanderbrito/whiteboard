@@ -42,6 +42,9 @@ if (isFirebaseConfigured) {
     // garantindo carregamento instantâneo (0ms) e reduzindo o consumo de leituras em até 90%.
     try {
       db = initializeFirestore(app, {
+        // Runs de texto rico podem ter campos opcionais ausentes; sem isso,
+        // um `undefined` aninhado faria o updateDoc falhar silenciosamente.
+        ignoreUndefinedProperties: true,
         localCache: persistentLocalCache({
           tabManager: persistentMultipleTabManager(),
         }),

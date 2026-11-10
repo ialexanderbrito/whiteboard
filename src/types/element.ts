@@ -31,6 +31,20 @@ export type ToolType =
   | 'pan' 
   | 'frame';
 
+/**
+ * Run de texto rico: permite formatar trechos independentes (letra, palavra ou frase)
+ * sem depender da formatação global do elemento.
+ */
+export interface TextRun {
+  text: string;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  strikethrough?: boolean;
+  color?: string;
+  url?: string;
+}
+
 export interface CanvasElement {
   id: string;
   type: ElementType;
@@ -70,4 +84,6 @@ export interface CanvasElement {
   textColor?: string;       // Cor personalizada do texto (cards/post-its, formas e texto)
   linkUrl?: string;
   links?: Array<{ url: string; label?: string; id?: string }>;
+  /** Formatação por trecho (texto livre). Quando presente, tem prioridade sobre os campos globais. */
+  richText?: TextRun[];
 }
