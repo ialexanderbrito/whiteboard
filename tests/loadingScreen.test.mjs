@@ -16,18 +16,24 @@ test('LoadingScreen: component exists and exports LoadingScreen and PageLoader',
   assert.ok(!content.includes('animate-spin rounded-full'), 'Should NOT use legacy circular progress');
 });
 
-test('LoadingCollaboratorCursors: renders simulated live collaborators and tools', () => {
+test('LoadingCollaboratorCursors: renders all 5 simulated live collaborators and actions', () => {
   const filePath = path.resolve('src/components/layout/LoadingCollaboratorCursors.tsx');
   assert.ok(fs.existsSync(filePath), 'LoadingCollaboratorCursors.tsx should exist');
 
   const content = fs.readFileSync(filePath, 'utf-8');
   assert.ok(content.includes('Sofia'), 'Should include collaborator Sofia');
   assert.ok(content.includes('Lucas'), 'Should include collaborator Lucas');
+  assert.ok(content.includes('Mateo'), 'Should include collaborator Mateo');
   assert.ok(content.includes('Camila'), 'Should include collaborator Camila');
+  assert.ok(content.includes('Gabriel'), 'Should include collaborator Gabriel');
+
   assert.ok(content.includes('animate-mirio-cursor-sofia'), 'Sofia cursor should have GPU physics');
   assert.ok(content.includes('animate-mirio-sticky-drag'), 'Sticky note should follow Sofia drag');
   assert.ok(content.includes('animate-mirio-cursor-lucas'), 'Lucas cursor should have selection motion');
   assert.ok(content.includes('animate-mirio-lucas-chat'), 'Lucas should have cursor chat bubble');
+  assert.ok(content.includes('animate-mirio-cursor-mateo'), 'Mateo cursor should position priority sticker');
+  assert.ok(content.includes('animate-mirio-cursor-camila'), 'Camila cursor should connect flow nodes');
+  assert.ok(content.includes('animate-mirio-cursor-gabriel'), 'Gabriel cursor should have real-time chat bubble');
   assert.ok(content.includes('pointer-events-none'), 'All mock cursors must be non-blocking for interaction');
 });
 
@@ -42,12 +48,16 @@ test('LoadingScreen CSS: contains Emil Kowalski GPU animations, fluid beam, and 
   assert.ok(css.includes('cubic-bezier(0.23, 1, 0.32, 1)'), 'Must use custom organic easing curve');
   assert.ok(css.includes('translateX(220%)'), 'Beam must fully exit track past 200% to eliminate snapping jumps');
   assert.ok(!css.includes('translateY(6px)'), 'Loader entrance must not have vertical jump');
+
   assert.ok(css.includes('animate-mirio-cursor-sofia'), 'Sofia cursor class must be defined');
   assert.ok(css.includes('animate-mirio-cursor-lucas'), 'Lucas cursor class must be defined');
+  assert.ok(css.includes('animate-mirio-cursor-mateo'), 'Mateo cursor class must be defined');
+  assert.ok(css.includes('animate-mirio-cursor-camila'), 'Camila cursor class must be defined');
+  assert.ok(css.includes('animate-mirio-cursor-gabriel'), 'Gabriel cursor class must be defined');
   assert.ok(css.includes('prefers-reduced-motion'), 'Must support reduced motion for accessibility');
 });
 
-test('index.html: contains zero-FOUC initial loader matching design system', () => {
+test('index.html: contains zero-FOUC initial loader with matching collaborator cursors', () => {
   const htmlPath = path.resolve('index.html');
   const html = fs.readFileSync(htmlPath, 'utf-8');
 
@@ -55,6 +65,12 @@ test('index.html: contains zero-FOUC initial loader matching design system', () 
   assert.ok(html.includes('init-beam'), 'index.html fallback must use precision laser rail');
   assert.ok(html.includes('init-dots'), 'index.html must include canvas dots background');
   assert.ok(html.includes('translateX(220%)'), 'Fallback beam must fully exit without snapping');
+  assert.ok(html.includes('init-cursors'), 'index.html must have collaborative cursors from initial HTML render (no loader without cursors)');
+  assert.ok(html.includes('Sofia'), 'index.html must include collaborator Sofia');
+  assert.ok(html.includes('Lucas'), 'index.html must include collaborator Lucas');
+  assert.ok(html.includes('Mateo'), 'index.html must include collaborator Mateo');
+  assert.ok(html.includes('Camila'), 'index.html must include collaborator Camila');
+  assert.ok(html.includes('Gabriel'), 'index.html must include collaborator Gabriel');
 });
 
 test('App.tsx and BoardPage.tsx: circular progress spinner replaced with LoadingScreen', () => {
