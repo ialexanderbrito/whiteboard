@@ -1,5 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Smile, Search, Plus, X } from 'lucide-react';
+import {
+  Smile,
+  Search,
+  Plus,
+  X,
+  Upload,
+  ImagePlus,
+  Link2,
+  Clock,
+  Trash2,
+  Sparkles,
+  Loader2,
+} from '@/components/ui/icons';
 import EmojiPicker, { EmojiStyle, Theme as EmojiTheme, type EmojiClickData } from 'emoji-picker-react';
 import {
   Dialog,
@@ -14,6 +26,18 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useTheme } from '@/context/ThemeContext';
 import { getAppleEmojiUrl } from '@/utils/appleEmoji';
+import {
+  processImageFiles,
+  getRecentUploadedImages,
+  saveRecentUploadedImages,
+  removeRecentUploadedImage,
+  clearRecentUploadedImages,
+  computeInitialCanvasDimensions,
+  validateDroppedFiles,
+  formatUnsupportedFileMessage,
+  type RecentUploadedImage,
+} from '@/utils/imageUpload';
+import { getImageDimensions } from '@/utils/clipboard';
 
 // Badges ágeis com Emojis estilo Apple
 const TRENDING_TAGS = ['celebrate', 'agile', 'yes', 'coffee', 'mind blown', 'ship it', 'cat', 'bug', 'applause'];
@@ -165,31 +189,65 @@ const parseKlipyResponse = (payload: unknown): GifItem[] => {
 const DEFAULT_KLIPY_KEY =
   'DxJbnSmA6hJPpCHiYX7fYppxzJcH7zqXNh03ZGT2L7t8OyShfh6fxZc7aVN6QWNQ';
 
+export interface MediaInsertItem {
+  type: 'sticker' | 'gif';
+  src: string;
+  alt?: string;
+  text?: string;
+  width?: number;
+  height?: number;
+}
+
 interface StickersModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onInsertMedia: (type: 'sticker' | 'gif', src: string, alt?: string, text?: string) => void;
+  onInsertMedia: (
+    type: 'sticker' | 'gif',
+    src: string,
+    alt?: string,
+    text?: string,
+    dimensions?: { width: number; height: number }
+  ) => void;
+  onBatchInsertMedia?: (items: MediaInsertItem[]) => void;
 }
 
 export const StickersModal: React.FC<StickersModalProps> = ({
   open,
   onOpenChange,
   onInsertMedia,
+  onBatchInsertMedia,
 }) => {
   const { isDark } = useTheme();
-  const [activeTab, setActiveTab] = useState<'emojis' | 'gifs' | 'url'>('emojis');
+  const [activeTab, setActiveTab] = useState<'upload' | 'emojis' | 'gifs'>('upload');
   const [gifSearch, setGifSearch] = useState('');
   const [customUrl, setCustomUrl] = useState('');
   const [trendingGifs, setTrendingGifs] = useState<GifItem[]>(CURATED_GIFS);
   const [searchResults, setSearchResults] = useState<GifItem[]>(CURATED_GIFS);
   const [isSearching, setIsSearching] = useState(false);
   const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [isDraggingFiles, setIsDraggingFiles] = useState(false);
+  const [isProcessingFiles, setIsProcessingFiles] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [recentImages, setRecentImages] = useState<RecentUploadedImage[]>(() =>
+    getRecentUploadedImages()
+  );
+
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const hasLoadedTrendingRef = useRef(false);
 
   const klipyApiKey =
     (import.meta.env.VITE_KLIPY_API_KEY as string) || DEFAULT_KLIPY_KEY;
   const giphyApiKey = import.meta.env.VITE_GIPHY_API_KEY as string;
+
+  // Recarrega a galeria de recentes sempre que o modal abre
+  useEffect(() => {
+    if (open) {
+      setRecentImages(getRecentUploadedImages());
+      setUploadError(null);
+      setIsDraggingFiles(false);
+    }
+  }, [open]);
 
   // Carrega GIFs em alta na Klipy ao abrir a aba de GIFs pela primeira vez
   useEffect(() => {
@@ -335,9 +393,101 @@ export const StickersModal: React.FC<StickersModalProps> = ({
     fetchGifs(tag);
   };
 
+  const handleFilesSelected = async (filesList: FileList | File[] | null) => {
+    if (!filesList || filesList.length === 0) return;
+    setUploadError(null);
+
+    const rawFiles = Array.from(filesList);
+    const validation = validateDroppedFiles(rawFiles);
+
+    if (validation.validFiles.length === 0) {
+      const { message } = formatUnsupportedFileMessage(validation);
+      setUploadError(message);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      return;
+    }
+
+    setIsProcessingFiles(true);
+
+    try {
+      const processed = await processImageFiles(validation.validFiles);
+      if (processed.length === 0) {
+        setUploadError('Não foi possível processar as imagens selecionadas. Verifique os arquivos.');
+        return;
+      }
+
+      const updatedRecents = saveRecentUploadedImages(processed);
+      setRecentImages(updatedRecents);
+
+      if (onBatchInsertMedia) {
+        onBatchInsertMedia(
+          processed.map((img) => ({
+            type: img.type,
+            src: img.src,
+            alt: img.alt,
+            width: img.width,
+            height: img.height,
+          }))
+        );
+      } else {
+        for (const img of processed) {
+          onInsertMedia(img.type, img.src, img.alt, undefined, {
+            width: img.width,
+            height: img.height,
+          });
+        }
+      }
+
+      onOpenChange(false);
+    } catch (err) {
+      console.warn('Erro ao processar imagens do computador:', err);
+      setUploadError('Não foi possível processar esta imagem. Tente outro arquivo.');
+    } finally {
+      setIsProcessingFiles(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleInsertRecentImage = (recent: RecentUploadedImage) => {
+    const dims = computeInitialCanvasDimensions(recent.width || 280, recent.height || 200);
+    if (onBatchInsertMedia) {
+      onBatchInsertMedia([
+        {
+          type: recent.type,
+          src: recent.src,
+          alt: recent.alt,
+          width: dims.width,
+          height: dims.height,
+        },
+      ]);
+    } else {
+      onInsertMedia(recent.type, recent.src, recent.alt, undefined, dims);
+    }
+    onOpenChange(false);
+  };
+
+  const handleRemoveRecent = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    setRecentImages(removeRecentUploadedImage(id));
+  };
+
+  const handleClearAllRecents = () => {
+    clearRecentUploadedImages();
+    setRecentImages([]);
+  };
+
   const handleSelectEmojiClick = (emojiData: EmojiClickData) => {
     // Insere sticker com a URL oficial da Apple para garantir 100% estilo Mac no canvas
-    onInsertMedia('sticker', emojiData.imageUrl || getAppleEmojiUrl(emojiData.emoji), emojiData.names?.[0] || emojiData.emoji, emojiData.emoji);
+    onInsertMedia(
+      'sticker',
+      emojiData.imageUrl || getAppleEmojiUrl(emojiData.emoji),
+      emojiData.names?.[0] || emojiData.emoji,
+      emojiData.emoji
+    );
     onOpenChange(false);
   };
 
@@ -346,7 +496,7 @@ export const StickersModal: React.FC<StickersModalProps> = ({
     onOpenChange(false);
   };
 
-  const handleInsertCustomUrl = (e: React.FormEvent) => {
+  const handleInsertCustomUrl = async (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = customUrl.trim();
     if (!trimmed) return;
@@ -357,47 +507,260 @@ export const StickersModal: React.FC<StickersModalProps> = ({
       lower.includes('klipy.com') ||
       lower.includes('giphy.com') ||
       lower.includes('tenor.com');
-    onInsertMedia(isGif ? 'gif' : 'sticker', trimmed, 'Mídia personalizada');
+
+    const dims = await getImageDimensions(trimmed);
+    onInsertMedia(isGif ? 'gif' : 'sticker', trimmed, 'Mídia personalizada', undefined, dims);
     setCustomUrl('');
     onOpenChange(false);
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl p-5 overflow-hidden">
-        <DialogHeader className="space-y-1">
+      <DialogContent className="w-[calc(100vw-1.5rem)] max-w-2xl p-4 sm:p-5 overflow-hidden rounded-2xl">
+        <DialogHeader className="space-y-1 text-left">
           <DialogTitle className="text-base font-semibold flex items-center gap-2">
-            <Smile className="size-4 text-primary" />
-            <span>Emojis Apple & GIFs</span>
+            <div className="flex size-7 items-center justify-center rounded-lg bg-primary/10 text-primary shrink-0">
+              <ImagePlus className="size-4" />
+            </div>
+            <span>Imagens, Emojis & GIFs</span>
           </DialogTitle>
-          <DialogDescription className="text-xs">
-            Selecione emojis oficiais no padrão Apple (Mac) ou GIFs animados para o seu board.
+          <DialogDescription className="text-xs text-muted-foreground">
+            Envie imagens do seu computador, cole um link direto ou adicione emojis Apple e GIFs animados ao quadro.
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)} className="w-full mt-2">
-          <TabsList className="grid grid-cols-3 w-full h-8">
-            <TabsTrigger value="emojis" className="text-xs">
-              Emojis
+        <Tabs
+          value={activeTab}
+          onValueChange={(v) => setActiveTab(v as typeof activeTab)}
+          className="w-full mt-2"
+        >
+          <TabsList className="grid grid-cols-3 w-full h-9 p-1 bg-muted/60 rounded-xl">
+            <TabsTrigger
+              value="upload"
+              className="text-xs font-medium rounded-lg gap-1.5 data-[state=active]:shadow-xs transition-all duration-150"
+            >
+              <Upload className="size-3.5" />
+              <span>Imagens & Upload</span>
             </TabsTrigger>
-            <TabsTrigger value="gifs" className="text-xs">
-              GIFs Animados
+            <TabsTrigger
+              value="emojis"
+              className="text-xs font-medium rounded-lg gap-1.5 data-[state=active]:shadow-xs transition-all duration-150"
+            >
+              <Smile className="size-3.5" />
+              <span>Emojis</span>
             </TabsTrigger>
-            <TabsTrigger value="url" className="text-xs">
-              Colar Link URL
+            <TabsTrigger
+              value="gifs"
+              className="text-xs font-medium rounded-lg gap-1.5 data-[state=active]:shadow-xs transition-all duration-150"
+            >
+              <Sparkles className="size-3.5" />
+              <span>GIFs</span>
             </TabsTrigger>
           </TabsList>
 
-          {/* Tab 1: Emojis Apple Oficiais */}
-          <TabsContent value="emojis" className="pt-2">
-            {/* Seletor Oficial Apple via emoji-picker-react */}
-            <div className="rounded-lg overflow-hidden border border-border/80 shadow-xs flex justify-center">
+          {/* Tab 1: Upload do Computador + Galeria de Recentes + Link URL */}
+          <TabsContent value="upload" className="space-y-3.5 pt-3 focus-visible:outline-none">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,image/*"
+              multiple
+              className="sr-only"
+              onChange={(e) => handleFilesSelected(e.target.files)}
+            />
+
+            {/* Dropzone Interativa com Micro-interações (Emil Design Engineering) */}
+            <div
+              role="button"
+              tabIndex={0}
+              aria-label="Selecionar ou arrastar imagens do computador"
+              onClick={() => !isProcessingFiles && fileInputRef.current?.click()}
+              onKeyDown={(e) => {
+                if ((e.key === 'Enter' || e.key === ' ') && !isProcessingFiles) {
+                  e.preventDefault();
+                  fileInputRef.current?.click();
+                }
+              }}
+              onDragEnter={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsDraggingFiles(true);
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!isDraggingFiles) setIsDraggingFiles(true);
+              }}
+              onDragLeave={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+                setIsDraggingFiles(false);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsDraggingFiles(false);
+                if (e.dataTransfer?.files?.length) {
+                  void handleFilesSelected(e.dataTransfer.files);
+                }
+              }}
+              className={`group relative flex flex-col items-center justify-center text-center rounded-xl border-2 border-dashed px-4 py-6 sm:py-7 cursor-pointer select-none transition-[transform,border-color,background-color] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.985] ${
+                isDraggingFiles
+                  ? 'border-primary bg-primary/8 scale-[1.01]'
+                  : 'border-border/80 bg-muted/25 hover:border-primary/60 hover:bg-muted/45'
+              }`}
+            >
+              <div
+                className={`mb-2.5 flex size-11 items-center justify-center rounded-xl border transition-transform duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] ${
+                  isDraggingFiles
+                    ? 'bg-primary text-primary-foreground border-primary scale-105 shadow-sm'
+                    : 'bg-background text-primary border-border/80 shadow-2xs group-hover:scale-105'
+                }`}
+              >
+                {isProcessingFiles ? (
+                  <Loader2 className="size-5 animate-spin" />
+                ) : (
+                  <Upload className="size-5" />
+                )}
+              </div>
+
+              <p className="text-xs sm:text-sm font-semibold text-foreground">
+                {isProcessingFiles
+                  ? 'Otimizando e inserindo no quadro...'
+                  : isDraggingFiles
+                  ? 'Solte as imagens para adicionar ao quadro'
+                  : 'Clique para escolher do computador ou arraste aqui'}
+              </p>
+
+              <p className="mt-1 text-[11px] text-muted-foreground max-w-md leading-relaxed">
+                Suporta <strong>PNG, JPG, WebP, GIF e SVG</strong> (inclusive várias imagens de uma vez).
+                Compressão inteligente automática para sincronizar em tempo real.
+              </p>
+
+              <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5">
+                <span className="inline-flex items-center gap-1 rounded-full bg-background/90 border border-border/70 px-2.5 py-0.5 text-[10px] font-medium text-muted-foreground shadow-2xs">
+                  <span>✨ Múltiplos arquivos em grade</span>
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-background/90 border border-border/70 px-2.5 py-0.5 text-[10px] font-medium text-muted-foreground shadow-2xs">
+                  <span>📋 Ou use Ctrl+V direto no canvas</span>
+                </span>
+              </div>
+            </div>
+
+            {uploadError && (
+              <p className="text-xs font-medium text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2">
+                {uploadError}
+              </p>
+            )}
+
+            {/* Galeria de Imagens Enviadas Recentemente (Reuso com 1 Clique) */}
+            {recentImages.length > 0 && (
+              <div className="space-y-2 pt-0.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                    <Clock className="size-3 text-primary" />
+                    <span>Recentes neste navegador ({recentImages.length})</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleClearAllRecents}
+                    className="text-[11px] text-muted-foreground hover:text-destructive transition-colors flex items-center gap-1 cursor-pointer active:scale-[0.97]"
+                  >
+                    <Trash2 className="size-3" />
+                    <span>Limpar</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-4 gap-2 max-h-[124px] overflow-y-auto pr-0.5">
+                  {recentImages.map((img, idx) => (
+                    <div
+                      key={img.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => handleInsertRecentImage(img)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          handleInsertRecentImage(img);
+                        }
+                      }}
+                      style={{ animationDelay: `${idx * 35}ms` }}
+                      className="group relative aspect-video rounded-lg overflow-hidden border border-border/80 bg-muted/35 hover:border-primary transition-[transform,border-color] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.97] cursor-pointer flex items-center justify-center"
+                      title={`Inserir "${img.alt}" novamente`}
+                    >
+                      <img
+                        src={img.src}
+                        alt={img.alt}
+                        loading="lazy"
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-150"
+                      />
+                      <button
+                        type="button"
+                        onClick={(e) => handleRemoveRecent(e, img.id)}
+                        className="absolute top-1 right-1 size-5 rounded-md bg-black/65 text-white opacity-0 group-hover:opacity-100 hover:bg-destructive transition-opacity duration-150 flex items-center justify-center cursor-pointer"
+                        title="Remover dos recentes"
+                        aria-label="Remover imagem recente"
+                      >
+                        <X className="size-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Divisor sutil + Inserção rápida por Link / URL */}
+            <div className="pt-2.5 border-t border-border/70">
+              <form onSubmit={handleInsertCustomUrl} className="space-y-2">
+                <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                  <Link2 className="size-3 text-primary" />
+                  <span>Ou inserir por Link URL direto (.png, .jpg, .webp, .gif)</span>
+                </label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="url"
+                    placeholder="https://exemplo.com/diagrama-arquitetura.png"
+                    value={customUrl}
+                    onChange={(e) => setCustomUrl(e.target.value)}
+                    className="h-9 text-xs flex-1"
+                  />
+                  <Button
+                    type="submit"
+                    disabled={!customUrl.trim()}
+                    className="h-9 px-3.5 text-xs font-medium gap-1.5 shrink-0 active:scale-[0.97] transition-transform"
+                  >
+                    <Plus className="size-3.5" />
+                    <span>Inserir URL</span>
+                  </Button>
+                </div>
+
+                {customUrl.trim() && (
+                  <div className="p-2.5 bg-muted/30 rounded-lg border border-border flex items-center justify-center max-h-[110px] overflow-hidden">
+                    <img
+                      src={customUrl}
+                      alt="Preview"
+                      referrerPolicy="no-referrer"
+                      className="max-h-[92px] rounded object-contain"
+                      onError={(e) => {
+                        (e.target as HTMLElement).style.display = 'none';
+                      }}
+                    />
+                  </div>
+                )}
+              </form>
+            </div>
+          </TabsContent>
+
+          {/* Tab 2: Emojis Apple Oficiais */}
+          <TabsContent value="emojis" className="pt-2 focus-visible:outline-none">
+            <div className="rounded-xl overflow-hidden border border-border/80 shadow-xs flex justify-center">
               <EmojiPicker
                 onEmojiClick={handleSelectEmojiClick}
                 emojiStyle={EmojiStyle.APPLE}
                 theme={isDark ? EmojiTheme.DARK : EmojiTheme.LIGHT}
                 width="100%"
-                height={400}
+                height={390}
                 searchPlaceholder="Buscar emojis da Apple..."
                 previewConfig={{ showPreview: false }}
                 lazyLoadEmojis={true}
@@ -405,8 +768,8 @@ export const StickersModal: React.FC<StickersModalProps> = ({
             </div>
           </TabsContent>
 
-          {/* Tab 2: GIFs Animados */}
-          <TabsContent value="gifs" className="space-y-3 pt-2">
+          {/* Tab 3: GIFs Animados */}
+          <TabsContent value="gifs" className="space-y-3 pt-2 focus-visible:outline-none">
             {/* Campo de Busca de GIFs */}
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
@@ -436,7 +799,7 @@ export const StickersModal: React.FC<StickersModalProps> = ({
                     key={tag}
                     type="button"
                     onClick={() => handleSelectTag(tag)}
-                    className={`text-[11px] font-medium px-2.5 py-0.5 rounded-full transition-colors whitespace-nowrap border ${
+                    className={`text-[11px] font-medium px-2.5 py-0.5 rounded-full transition-colors whitespace-nowrap border active:scale-[0.97] ${
                       isSelected
                         ? 'bg-primary text-primary-foreground border-primary'
                         : 'bg-muted/50 text-muted-foreground hover:text-foreground border-border'
@@ -449,7 +812,7 @@ export const StickersModal: React.FC<StickersModalProps> = ({
             </div>
 
             {/* Grid de GIFs Animados com Loading Skeleton */}
-            <div className="grid grid-cols-3 gap-2 max-h-[300px] overflow-y-auto pr-1">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-[300px] overflow-y-auto pr-1">
               {isSearching ? (
                 Array.from({ length: 6 }).map((_, i) => (
                   <Skeleton
@@ -458,7 +821,7 @@ export const StickersModal: React.FC<StickersModalProps> = ({
                   />
                 ))
               ) : searchResults.length === 0 ? (
-                <div className="col-span-3 py-10 flex flex-col items-center justify-center text-xs text-muted-foreground gap-1">
+                <div className="col-span-full py-10 flex flex-col items-center justify-center text-xs text-muted-foreground gap-1">
                   <span>Nenhum GIF encontrado para &quot;{gifSearch}&quot;</span>
                   <button
                     type="button"
@@ -478,7 +841,7 @@ export const StickersModal: React.FC<StickersModalProps> = ({
                     key={gif.id || idx}
                     type="button"
                     onClick={() => handleSelectGif(gif.url, gif.name)}
-                    className="group relative rounded-md overflow-hidden border border-border bg-muted/30 aspect-video hover:border-primary transition-all active:scale-[0.98]"
+                    className="group relative rounded-lg overflow-hidden border border-border bg-muted/30 aspect-video hover:border-primary transition-[transform,border-color] duration-150 active:scale-[0.98]"
                     title={gif.name}
                   >
                     <img
@@ -503,44 +866,6 @@ export const StickersModal: React.FC<StickersModalProps> = ({
                 ))
               )}
             </div>
-          </TabsContent>
-
-          {/* Tab 3: Colar Link / URL */}
-          <TabsContent value="url" className="pt-2">
-            <form onSubmit={handleInsertCustomUrl} className="space-y-3">
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-foreground">
-                  Cole o link direto de uma imagem ou GIF (.gif, .png, .jpg, .webp):
-                </label>
-                <Input
-                  type="url"
-                  placeholder="https://exemplo.com/animacao.gif"
-                  value={customUrl}
-                  onChange={(e) => setCustomUrl(e.target.value)}
-                  className="h-9 text-xs"
-                  required
-                />
-              </div>
-
-              {customUrl && (
-                <div className="p-3 bg-muted/30 rounded-md border border-border flex items-center justify-center max-h-[140px] overflow-hidden">
-                  <img
-                    src={customUrl}
-                    alt="Preview"
-                    referrerPolicy="no-referrer"
-                    className="max-h-[120px] rounded object-contain"
-                    onError={(e) => {
-                      (e.target as HTMLElement).style.display = 'none';
-                    }}
-                  />
-                </div>
-              )}
-
-              <Button type="submit" className="w-full gap-1.5 h-9 text-xs font-medium">
-                <Plus className="size-3.5" />
-                <span>Inserir no Quadro</span>
-              </Button>
-            </form>
           </TabsContent>
         </Tabs>
       </DialogContent>

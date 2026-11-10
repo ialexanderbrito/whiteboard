@@ -29,7 +29,7 @@ import {
   Laser,
   Minus,
   Plus
-} from 'lucide-react';
+} from '@/components/ui/icons';
 import type { ToolType } from '../../types/element';
 import { STICKY_COLORS, SHAPE_QUICK_SWATCHES } from '../../utils/colors';
 import { subscribeCursorReadout } from '../../utils/cursorReadout';
@@ -797,7 +797,7 @@ export const Toolbar: React.FC<ToolbarProps> = React.memo(({
                     </button>
                   </TooltipTrigger>
                   <TooltipContent side={tooltipSide}>
-                    <p className="font-medium text-xs">Stickers, Emojis & GIFs</p>
+                    <p className="font-medium text-xs">Imagens, Stickers & GIFs <span className="opacity-60 text-[10px]">(I)</span></p>
                   </TooltipContent>
                 </Tooltip>
               </>

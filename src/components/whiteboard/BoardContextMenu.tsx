@@ -35,7 +35,7 @@ import {
   AlignCenterHorizontal,
   AlignEndHorizontal,
   Plus,
-} from 'lucide-react';
+} from '@/components/ui/icons';
 import type { CanvasElement } from '../../types/element';
 import type { AlignmentType } from '../../utils/alignment';
 import { STICKY_COLORS } from '../../utils/colors';
@@ -540,8 +540,11 @@ export const BoardContextMenu: React.FC<BoardContextMenuProps> = ({
             >
               <div className="flex items-center gap-2">
                 <Smile className="size-4 text-amber-500 group-hover:scale-105 transition-transform" />
-                <span className="font-medium">Stickers & Emojis...</span>
+                <span className="font-medium">Imagens, Stickers & Emojis...</span>
               </div>
+              <kbd className="px-1.5 py-0.5 text-[9px] font-mono bg-muted text-muted-foreground rounded border border-border/50">
+                I
+              </kbd>
             </button>
           )}
 
