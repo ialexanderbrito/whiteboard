@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { USER_COLORS } from '../src/utils/colors.ts';
+import fs from 'node:fs';
+import path from 'node:path';
+import { USER_COLORS, USER_COLOR_PRESETS } from '../src/utils/colors.ts';
 
 test('Guest profile name trimming and validation', () => {
   const sanitizeName = (raw) => {
@@ -17,6 +19,7 @@ test('Guest profile name trimming and validation', () => {
 
 test('User colors array has at least 8 distinct colors for cursor selection', () => {
   assert.ok(USER_COLORS.length >= 8);
+  assert.ok(USER_COLOR_PRESETS.length >= 8);
   const unique = new Set(USER_COLORS.map(c => c.toLowerCase()));
   assert.equal(unique.size, USER_COLORS.length);
 });
@@ -95,4 +98,19 @@ test('Presence payload preserves photoURL for Google accounts and handles guests
 
   assert.equal(guestPresence.photoURL, null);
   assert.equal(guestPresence.isAnonymous, true);
+});
+
+test('EditProfileModal: Google users do not see the display name input, only custom cursor color options', () => {
+  const modalPath = path.resolve('src/components/whiteboard/EditProfileModal.tsx');
+  assert.ok(fs.existsSync(modalPath), 'EditProfileModal.tsx deve existir');
+
+  const content = fs.readFileSync(modalPath, 'utf8');
+
+  // Input de nome deve ser renderizado condicionalmente APENAS para quem NÃO é usuário Google (!isGoogleUser)
+  assert.match(content, /\{!isGoogleUser && \([\s\S]*?id="edit-display-name-input"/, 'Input de nome só deve aparecer para convidados');
+
+  // Suporte a cores personalizadas (Pipette / input type="color" / Hex)
+  assert.match(content, /<Pipette/, 'Deve conter ícone de conta-gotas para cor personalizada');
+  assert.match(content, /type="color"/, 'Deve conter input nativo de cor personalizada');
+  assert.match(content, /USER_COLOR_PRESETS/, 'Deve utilizar a paleta expandida de presets');
 });

@@ -243,18 +243,28 @@ export const TEXT_CATEGORIES = [
 
 export const TEXT_COLORS = TEXT_CATEGORIES.flatMap((c) => c.colors);
 
-export const USER_COLORS = [
-  '#ef4444', // Red
-  '#f97316', // Orange
-  '#eab308', // Yellow
-  '#10b981', // Green
-  '#06b6d4', // Cyan
-  '#3b82f6', // Blue
-  '#8b5cf6', // Violet
-  '#ec4899', // Pink
-  '#14b8a6', // Teal
-  '#6366f1', // Indigo
+export const USER_COLOR_PRESETS = [
+  { name: 'Vermelho', value: '#ef4444' },
+  { name: 'Carmim', value: '#f43f5e' },
+  { name: 'Laranja', value: '#f97316' },
+  { name: 'Âmbar', value: '#f59e0b' },
+  { name: 'Amarelo Solar', value: '#eab308' },
+  { name: 'Lima', value: '#84cc16' },
+  { name: 'Verde Esmeralda', value: '#10b981' },
+  { name: 'Verde Água / Teal', value: '#14b8a6' },
+  { name: 'Ciano', value: '#06b6d4' },
+  { name: 'Azul Celeste', value: '#0ea5e9' },
+  { name: 'Azul Royal', value: '#3b82f6' },
+  { name: 'Índigo', value: '#6366f1' },
+  { name: 'Violeta', value: '#8b5cf6' },
+  { name: 'Púrpura', value: '#a855f7' },
+  { name: 'Fúcsia', value: '#d946ef' },
+  { name: 'Rosa Choque', value: '#ec4899' },
+  { name: 'Cinza Ardósia', value: '#64748b' },
+  { name: 'Preto Carvão', value: '#0f172a' },
 ];
+
+export const USER_COLORS = USER_COLOR_PRESETS.map((c) => c.value);
 
 export function getRandomUserColor(): string {
   const index = Math.floor(Math.random() * USER_COLORS.length);

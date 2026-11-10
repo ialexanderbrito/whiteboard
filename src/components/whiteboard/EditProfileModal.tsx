@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Check, User, Sparkles } from 'lucide-react';
+import { Check, User, Sparkles, Pipette } from '@/components/ui/icons';
 import {
   Dialog,
   DialogContent,
@@ -14,7 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { CurrentUser } from '@/types/board';
-import { USER_COLORS } from '@/utils/colors';
+import { USER_COLOR_PRESETS, getContrastTextColor } from '@/utils/colors';
 
 interface EditProfileModalProps {
   open: boolean;
@@ -30,7 +30,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
   onSave,
 }) => {
   const [name, setName] = useState(currentUser.displayName || '');
-  const [color, setColor] = useState(currentUser.color || USER_COLORS[5]);
+  const [color, setColor] = useState(currentUser.color || USER_COLOR_PRESETS[10].value);
   const [isSaving, setIsSaving] = useState(false);
   const [prevOpen, setPrevOpen] = useState(open);
 
@@ -39,7 +39,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
     setPrevOpen(open);
     if (open) {
       setName(currentUser.displayName || '');
-      setColor(currentUser.color || USER_COLORS[5]);
+      setColor(currentUser.color || USER_COLOR_PRESETS[10].value);
       setIsSaving(false);
     }
   }
@@ -70,22 +70,26 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
     : trimmedName !== currentUser.displayName || color.toLowerCase() !== (currentUser.color || '').toLowerCase();
   const initial = (trimmedName || 'Você').charAt(0).toUpperCase();
 
+  const isPresetColor = USER_COLOR_PRESETS.some(
+    (c) => c.value.toLowerCase() === color.toLowerCase()
+  );
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[420px] p-6 rounded-2xl shadow-xl border-border bg-card">
+      <DialogContent className="sm:max-w-[440px] p-6 rounded-2xl shadow-xl border-border bg-card">
         <DialogHeader className="space-y-1.5 text-left">
           <div className="flex items-center gap-2">
             <div className="flex size-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
               <User className="size-4" />
             </div>
             <DialogTitle className="text-base font-bold text-foreground">
-              {isGoogleUser ? 'Personalizar Cor do Cursor' : 'Trocar Nome de Convidado'}
+              {isGoogleUser ? 'Personalizar Cor do Cursor' : 'Personalizar Perfil de Convidado'}
             </DialogTitle>
           </div>
           <DialogDescription className="text-xs text-muted-foreground">
             {isGoogleUser
-              ? 'Sua conta está conectada com o Google. Seu nome e foto de perfil são sincronizados da sua Conta Google.'
-              : 'Personalize seu nome e cor de cursor para colaborar em tempo real no quadro.'}
+              ? 'Escolha sua cor exclusiva de presença e cursor para se destacar no quadro. Seu nome e foto são mantidos pela sua Conta Google.'
+              : 'Personalize seu nome de exibição e cor de cursor para colaborar em tempo real com a equipe no quadro.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -101,7 +105,10 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
             ) : null}
             <AvatarFallback
               className="text-white text-base font-bold transition-colors"
-              style={{ backgroundColor: color }}
+              style={{ 
+                backgroundColor: color,
+                color: getContrastTextColor(color)
+              }}
             >
               {initial}
             </AvatarFallback>
@@ -129,74 +136,138 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
             </div>
             <p className="text-[11px] text-muted-foreground flex items-center gap-1">
               <Sparkles className="size-3 text-amber-500 shrink-0" />
-              <span>Visível em tempo real no cursor e notas</span>
+              <span>Cor ativa no cursor e notas colaborativas</span>
             </p>
           </div>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Campo de Nome */}
-          <div className="space-y-1.5">
-            <label
-              htmlFor="edit-display-name-input"
-              className="text-xs font-semibold text-foreground flex items-center justify-between"
-            >
-              <span>Nome de Exibição</span>
-              {!isGoogleUser && (
+          {/* Campo de Nome (Exibido EXCLUSIVAMENTE para contas de Convidado) */}
+          {!isGoogleUser && (
+            <div className="space-y-1.5">
+              <label
+                htmlFor="edit-display-name-input"
+                className="text-xs font-semibold text-foreground flex items-center justify-between"
+              >
+                <span>Nome de Exibição</span>
                 <span className="text-[10px] text-muted-foreground font-normal">
                   {name.length}/30 caracteres
                 </span>
-              )}
-            </label>
-            <Input
-              id="edit-display-name-input"
-              type="text"
-              value={isGoogleUser ? currentUser.displayName : name}
-              maxLength={30}
-              disabled={isGoogleUser}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Digite seu nome ou apelido..."
-              className={`h-9 text-xs rounded-lg border-border focus-visible:ring-primary ${
-                isGoogleUser ? 'bg-muted/50 cursor-not-allowed opacity-90 text-foreground font-medium' : 'bg-background'
-              }`}
-              autoFocus={!isGoogleUser}
-            />
-            {isGoogleUser && (
-              <p className="text-[11px] text-muted-foreground flex items-center gap-1 mt-1">
-                <span>🔒 Nome sincronizado com a sua conta Google (não editável).</span>
-              </p>
-            )}
-          </div>
+              </label>
+              <Input
+                id="edit-display-name-input"
+                type="text"
+                value={name}
+                maxLength={30}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Digite seu nome ou apelido..."
+                className="h-9 text-xs rounded-lg border-border focus-visible:ring-primary bg-background"
+                autoFocus
+              />
+            </div>
+          )}
 
-          {/* Seletor de Cores do Cursor */}
-          <div className="space-y-2">
-            <label className="text-xs font-semibold text-foreground block">
-              Cor do Cursor & Presença
-            </label>
-            <div className="flex flex-wrap items-center gap-2 p-2 rounded-lg border border-border/60 bg-muted/20">
-              {USER_COLORS.map((c) => {
-                const isSelected = c.toLowerCase() === color.toLowerCase();
-                return (
-                  <Tooltip key={c}>
-                    <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        onClick={() => setColor(c)}
-                        className={`size-6 rounded-full transition-all flex items-center justify-center cursor-pointer border ${
-                          isSelected
-                            ? 'ring-2 ring-primary ring-offset-2 ring-offset-background scale-110 shadow-xs'
-                            : 'border-black/15 hover:scale-105'
-                        }`}
-                        style={{ backgroundColor: c }}
-                        aria-label={`Selecionar cor ${c}`}
-                      >
-                        {isSelected && <Check className="size-3 text-white stroke-[3]" />}
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent side="top">Selecionar esta cor</TooltipContent>
-                  </Tooltip>
-                );
-              })}
+          {/* Seletor de Cores do Cursor (Paleta expandida + Cores personalizadas) */}
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-foreground block">
+                Cor do Cursor & Presença
+              </label>
+              <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-border/70 bg-muted/40 font-mono text-[10px] font-semibold text-foreground">
+                <span
+                  className="size-2.5 rounded-full border border-black/15 shadow-2xs"
+                  style={{ backgroundColor: color }}
+                />
+                <span>{color.toUpperCase()}</span>
+              </div>
+            </div>
+
+            {/* Grid de Cores Rápidas */}
+            <div className="p-2.5 rounded-xl border border-border/60 bg-muted/20 space-y-2.5">
+              <div className="grid grid-cols-7 sm:grid-cols-9 gap-1.5">
+                {USER_COLOR_PRESETS.map((c) => {
+                  const isSelected = c.value.toLowerCase() === color.toLowerCase();
+                  const checkColor = getContrastTextColor(c.value);
+                  return (
+                    <Tooltip key={c.value}>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          onClick={() => setColor(c.value)}
+                          className={`size-7 sm:size-7.5 rounded-lg transition-[transform,box-shadow] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] flex items-center justify-center cursor-pointer border active:scale-[0.93] ${
+                            isSelected
+                              ? 'ring-2 ring-primary ring-offset-2 ring-offset-background scale-110 shadow-xs'
+                              : 'border-black/15 hover:scale-105'
+                          }`}
+                          style={{ backgroundColor: c.value }}
+                          aria-label={`Selecionar cor ${c.name} (${c.value})`}
+                        >
+                          {isSelected && (
+                            <Check
+                              className="size-3.5 stroke-[3]"
+                              style={{ color: checkColor }}
+                            />
+                          )}
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">
+                        {c.name} ({c.value})
+                      </TooltipContent>
+                    </Tooltip>
+                  );
+                })}
+
+                {/* Botão Seletor de Cor Personalizada Livre (Pipette / Color Picker) */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <label
+                      className={`relative size-7 sm:size-7.5 rounded-lg border flex items-center justify-center cursor-pointer transition-[transform,box-shadow] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.93] bg-gradient-to-tr from-rose-500 via-indigo-500 to-emerald-400 shadow-xs ${
+                        !isPresetColor
+                          ? 'ring-2 ring-primary ring-offset-2 ring-offset-background scale-110'
+                          : 'border-border hover:scale-105'
+                      }`}
+                      title="Escolher qualquer cor personalizada"
+                    >
+                      <Pipette className="size-3.5 text-white drop-shadow-xs" />
+                      <input
+                        type="color"
+                        value={color.startsWith('#') && color.length === 7 ? color : '#3b82f6'}
+                        onChange={(e) => setColor(e.target.value)}
+                        className="sr-only"
+                      />
+                    </label>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">Escolher cor personalizada...</TooltipContent>
+                </Tooltip>
+              </div>
+
+              {/* Linha de Cor Personalizada Ativa e Digitação Hex */}
+              <div className="flex items-center justify-between pt-2 border-t border-border/50 text-[11px]">
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <Pipette className="size-3 text-muted-foreground shrink-0" />
+                  <span>Personalizada:</span>
+                  {!isPresetColor ? (
+                    <span className="font-semibold text-primary">Ativa no cursor</span>
+                  ) : (
+                    <span className="text-[10px] text-muted-foreground/75">Clique no arco-íris</span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] font-mono text-muted-foreground">#</span>
+                  <Input
+                    type="text"
+                    value={color.replace(/^#/, '')}
+                    maxLength={6}
+                    onChange={(e) => {
+                      const clean = e.target.value.replace(/[^0-9a-fA-F]/g, '');
+                      setColor(`#${clean}`);
+                    }}
+                    className="h-6 w-18 px-1.5 text-[10px] font-mono font-semibold uppercase bg-background rounded-md text-center"
+                    placeholder="HEX"
+                  />
+                </div>
+              </div>
             </div>
           </div>
 
@@ -206,7 +277,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
               variant="outline"
               size="sm"
               onClick={() => onOpenChange(false)}
-              className="h-8 text-xs rounded-lg"
+              className="h-8 text-xs rounded-lg active:scale-[0.97]"
             >
               Cancelar
             </Button>
@@ -214,14 +285,14 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
               type="submit"
               size="sm"
               disabled={!hasChanges || isSaving || (!isGoogleUser && !trimmedName)}
-              className="h-8 text-xs font-medium rounded-lg gap-1.5"
+              className="h-8 text-xs font-medium rounded-lg gap-1.5 active:scale-[0.97]"
             >
               {isSaving ? (
                 <span>Salvando...</span>
               ) : (
                 <>
                   <Check className="size-3.5" />
-                  <span>{isGoogleUser ? 'Salvar Cor do Cursor' : 'Salvar Nome'}</span>
+                  <span>{isGoogleUser ? 'Salvar Cor do Cursor' : 'Salvar Alterações'}</span>
                 </>
               )}
             </Button>
