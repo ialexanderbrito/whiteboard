@@ -8,6 +8,7 @@ import { ShapeItem } from './ShapeItem';
 import { ArrowItem } from './ArrowItem';
 import { FreeDrawItem } from './FreeDrawItem';
 import { TextItem } from './TextItem';
+import { RichTextEditor, type RichTextFinishPayload } from './RichTextEditor';
 import { FrameItem } from './FrameItem';
 import { StickerItem } from './StickerItem';
 import { ElementLinkBalloon } from './ElementLinkBalloon';
@@ -26,6 +27,15 @@ import { playReactionPopSound } from '../../utils/audioChime';
 import { votingService, type BoardVotingData } from '../../services/votingService';
 import { stripMarkdownLinks, removeLinkFromElement, addLinkToElement, normalizeUrl } from '../../utils/textLinks';
 import {
+  allRunsHaveFormat,
+  applyLinkToRuns,
+  deriveLinksFromRuns,
+  removeRunLink,
+  runsToPlainText,
+  updateRunLink,
+} from '../../utils/richText';
+import { textEditingBridge } from '../../utils/textEditingBridge';
+import {
   copyCanvasElements,
   getCachedClipboardElements,
   getElementsBoundingBox,
@@ -33,7 +43,12 @@ import {
   getImageDimensions,
 } from '../../utils/clipboard';
 import { applyWorldTransform, publishViewport } from '../../utils/viewport';
-import { boundsIntersect, getElementWorldBounds } from '../../utils/elementBounds';
+import {
+  boundsIntersect,
+  canElementRotate,
+  getElementWorldBounds,
+  normalizeRotationDeg,
+} from '../../utils/elementBounds';
 import { StickyReactionBar } from './StickyReactionBar';
 import { StickyQuickAdd } from './StickyQuickAdd';
 import { getAdjacentStickyRect, type StickyDirection } from '../../utils/stickyPlacement';
@@ -325,6 +340,9 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
 
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   const [inlineEditing, setInlineEditing] = useState<InlineEditingState | null>(null);
+  const [isTransforming, setIsTransforming] = useState(false);
+  const rotationHudRef = useRef<HTMLDivElement>(null);
+  const rotationHudValueRef = useRef<HTMLSpanElement>(null);
 
   // Estado do Menu de Contexto do Botão Direito no Board
   const [contextMenuState, setContextMenuState] = useState<{
@@ -393,6 +411,20 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
 
   const handleSaveModalLink = (url: string, label?: string) => {
     if (!linkModalState) return;
+
+    // Com o editor rico aberto, o link é aplicado exatamente na seleção atual
+    // (letra, palavra ou frase) em vez de virar um link do elemento inteiro.
+    const activeEditor = textEditingBridge.get(linkModalState.elementId);
+    if (activeEditor) {
+      const elementId = linkModalState.elementId;
+      activeEditor.applyLink(normalizeUrl(url), label);
+      setLinkModalState(null);
+      // O fechamento do modal devolve o foco ao gatilho; devolvemos ao texto
+      // para o usuário continuar digitando sem clicar novamente.
+      window.setTimeout(() => textEditingBridge.get(elementId)?.focus(), 0);
+      return;
+    }
+
     const elem = elements.find((el) => el.id === linkModalState.elementId);
     if (!elem) return;
 
@@ -404,17 +436,28 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       currentLinks = removed.links;
     }
 
-    const { linkUrl, links } = addLinkToElement(
+    const { linkUrl: baseLinkUrl, links: baseLinks } = addLinkToElement(
       currentLinkUrl,
       currentLinks,
       url,
       label
     );
 
+    const sourceRuns = elem.richText;
+    const richText =
+      Array.isArray(sourceRuns) && sourceRuns.length > 0
+        ? linkModalState.oldUrl
+          ? updateRunLink(sourceRuns, linkModalState.oldUrl, url, label)
+          : applyLinkToRuns(sourceRuns, url, label)
+        : undefined;
+
+    const derived = richText ? deriveLinksFromRuns(richText) : null;
+
     onUpdateElement(elem.id, {
-      linkUrl,
-      links,
-      text: stripMarkdownLinks(elem.text || ''),
+      linkUrl: derived ? derived.linkUrl : baseLinkUrl,
+      links: derived ? derived.links : baseLinks,
+      text: richText ? runsToPlainText(richText) : stripMarkdownLinks(elem.text || ''),
+      ...(richText ? { richText } : {}),
     });
 
     setLinkModalState(null);
@@ -422,6 +465,16 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
 
   const handleRemoveModalLink = () => {
     if (!linkModalState) return;
+
+    const activeEditor = textEditingBridge.get(linkModalState.elementId);
+    if (activeEditor) {
+      const elementId = linkModalState.elementId;
+      activeEditor.removeLink();
+      setLinkModalState(null);
+      window.setTimeout(() => textEditingBridge.get(elementId)?.focus(), 0);
+      return;
+    }
+
     const elem = elements.find((el) => el.id === linkModalState.elementId);
     if (!elem) return;
 
@@ -431,10 +484,16 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       linkModalState.oldUrl || linkModalState.initialUrl
     );
 
+    const targetUrl = linkModalState.oldUrl || linkModalState.initialUrl;
+    const richText = elem.richText
+      ? removeRunLink(elem.richText, linkModalState.oldUrl ? targetUrl : undefined)
+      : undefined;
+
     onUpdateElement(elem.id, {
       linkUrl,
       links,
       text: stripMarkdownLinks(elem.text || ''),
+      ...(richText ? { richText } : {}),
     });
 
     setLinkModalState(null);
@@ -442,6 +501,20 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
 
   // Rastreamento de posições iniciais para arraste em lote sincronizado
   const dragStartPositions = useRef<Map<string, { x: number; y: number }>>(new Map());
+
+  // Navegação por gestos touch (celular/tablet): pinça de 2 dedos para zoom,
+  // movimento dos 2 dedos para pan e arraste de 1 dedo no fundo em modo visualização
+  const touchGestureRef = useRef<{
+    mode: 'pinch' | 'oneFingerPan';
+    startCenter: { x: number; y: number };
+    startStagePos: { x: number; y: number };
+    startDist: number;
+    startScale: number;
+    centerWorld: { x: number; y: number };
+  } | null>(null);
+  // Encaixa eventos fantasma de mouse após uma pinça e dedos restantes no ar pós-gesto
+  const touchGestureEndedAtRef = useRef(0);
+  const skipTouchUntilLiftRef = useRef(false);
 
   // Navegação no canvas com botão do meio do mouse (Scroll Wheel Drag)
   const isMiddlePanning = useRef(false);
@@ -603,6 +676,9 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     if (selectedIds.length > 0) {
       const nodes: Konva.Node[] = [];
       selectedIds.forEach((id) => {
+        if (inlineEditing?.elementId === id && inlineEditing.type === 'text') {
+          return;
+        }
         const elem = elements.find((e) => e.id === id);
         if (elem && !elem.locked) {
           // Em modo comentário, só anexa alças se o elemento for um post-it criado pelo próprio usuário
@@ -619,7 +695,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       transformerRef.current.nodes([]);
       transformerRef.current.getLayer()?.batchDraw();
     }
-  }, [selectedIds, elements, readOnly, canCommentOnly, currentUser.uid]);
+  }, [selectedIds, elements, readOnly, canCommentOnly, currentUser.uid, inlineEditing]);
 
   // Alternar reação de emoji em post-its
   const handleToggleReactionInternal = useCallback(
@@ -1236,6 +1312,154 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     applyStagePan(newPos, newScale);
   };
 
+  // ===== Navegação touch (mobile/tablet) =====
+  // 2 dedos: pinça para zoom + movimento simultâneo para pan (funciona em qualquer ferramenta).
+  // 1 dedo sobre o fundo em modo visualização (celular): arrasta o quadro nas duas direções.
+  const getTouchPointInContainer = (clientX: number, clientY: number) => {
+    const rect = stageRef.current?.container().getBoundingClientRect();
+    return {
+      x: clientX - (rect?.left ?? 0),
+      y: clientY - (rect?.top ?? 0),
+    };
+  };
+
+  const getTwoTouchMetrics = (touches: TouchList) => {
+    const a = getTouchPointInContainer(touches[0].clientX, touches[0].clientY);
+    const b = getTouchPointInContainer(touches[1].clientX, touches[1].clientY);
+    return {
+      center: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+      dist: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)),
+    };
+  };
+
+  // Um segundo dedo é usado como apoio durante interações de 1 dedo; a pinça vira pan depois do fim do gesto.
+  const isSingleFingerInteractionLocked = () =>
+    isDrawing.current ||
+    isErasing.current ||
+    partialEraseActiveRef.current ||
+    isLocalLaserDrawingRef?.current === true ||
+    transformerRef.current?.isTransforming() === true;
+
+  const handleStageTouchStart = (e: Konva.KonvaEventObject<TouchEvent>) => {
+    const touches = e.evt.touches;
+
+    if (touches.length >= 2) {
+      e.evt.preventDefault();
+      // Não interrompe traço/borracha/laser em andamento: o segundo dedo é só apoio da mão
+      if (isSingleFingerInteractionLocked()) return;
+      if (isMarquee.current) {
+        isMarquee.current = false;
+        setMarqueeBox(null);
+      }
+      skipTouchUntilLiftRef.current = true;
+
+      const { center, dist } = getTwoTouchMetrics(touches);
+      const startPos = stagePosRef.current;
+      const startScale = scaleRef.current;
+      touchGestureRef.current = {
+        mode: 'pinch',
+        startCenter: center,
+        startStagePos: startPos,
+        startDist: dist,
+        startScale,
+        centerWorld: {
+          x: (center.x - startPos.x) / startScale,
+          y: (center.y - startPos.y) / startScale,
+        },
+      };
+      return;
+    }
+
+    // Dedo restante após pinça (ou eventos fantasma logo após o fim do gesto): ignora
+    if (skipTouchUntilLiftRef.current || Date.now() < touchGestureEndedAtRef.current + 350) {
+      e.evt.preventDefault();
+      return;
+    }
+
+    // Modo visualização (celular): arrastar o fundo do quadro com 1 dedo move a câmera
+    if (readOnly && e.target === stageRef.current && !isSpacePressed) {
+      e.evt.preventDefault();
+      const point = getTouchPointInContainer(touches[0].clientX, touches[0].clientY);
+      touchGestureRef.current = {
+        mode: 'oneFingerPan',
+        startCenter: point,
+        startStagePos: stagePosRef.current,
+        startDist: 0,
+        startScale: scaleRef.current,
+        centerWorld: { x: 0, y: 0 },
+      };
+      return;
+    }
+
+    (handleMouseDown as unknown as (ev: Konva.KonvaEventObject<TouchEvent>) => void)(e);
+  };
+
+  const handleStageTouchMove = (e: Konva.KonvaEventObject<TouchEvent>) => {
+    const gesture = touchGestureRef.current;
+    const touches = e.evt.touches;
+
+    if (gesture?.mode === 'pinch') {
+      if (touches.length < 2) return;
+      e.evt.preventDefault();
+      const { center, dist } = getTwoTouchMetrics(touches);
+      const newScale = Math.max(0.1, Math.min(5, gesture.startScale * (dist / gesture.startDist)));
+      // Mantém fixo o ponto do mundo onde a pinça começou; o movimento do centro vira pan
+      applyStagePan(
+        {
+          x: center.x - gesture.centerWorld.x * newScale,
+          y: center.y - gesture.centerWorld.y * newScale,
+        },
+        newScale
+      );
+      return;
+    }
+
+    if (gesture?.mode === 'oneFingerPan') {
+      e.evt.preventDefault();
+      if (touches.length !== 1) return;
+      const point = getTouchPointInContainer(touches[0].clientX, touches[0].clientY);
+      applyStagePan(
+        {
+          x: gesture.startStagePos.x + (point.x - gesture.startCenter.x),
+          y: gesture.startStagePos.y + (point.y - gesture.startCenter.y),
+        },
+        gesture.startScale
+      );
+      return;
+    }
+
+    if (skipTouchUntilLiftRef.current) {
+      e.evt.preventDefault();
+      return;
+    }
+
+    (handleMouseMove as unknown as (ev: Konva.KonvaEventObject<TouchEvent>) => void)(e);
+  };
+
+  const handleStageTouchEnd = (e: Konva.KonvaEventObject<TouchEvent>) => {
+    const remaining = e.evt.touches.length;
+    const gesture = touchGestureRef.current;
+
+    if (gesture && !isSingleFingerInteractionLocked()) {
+      if (gesture.mode === 'pinch' || gesture.mode === 'oneFingerPan') {
+        applyStagePan(stagePosRef.current, scaleRef.current, 'immediate');
+      }
+      touchGestureRef.current = null;
+      if (remaining > 0) {
+        // Continua com 1 dedo pós-gesto: ignora esse dedo até que todos sejam levantados
+        skipTouchUntilLiftRef.current = true;
+        touchGestureEndedAtRef.current = Date.now();
+        return;
+      }
+    }
+
+    if (remaining === 0) {
+      skipTouchUntilLiftRef.current = false;
+    }
+
+    (handleMouseUp as unknown as (ev: Konva.KonvaEventObject<TouchEvent>) => void)(e);
+  };
+
   // Seleção e alternância de seleção com Ctrl / Cmd
   const handleItemSelect = useCallback((
     elemId: string,
@@ -1528,6 +1752,11 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
 
   // Pressionar mouse no canvas
   const handleMouseDown = async (e: Konva.KonvaEventObject<MouseEvent>) => {
+    // Ignora eventos sintéticos de mouse gerados pelo toque durante/ logo após gestos touch (pinça/pan)
+    if (touchGestureRef.current || Date.now() < touchGestureEndedAtRef.current + 300) {
+      return;
+    }
+
     if (contextMenuState.isOpen) {
       setContextMenuState((prev) => ({ ...prev, isOpen: false }));
     }
@@ -2181,22 +2410,69 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
   // Finalizar edição de texto inline
   const handleFinishEditing = () => {
     if (!inlineEditing) return;
-    const finalVal = inlineEditing.text.trim();
-    if (inlineEditing.type === 'text' && !finalVal) {
-      // Apenas caixas de texto soltas vazias criadas do zero são descartadas se nunca tiveram conteúdo
-      const elem = elements.find((e) => e.id === inlineEditing.elementId);
-      if (elem && !elem.text) {
-        onDeleteElement(inlineEditing.elementId);
-        onSelectionChange(selectedIds.filter((id) => id !== inlineEditing.elementId));
+    if (inlineEditing.type === 'text') {
+      const editor = textEditingBridge.get(inlineEditing.elementId);
+      if (editor) {
+        editor.finish();
+      } else {
+        setInlineEditing(null);
       }
-    } else {
-      // Post-its, molduras e formas geométricas NUNCA são deletados ao sair da edição
-      onUpdateElement(inlineEditing.elementId, {
-        text: stripMarkdownLinks(inlineEditing.text),
-      });
+      return;
     }
+    // Post-its, molduras e formas geométricas NUNCA são deletados ao sair da edição
+    onUpdateElement(inlineEditing.elementId, {
+      text: stripMarkdownLinks(inlineEditing.text),
+    });
     setInlineEditing(null);
   };
+
+  // Finaliza a edição do texto rico com os runs formatados por trecho.
+  const handleFinishRichTextEditing = useCallback(
+    (payload: RichTextFinishPayload) => {
+      if (!inlineEditing) return;
+      const elem = elementsRef.current.find((e) => e.id === inlineEditing.elementId);
+      if (!elem) {
+        setInlineEditing(null);
+        return;
+      }
+
+      if (!payload.text.trim() && !elem.text && !(elem.richText && elem.richText.length > 0)) {
+        // Caixa criada do zero e nunca preenchida: descarta como antes.
+        onDeleteElement(elem.id);
+        onSelectionChange(selectedIds.filter((id) => id !== elem.id));
+      } else {
+        const { linkUrl, links } = deriveLinksFromRuns(payload.runs);
+        const allBold = allRunsHaveFormat(payload.runs, 'bold');
+        const allItalic = allRunsHaveFormat(payload.runs, 'italic');
+        const allUnderline = allRunsHaveFormat(payload.runs, 'underline');
+        const allStrike = allRunsHaveFormat(payload.runs, 'strikethrough');
+        const textDecoration =
+          allUnderline && allStrike
+            ? 'underline line-through'
+            : allUnderline
+              ? 'underline'
+              : allStrike
+                ? 'line-through'
+                : 'none';
+        onUpdateElement(elem.id, {
+          text: payload.text,
+          richText: payload.runs,
+          width: Math.max(40, Math.round(payload.width)),
+          height: Math.max(1, Math.round(payload.height)),
+          x: Math.round(payload.x),
+          ...(payload.y !== undefined ? { y: Math.round(payload.y) } : {}),
+          fontWeight: allBold ? 'bold' : 'normal',
+          fontStyle: allItalic ? 'italic' : 'normal',
+          textDecoration,
+          linkUrl,
+          links,
+        });
+      }
+
+      setInlineEditing(null);
+    },
+    [inlineEditing, onDeleteElement, onSelectionChange, onUpdateElement, selectedIds]
+  );
 
   const isDraggableStage = currentTool === 'pan' || isSpacePressed;
 
@@ -2550,6 +2826,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     !readOnly &&
     !selectedSticky.locked &&
     !inlineEditing &&
+    !isTransforming &&
     !contextMenuState.isOpen &&
     (!canCommentOnly || selectedSticky.updatedBy === currentUser.uid)
   );
@@ -2927,6 +3204,10 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     }
   };
 
+  const inlineEditingElement = inlineEditing
+    ? elements.find((elem) => elem.id === inlineEditing.elementId) || null
+    : null;
+
   return (
     <div
       onContextMenu={(e) => {
@@ -2939,7 +3220,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         if (e.button === 1) e.preventDefault();
       }}
       className="relative w-full h-full select-none overflow-hidden bg-background"
-      style={{ cursor: canvasCursor }}
+      style={{ cursor: canvasCursor, touchAction: 'none' }}
       onMouseLeave={() => {
         if (eraserCursorRef.current) {
           eraserCursorRef.current.style.display = 'none';
@@ -2973,10 +3254,11 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         showGrid={showGrid}
       />
 
-      {/* Barra de Propriedades Flutuante (Oculta em Modo Leitura e Restrita a Itens Próprios em Modo Comentário) */}
-      {!readOnly && (!canCommentOnly || (selectedElements.length > 0 && selectedElements.every((e) => e.updatedBy === currentUser.uid))) && (
+      {/* Barra de Propriedades Flutuante (Oculta em Modo Leitura, durante transformações e Restrita a Itens Próprios em Modo Comentário) */}
+      {!readOnly && !isTransforming && (!canCommentOnly || (selectedElements.length > 0 && selectedElements.every((e) => e.updatedBy === currentUser.uid))) && (
         <SelectionContextBar
         selectedElements={selectedElements}
+        editingElementId={inlineEditing?.elementId}
         onUpdateElement={onUpdateElement}
         onUpdateElements={(ids, updates) => {
           if (onBatchUpdateElements) {
@@ -3065,7 +3347,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         <StickyQuickAdd sticky={selectedSticky} onCreate={handleQuickAddSticky} />
       )}
 
-      {selectedElements.length === 1 && !inlineEditing && (
+      {selectedElements.length === 1 && !inlineEditing && !isTransforming && (
         <ElementLinkBalloon
           element={selectedElements[0]}
           scale={scale}
@@ -3089,16 +3371,18 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
               selectedElements[0].links,
               url
             );
-            onUpdateElement(selectedElements[0].id, {
+            const target = selectedElements[0];
+            onUpdateElement(target.id, {
               linkUrl,
               links,
+              ...(target.richText ? { richText: removeRunLink(target.richText, url) } : {}),
             });
           }}
         />
       )}
 
       {/* Barra Flutuante de Reações Apple Emoji para o Post-it Selecionado (z-index 50: NUNCA fica por baixo de post-its vizinhos) */}
-      {selectedSticky && onToggleReaction && (
+      {selectedSticky && !isTransforming && onToggleReaction && (
         <StickyReactionBar
           sticky={selectedSticky}
           onToggleReaction={onToggleReaction}
@@ -3410,9 +3694,9 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
-        onTouchStart={handleMouseDown as unknown as (e: Konva.KonvaEventObject<TouchEvent>) => void}
-        onTouchMove={handleMouseMove as unknown as (e: Konva.KonvaEventObject<TouchEvent>) => void}
-        onTouchEnd={handleMouseUp as unknown as (e: Konva.KonvaEventObject<TouchEvent>) => void}
+        onTouchStart={handleStageTouchStart}
+        onTouchMove={handleStageTouchMove}
+        onTouchEnd={handleStageTouchEnd}
         onMouseEnter={() => {
           isMouseOverCanvasRef.current = true;
         }}
@@ -3589,7 +3873,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           )}
         </Layer>
 
-        {/* Camada 3: Konva Transformer para redimensionamento e rotação unificado */}
+        {/* Camada 3: Konva Transformer para redimensionamento e rotação pelas 4 pontas (estilo Figma/Miro) */}
         <Layer id="transformer-layer">
           <Transformer
             ref={transformerRef}
@@ -3600,7 +3884,117 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
               }
               return newBox;
             }}
-            rotateEnabled={true}
+            rotateEnabled={selectedElements.length > 0 && selectedElements.every(canElementRotate)}
+            rotateMode="corners"
+            rotationSnaps={[0, 90, 180, 270]}
+            rotationSnapTolerance={3}
+            anchorStyleFunc={(anchor) => {
+              // Expande a zona externa de rotação nos 4 cantos (sem lacuna ao redor do
+              // quadradinho de resize e com área de toque ampliada em telas touch).
+              const tr = transformerRef.current as
+                | (Konva.Transformer & { _anchors?: Record<string, Konva.Rect> })
+                | null;
+              if (!tr || !tr._anchors || !anchor.hasName('top-left')) return;
+              const isCoarse =
+                typeof window !== 'undefined' &&
+                window.matchMedia?.('(pointer: coarse)').matches === true;
+              const outerReach = isCoarse ? 26 : 16;
+              const innerOverlap = 6;
+              const zoneSize = outerReach + innerOverlap;
+              const w = tr.width();
+              const h = tr.height();
+              const zonesVisible = tr.rotateEnabled() && tr.rotateMode() !== 'handle';
+              const cornerZones: Array<[string, number, number]> = [
+                ['rotater-top-left', -outerReach, -outerReach],
+                ['rotater-top-right', w - innerOverlap, -outerReach],
+                ['rotater-bottom-left', -outerReach, h - innerOverlap],
+                ['rotater-bottom-right', w - innerOverlap, h - innerOverlap],
+              ];
+              for (const [name, zx, zy] of cornerZones) {
+                const z = tr._anchors[name];
+                if (z) {
+                  z.setAttrs({
+                    x: zx,
+                    y: zy,
+                    width: zoneSize,
+                    height: zoneSize,
+                    visible: zonesVisible,
+                  });
+                }
+              }
+            }}
+            onTransformStart={() => {
+              setIsTransforming(true);
+              const tr = transformerRef.current;
+              const activeAnchor = tr?.getActiveAnchor() || '';
+              if (
+                activeAnchor.startsWith('rotater') &&
+                rotationHudRef.current &&
+                rotationHudValueRef.current &&
+                tr
+              ) {
+                const primaryNode = tr.nodes()[0];
+                const deg = normalizeRotationDeg(
+                  primaryNode ? primaryNode.rotation() : tr.rotation()
+                );
+                rotationHudValueRef.current.textContent = `${deg}°`;
+                const isCardinal = deg === 0 || deg === 90 || deg === -90 || deg === 180;
+                rotationHudRef.current.dataset.snapped = isCardinal ? 'true' : 'false';
+                const pointer = stageRef.current?.getPointerPosition();
+                if (pointer) {
+                  rotationHudRef.current.style.transform = `translate3d(${Math.round(pointer.x + 18)}px, ${Math.round(pointer.y + 18)}px, 0) scale(1)`;
+                }
+                rotationHudRef.current.style.opacity = '1';
+              }
+            }}
+            onTransform={() => {
+              const tr = transformerRef.current;
+              if (!tr) return;
+
+              // Sincroniza GIFs em tempo real durante rotação/redimensionamento
+              tr.nodes().forEach((node) => {
+                const id = node.id();
+                if (!id) return;
+                const targetGif = document.getElementById(`gif-overlay-${id}`);
+                if (targetGif) {
+                  const elem = elementsRef.current.find((el) => el.id === id);
+                  const baseW = elem?.width || 220;
+                  const baseH = elem?.height || 160;
+                  targetGif.style.left = `${node.x()}px`;
+                  targetGif.style.top = `${node.y()}px`;
+                  targetGif.style.width = `${Math.max(40, baseW * node.scaleX())}px`;
+                  targetGif.style.height = `${Math.max(40, baseH * node.scaleY())}px`;
+                  const rot = node.rotation();
+                  targetGif.style.transform = rot ? `rotate(${rot}deg)` : '';
+                }
+              });
+
+              const activeAnchor = tr.getActiveAnchor() || '';
+              if (
+                activeAnchor.startsWith('rotater') &&
+                rotationHudRef.current &&
+                rotationHudValueRef.current
+              ) {
+                const primaryNode = tr.nodes()[0];
+                const deg = normalizeRotationDeg(
+                  primaryNode ? primaryNode.rotation() : tr.rotation()
+                );
+                rotationHudValueRef.current.textContent = `${deg}°`;
+                const isCardinal = deg === 0 || deg === 90 || deg === -90 || deg === 180;
+                rotationHudRef.current.dataset.snapped = isCardinal ? 'true' : 'false';
+                const pointer = stageRef.current?.getPointerPosition();
+                if (pointer) {
+                  rotationHudRef.current.style.transform = `translate3d(${Math.round(pointer.x + 18)}px, ${Math.round(pointer.y + 18)}px, 0) scale(1)`;
+                }
+                rotationHudRef.current.style.opacity = '1';
+              }
+            }}
+            onTransformEnd={() => {
+              setIsTransforming(false);
+              if (rotationHudRef.current) {
+                rotationHudRef.current.style.opacity = '0';
+              }
+            }}
             borderStroke={userSelectionColor}
             borderStrokeWidth={1.5}
             anchorStroke={userSelectionColor}
@@ -3611,12 +4005,50 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         </Layer>
       </Stage>
 
+      {/* Pílula minimalista de ângulo ao vivo durante o giro pelas pontas (0 re-renders por frame) */}
+      <div
+        ref={rotationHudRef}
+        data-snapped="false"
+        aria-hidden="true"
+        className="pointer-events-none absolute left-0 top-0 z-50 flex items-center gap-1 rounded-full border border-border/85 bg-popover/95 px-2.5 py-0.5 text-[11px] font-semibold tabular-nums text-popover-foreground shadow-md backdrop-blur-md data-[snapped=true]:border-primary data-[snapped=true]:text-primary"
+        style={{
+          opacity: 0,
+          transform: 'translate3d(-9999px, -9999px, 0) scale(0.95)',
+          transition:
+            'opacity 140ms cubic-bezier(0.23, 1, 0.32, 1), border-color 140ms ease, color 140ms ease',
+          willChange: 'transform, opacity',
+        }}
+      >
+        <span ref={rotationHudValueRef}>0°</span>
+      </div>
+
       {/* Editor Inline Flutuante em HTML com posicionamento e estilização contextual precisos */}
-      {inlineEditing && (
+      {/* Editor de texto rico: formatação por letra/palavra, links por seleção e resize lateral */}
+      {inlineEditing && inlineEditing.type === 'text' && inlineEditingElement && (
+        <RichTextEditor
+          key={`rich-text-${inlineEditing.elementId}`}
+          element={inlineEditingElement}
+          scale={scale}
+          stagePos={stagePos}
+          selectionColor={userSelectionColor}
+          onFinish={handleFinishRichTextEditing}
+          onRequestLink={(selection) => {
+            setLinkModalState({
+              open: true,
+              elementId: inlineEditing.elementId,
+              initialUrl: 'https://',
+              initialLabel: selection?.text || '',
+              isNew: true,
+            });
+          }}
+        />
+      )}
+
+      {/* Editor inline de post-its, formas e molduras (texto simples) */}
+      {inlineEditing && inlineEditing.type !== 'text' && (
         <textarea
           autoFocus
           value={inlineEditing.text}
-          placeholder={inlineEditing.type === 'text' ? 'Digite algo...' : ''}
           onChange={(e) => setInlineEditing({ ...inlineEditing, text: e.target.value })}
           onSelect={(e) => {
             const ta = e.currentTarget;
@@ -3665,11 +4097,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
             if (e.key === 'Escape') {
               handleFinishEditing();
             }
-            if (
-              e.key === 'Enter' &&
-              (inlineEditing.type === 'text' || inlineEditing.type === 'frame') &&
-              !e.shiftKey
-            ) {
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
               e.preventDefault();
               handleFinishEditing();
             }
@@ -3690,32 +4118,17 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
             }
           }}
           className={`absolute z-50 font-sans resize-none ${
-            inlineEditing.type === 'text'
-              ? 'p-0 m-0 bg-transparent border-none outline-none shadow-none ring-0 leading-[1.2]'
-              : inlineEditing.type === 'frame'
+            inlineEditing.type === 'frame'
               ? 'px-2.5 py-1 rounded-t-md outline-none text-xs font-bold bg-slate-800 text-white border border-primary shadow-sm leading-normal'
               : 'p-3 rounded-sm outline-none font-sans leading-snug shadow-md border-2 border-primary/60'
           }`}
           style={{
             left: `${inlineEditing.worldX * scale + stagePos.x}px`,
             top: `${inlineEditing.worldY * scale + stagePos.y}px`,
-            width:
-              inlineEditing.type === 'text'
-                ? `${Math.max(
-                    120,
-                    (inlineEditing.text
-                      ? inlineEditing.text.length * (inlineEditing.fontSize || 20) * 0.65
-                      : 120) * scale
-                  )}px`
-                : `${Math.max(140, inlineEditing.width * scale)}px`,
-            height:
-              inlineEditing.type === 'text'
-                ? `${Math.max(26, (inlineEditing.fontSize || 20) * 1.35 * scale)}px`
-                : `${Math.max(32, inlineEditing.height * scale)}px`,
+            width: `${Math.max(140, inlineEditing.width * scale)}px`,
+            height: `${Math.max(32, inlineEditing.height * scale)}px`,
             backgroundColor:
-              inlineEditing.type === 'text'
-                ? 'transparent'
-                : inlineEditing.type === 'frame'
+              inlineEditing.type === 'frame'
                 ? '#1e293b'
                 : inlineEditing.fill || '#fff9b1',
             color:
@@ -3726,6 +4139,10 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
             )}px`,
             textAlign: inlineEditing.textAlign || (['rect', 'circle', 'diamond', 'triangle', 'star'].includes(inlineEditing.type || '') ? 'center' : 'left'),
             caretColor: '#2563eb',
+            transform: inlineEditingElement?.rotation
+              ? `rotate(${inlineEditingElement.rotation}deg)`
+              : undefined,
+            transformOrigin: inlineEditing.type === 'circle' ? 'center center' : '0 0',
           }}
         />
       )}

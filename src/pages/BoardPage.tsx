@@ -909,6 +909,10 @@ export const BoardPage: React.FC = () => {
         currentEl.fontWeight !== targetEl.fontWeight ||
         currentEl.fontStyle !== targetEl.fontStyle ||
         currentEl.textDecoration !== targetEl.textDecoration ||
+        currentEl.textColor !== targetEl.textColor ||
+        JSON.stringify(currentEl.richText) !== JSON.stringify(targetEl.richText) ||
+        currentEl.linkUrl !== targetEl.linkUrl ||
+        JSON.stringify(currentEl.links) !== JSON.stringify(targetEl.links) ||
         currentEl.points?.length !== targetEl.points?.length ||
         (currentEl.points &&
           targetEl.points &&
@@ -962,7 +966,11 @@ export const BoardPage: React.FC = () => {
   // Atalhos de teclado para Desfazer / Refazer (Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable)
+      ) {
         return;
       }
 
