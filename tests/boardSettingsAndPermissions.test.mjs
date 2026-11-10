@@ -25,7 +25,8 @@ test('BoardPermissionsModal: component exists and exports properly with error bo
   assert.ok(content.includes('export const BoardPermissionsModal'), 'Must export BoardPermissionsModal');
   assert.ok(content.includes('ModalErrorBoundary'), 'Must wrap modal content with ModalErrorBoundary to prevent white screen crashes');
   assert.ok(content.includes('Qualquer pessoa com o link'), 'Must include general link permission setting');
-  assert.ok(content.includes('Convidar por E-mail'), 'Must include email collaborator invite form');
+  assert.ok(!content.includes('Convidar por E-mail'), 'Must not include email collaborator invite form');
+  assert.ok(content.includes('Link de Compartilhamento Direto'), 'Must include direct link sharing');
   assert.ok(content.includes('Pessoas com Acesso'), 'Must list members and collaborators with individual roles');
   assert.ok(content.includes('Remover acesso'), 'Must allow removing user access');
   assert.ok(content.includes('active:scale-[0.97]'), 'Must use Emil Kowalski responsive press feedback');

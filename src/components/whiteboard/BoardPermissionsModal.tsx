@@ -5,14 +5,13 @@ import {
   Check, 
   Globe, 
   ShieldAlert, 
-  UserPlus, 
   Trash2, 
-  ChevronDown,
-  Sparkles,
-  MessageSquare,
-  Eye,
-  AlertCircle
-} from 'lucide-react';
+  ChevronDown, 
+  Sparkles, 
+  MessageSquare, 
+  Eye, 
+  AlertCircle 
+} from '@/components/ui/icons';
 import {
   Dialog,
   DialogContent,
@@ -21,7 +20,6 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -31,7 +29,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import type { Board, BoardCollaborator, BoardPermission, CurrentUser } from '../../types/board';
+import type { Board, BoardPermission, CurrentUser } from '../../types/board';
 import { isBoardOwner } from '../../utils/permissions';
 import { boardService, cleanBoardId } from '../../services/boardService';
 
@@ -42,7 +40,7 @@ interface BoardPermissionsModalProps {
   currentUser: CurrentUser;
   onUpdateBoardSettings: (
     boardId: string,
-    updates: Partial<Pick<Board, 'defaultPermission' | 'collaborators' | 'collaboratorEmails' | 'members' | 'removedMemberIds'>>
+    updates: Partial<Pick<Board, 'defaultPermission' | 'collaborators' | 'collaboratorEmails' | 'members' | 'removedMemberIds' | 'waitingRoomEnabled' | 'joinRequests'>>
   ) => Promise<void>;
 }
 
@@ -119,7 +117,7 @@ const PERMISSION_CONFIG: Record<string, { label: string; desc: string; icon: Rea
   },
   none: {
     label: 'Restrito / Privado',
-    desc: 'Apenas convidados diretos têm acesso',
+    desc: 'Apenas você e quem você autorizar tem acesso',
     icon: ShieldAlert,
   },
 };
@@ -157,18 +155,10 @@ export const BoardPermissionsModal: React.FC<BoardPermissionsModalProps> = ({
   onUpdateBoardSettings,
 }) => {
   const [copiedLink, setCopiedLink] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteRole, setInviteRole] = useState<BoardPermission>('edit');
-  const [isInviting, setIsInviting] = useState(false);
-  const [inviteError, setInviteError] = useState<string | null>(null);
-  const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
   const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (open) {
-      setInviteEmail('');
-      setInviteError(null);
-      setInviteSuccess(null);
       setRemovedIds(new Set());
     }
   }, [open]);
@@ -179,13 +169,12 @@ export const BoardPermissionsModal: React.FC<BoardPermissionsModalProps> = ({
     ? (rawDefaultPermission as BoardPermission) 
     : 'edit';
 
-  // Monta a lista completa de membros e colaboradores de forma 100% à prova de falhas
+  // Monta a lista completa de membros de forma 100% à prova de falhas
   // IMPORTANTE: Deve ser chamado antes de qualquer early return para respeitar as Regras de Hooks do React
   const memberList = useMemo<MemberEntry[]>(() => {
     if (!board) return [];
     const list: MemberEntry[] = [];
     const seenUids = new Set<string>();
-    const seenEmails = new Set<string>();
 
     const safeRemovedArray = Array.isArray(board.removedMemberIds) ? board.removedMemberIds : [];
     const effectiveRemovedSet = new Set([
@@ -212,9 +201,6 @@ export const BoardPermissionsModal: React.FC<BoardPermissionsModalProps> = ({
     });
 
     if (ownerUid) seenUids.add(ownerUid);
-    if (currentUser?.email && isOwner) {
-      seenEmails.add(currentUser.email.toLowerCase());
-    }
 
     // 2. Membros registrados
     if (board.members && typeof board.members === 'object') {
@@ -225,8 +211,6 @@ export const BoardPermissionsModal: React.FC<BoardPermissionsModalProps> = ({
         if (m.role === 'none') continue;
 
         seenUids.add(m.uid);
-        if (m.email) seenEmails.add(String(m.email).toLowerCase());
-
         const role = (m.role && m.role in PERMISSION_CONFIG) ? (m.role as BoardPermission) : defaultPermission;
 
         list.push({
@@ -243,26 +227,9 @@ export const BoardPermissionsModal: React.FC<BoardPermissionsModalProps> = ({
       }
     }
 
-    // 3. Colaboradores convidados por e-mail
+    // Guarda defensiva para estruturas legadas
     if (board.collaborators && typeof board.collaborators === 'object') {
-      const collabs = Object.values(board.collaborators);
-      for (const c of collabs) {
-        if (!c || typeof c !== 'object' || !c.email) continue;
-        const cleanEmail = String(c.email).toLowerCase();
-        if (seenEmails.has(cleanEmail)) continue;
-        if (effectiveRemovedSet.has(cleanEmail) || effectiveRemovedSet.has(c.email)) continue;
-
-        seenEmails.add(cleanEmail);
-        const role = (c.role && c.role in PERMISSION_CONFIG) ? (c.role as BoardPermission) : 'edit';
-        list.push({
-          id: `email_${cleanEmail.replace(/[.#$[\]]/g, '_')}`,
-          name: cleanEmail.split('@')[0],
-          email: cleanEmail,
-          color: '#8b5cf6',
-          isOwner: false,
-          role,
-        });
-      }
+      // Mantém compatibilidade defensiva sem expor convites por e-mail na UI
     }
 
     return list;
@@ -300,59 +267,6 @@ export const BoardPermissionsModal: React.FC<BoardPermissionsModalProps> = ({
     }
   };
 
-  const handleInviteCollaborator = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const email = inviteEmail.trim().toLowerCase();
-    setInviteError(null);
-    setInviteSuccess(null);
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!email || !emailRegex.test(email)) {
-      setInviteError('Por favor, informe um endereço de e-mail válido.');
-      return;
-    }
-
-    if (currentUser?.email && email === currentUser.email.toLowerCase()) {
-      setInviteError('Você já é o proprietário deste quadro.');
-      return;
-    }
-
-    setIsInviting(true);
-    try {
-      const emailKey = email.replace(/[.#$[\]]/g, '_');
-      const updatedCollaborators: Record<string, BoardCollaborator> = {
-        ...(board.collaborators || {}),
-        [emailKey]: {
-          email,
-          role: inviteRole,
-          addedAt: Date.now(),
-        },
-      };
-
-      const collaboratorEmails = Object.values(updatedCollaborators)
-        .map((c) => (c?.email ? String(c.email).toLowerCase() : ''))
-        .filter(Boolean);
-
-      const safeRemovedIds = Array.isArray(board.removedMemberIds) ? board.removedMemberIds : [];
-      const updatedRemoved = safeRemovedIds.filter((id) => id !== email);
-
-      await onUpdateBoardSettings(board.id, {
-        collaborators: updatedCollaborators,
-        collaboratorEmails,
-        removedMemberIds: updatedRemoved,
-      });
-
-      setInviteEmail('');
-      setInviteSuccess(`Convite adicionado para ${email}`);
-      setTimeout(() => setInviteSuccess(null), 3000);
-    } catch (err) {
-      console.error('Erro ao convidar colaborador:', err);
-      setInviteError('Falha ao adicionar colaborador. Tente novamente.');
-    } finally {
-      setIsInviting(false);
-    }
-  };
-
   const handleUpdateMemberRole = async (member: MemberEntry, newRole: BoardPermission | 'remove') => {
     if (member.isOwner) return;
 
@@ -376,62 +290,39 @@ export const BoardPermissionsModal: React.FC<BoardPermissionsModalProps> = ({
         delete updatedMembers[member.uid];
       }
 
-      const updatedCollaborators = { ...(board.collaborators || {}) };
-      if (member.email) {
-        const cleanKey = member.email.replace(/[.#$[\]]/g, '_');
-        delete updatedCollaborators[cleanKey];
+      const safeRemoved = Array.isArray(board.removedMemberIds) ? board.removedMemberIds : [];
+      const updatedRemovedIds = Array.from(new Set([...safeRemoved, targetId]));
+
+      const updatedJoinRequests = { ...(board.joinRequests || {}) };
+      if (member.uid && updatedJoinRequests[member.uid]) {
+        updatedJoinRequests[member.uid] = {
+          ...updatedJoinRequests[member.uid],
+          status: 'rejected',
+          respondedAt: Date.now(),
+        };
       }
-
-      const collaboratorEmails = Object.values(updatedCollaborators)
-        .map((c) => (c?.email ? String(c.email).toLowerCase() : ''))
-        .filter(Boolean);
-
-      const safeRemovedIds = Array.isArray(board.removedMemberIds) ? board.removedMemberIds : [];
-      const updatedRemoved = Array.from(
-        new Set([...safeRemovedIds, ...(member.uid ? [member.uid] : [])])
-      );
 
       await onUpdateBoardSettings(board.id, {
         members: updatedMembers,
-        collaborators: updatedCollaborators,
-        collaboratorEmails,
-        removedMemberIds: updatedRemoved,
+        joinRequests: updatedJoinRequests,
+        removedMemberIds: updatedRemovedIds,
       });
       return;
     }
 
-    // Atualização de papel
+    // Atualiza papel individual do membro
     const updates: Partial<Pick<Board, 'collaborators' | 'collaboratorEmails' | 'members' | 'removedMemberIds'>> = {};
 
     if (member.uid) {
       const updatedMembers = { ...(board.members || {}) };
-      const current = updatedMembers[member.uid];
       updatedMembers[member.uid] = {
+        ...(updatedMembers[member.uid] || { joinedAt: Date.now() }),
         uid: member.uid,
         name: member.name,
-        email: member.email || null,
-        photoURL: member.photoURL || null,
         role: newRole,
-        joinedAt: current?.joinedAt || Date.now(),
         lastSeen: Date.now(),
-        isAnonymous: Boolean(member.isAnonymous),
-        color: member.color || '#3b82f6',
       };
       updates.members = updatedMembers;
-    }
-
-    if (member.email) {
-      const cleanKey = member.email.replace(/[.#$[\]]/g, '_');
-      const updatedCollaborators = { ...(board.collaborators || {}) };
-      updatedCollaborators[cleanKey] = {
-        email: member.email,
-        role: newRole,
-        addedAt: Date.now(),
-      };
-      updates.collaborators = updatedCollaborators;
-      updates.collaboratorEmails = Object.values(updatedCollaborators)
-        .map((c) => (c?.email ? String(c.email).toLowerCase() : ''))
-        .filter(Boolean);
     }
 
     await onUpdateBoardSettings(board.id, updates);
@@ -439,11 +330,11 @@ export const BoardPermissionsModal: React.FC<BoardPermissionsModalProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg border-border bg-card p-6 shadow-2xl animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-md border-border bg-card p-6 shadow-2xl animate-in zoom-in-95 duration-200">
         <ModalErrorBoundary onClose={() => onOpenChange(false)}>
           <DialogHeader className="space-y-2 text-left">
             <div className="flex items-center gap-3">
-              <div className="size-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 ring-4 ring-primary/5">
+              <div className="size-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center ring-4 ring-primary/5">
                 <Users className="size-5" />
               </div>
               <div>
@@ -451,52 +342,42 @@ export const BoardPermissionsModal: React.FC<BoardPermissionsModalProps> = ({
                   Permissões de Acesso
                 </DialogTitle>
                 <DialogDescription className="text-xs text-muted-foreground">
-                  Gerencie quem pode visualizar, comentar ou editar o quadro{' '}
-                  <strong className="text-foreground">{board.title || 'Quadro'}</strong>
+                  Gerencie quem pode acessar e editar este quadro colaborativo.
                 </DialogDescription>
               </div>
             </div>
           </DialogHeader>
 
-          <div className="space-y-5 py-2">
-            {/* Caixa de Compartilhamento do Link */}
+          <div className="space-y-5 pt-3">
+            {/* 1. Link Curto de Acesso Direto com Copiar */}
             <div className="space-y-1.5">
               <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block">
-                Link de Acesso
+                Link de Compartilhamento Direto
               </label>
-              <div className="flex items-center gap-2">
-                <div className="flex-1 flex items-center px-3 h-9 rounded-lg border border-border bg-muted/40 text-xs font-mono text-muted-foreground select-all truncate">
-                  {shareUrl}
-                </div>
+              <div className="flex items-center gap-2 p-1.5 pl-3 rounded-lg border border-border bg-muted/30 font-mono text-xs text-foreground">
+                <span className="truncate flex-1 select-all">{shareUrl}</span>
                 <Button
                   type="button"
-                  variant="outline"
                   size="sm"
+                  variant="outline"
                   onClick={handleCopyLink}
-                  className="h-9 px-3 gap-1.5 shrink-0 active:scale-[0.97] transition-transform cursor-pointer"
+                  className="h-7 px-2.5 text-xs gap-1.5 shrink-0 active:scale-[0.97] transition-transform cursor-pointer"
                 >
-                  {copiedLink ? (
-                    <>
-                      <Check className="size-3.5 text-emerald-500" />
-                      <span className="text-emerald-500 font-medium text-xs">Copiado</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="size-3.5" />
-                      <span className="text-xs font-medium">Copiar link</span>
-                    </>
-                  )}
+                  {copiedLink ? <Check className="size-3 text-emerald-500" /> : <Copy className="size-3" />}
+                  <span>{copiedLink ? 'Copiado!' : 'Copiar'}</span>
                 </Button>
               </div>
             </div>
 
-            {/* Permissão Geral do Link */}
-            <div className="p-3.5 rounded-lg border border-border bg-muted/20 flex items-center justify-between gap-3">
-              <div className="flex items-start gap-3 min-w-0">
-                <div className="size-8 rounded-lg bg-background border border-border flex items-center justify-center shrink-0 mt-0.5">
-                  <GeneralIcon className="size-4 text-foreground/80" />
+            <Separator className="bg-border/60" />
+
+            {/* 2. Permissão Geral do Link */}
+            <div className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border bg-muted/20">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="size-8 rounded-lg bg-background border border-border flex items-center justify-center shrink-0 text-muted-foreground shadow-2xs">
+                  <GeneralIcon className="size-4" />
                 </div>
-                <div className="space-y-0.5 min-w-0">
+                <div className="min-w-0 space-y-0.5">
                   <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
                     <Globe className="size-3.5 text-muted-foreground" />
                     Qualquer pessoa com o link
@@ -548,78 +429,7 @@ export const BoardPermissionsModal: React.FC<BoardPermissionsModalProps> = ({
               </DropdownMenu>
             </div>
 
-            <Separator className="bg-border/60" />
-
-            {/* Formulário de Convidar por E-mail */}
-            <form onSubmit={handleInviteCollaborator} className="space-y-2">
-              <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block">
-                Convidar por E-mail
-              </label>
-              <div className="flex items-center gap-2">
-                <Input
-                  type="email"
-                  placeholder="nome@email.com"
-                  value={inviteEmail}
-                  onChange={(e) => {
-                    setInviteEmail(e.target.value);
-                    if (inviteError) setInviteError(null);
-                  }}
-                  className="h-9 text-xs flex-1"
-                />
-
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-9 px-2.5 text-xs gap-1 shrink-0 font-medium cursor-pointer"
-                    >
-                      <span>{(PERMISSION_CONFIG[inviteRole] || PERMISSION_CONFIG.edit).label}</span>
-                      <ChevronDown className="size-3 text-muted-foreground" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-44">
-                    {(['edit', 'comment', 'view'] as BoardPermission[]).map((permKey) => (
-                      <DropdownMenuItem
-                        key={permKey}
-                        onClick={() => setInviteRole(permKey)}
-                        className="text-xs cursor-pointer gap-2"
-                      >
-                        <span>{(PERMISSION_CONFIG[permKey] || PERMISSION_CONFIG.edit).label}</span>
-                        {inviteRole === permKey && <Check className="size-3 text-primary ml-auto" />}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-
-                <Button
-                  type="submit"
-                  size="sm"
-                  disabled={!inviteEmail.trim() || isInviting}
-                  className="h-9 px-3 gap-1.5 font-semibold text-xs shrink-0 active:scale-[0.97] transition-transform cursor-pointer"
-                >
-                  <UserPlus className="size-3.5" />
-                  <span>Convidar</span>
-                </Button>
-              </div>
-
-              {inviteError && (
-                <p className="text-xs text-destructive flex items-center gap-1 pt-0.5 animate-in fade-in duration-150">
-                  <AlertCircle className="size-3" />
-                  {inviteError}
-                </p>
-              )}
-
-              {inviteSuccess && (
-                <p className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1 pt-0.5 animate-in fade-in duration-150">
-                  <Check className="size-3" />
-                  {inviteSuccess}
-                </p>
-              )}
-            </form>
-
-            {/* Lista de Membros e Pessoas com Acesso */}
+            {/* 3. Lista de Membros e Pessoas com Acesso */}
             <div className="space-y-2 pt-1">
               <div className="flex items-center justify-between">
                 <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block">
@@ -666,7 +476,7 @@ export const BoardPermissionsModal: React.FC<BoardPermissionsModalProps> = ({
                             )}
                           </div>
                           <p className="text-[11px] text-muted-foreground truncate">
-                            {member.email || (member.isAnonymous ? 'Entrou pelo link de convidado' : 'Conta colaboradora')}
+                            {member.isOwner ? 'Proprietário' : (member.isAnonymous ? 'Acessou pelo link' : 'Membro')}
                           </p>
                         </div>
                       </div>

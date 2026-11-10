@@ -10,9 +10,9 @@ import {
   Eye,
   EyeOff,
   ChevronDown,
-  UserPlus,
-  Users
-} from 'lucide-react';
+  Users,
+  X
+} from '@/components/ui/icons';
 import {
   Dialog,
   DialogContent,
@@ -31,7 +31,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import type { Board, BoardPermission, CurrentUser, UserPresence } from '../../types/board';
+import type { Board, BoardPermission, CurrentUser, UserPresence, JoinRequest } from '../../types/board';
 import { isBoardOwner } from '../../utils/permissions';
 import { boardService } from '../../services/boardService';
 
@@ -41,14 +41,14 @@ interface ShareModalProps {
   board: Board | null;
   currentUser: CurrentUser;
   remoteUsers?: UserPresence[];
-  onUpdateBoardSettings?: (updates: Partial<Pick<Board, 'defaultPermission' | 'collaborators' | 'collaboratorEmails' | 'members' | 'removedMemberIds' | 'isPasswordProtected' | 'password'>>) => Promise<void>;
+  onUpdateBoardSettings?: (updates: Partial<Pick<Board, 'defaultPermission' | 'collaborators' | 'collaboratorEmails' | 'members' | 'removedMemberIds' | 'waitingRoomEnabled' | 'joinRequests' | 'isPasswordProtected' | 'password'>>) => Promise<void>;
 }
 
 const PERMISSION_LABELS: Record<BoardPermission, { label: string; desc: string }> = {
   edit: { label: 'Pode editar', desc: 'Pode criar, mover e editar qualquer elemento' },
   comment: { label: 'Pode comentar', desc: 'Pode adicionar notas e reagir com emojis' },
   view: { label: 'Pode visualizar', desc: 'Apenas visualiza o quadro em tempo real' },
-  none: { label: 'Sem acesso', desc: 'Acesso restrito apenas a convidados diretos' },
+  none: { label: 'Sem acesso', desc: 'Acesso restrito apenas ao proprietário e membros autorizados' },
 };
 
 interface AccessPerson {
@@ -109,6 +109,28 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   const defaultPermission: BoardPermission = board?.defaultPermission || 'edit';
   const isOwner = isBoardOwner(board, currentUser);
 
+  const pendingRequests = useMemo(() => {
+    if (!board?.joinRequests) return [];
+    return Object.values(board.joinRequests).filter(
+      (req): req is JoinRequest => Boolean(req && req.status === 'pending')
+    );
+  }, [board?.joinRequests]);
+
+  const handleApproveRequest = async (uid: string, role: BoardPermission, req?: JoinRequest) => {
+    if (!board) return;
+    await boardService.approveBoardAccess(board.id, uid, role, req);
+  };
+
+  const handleRejectRequest = async (uid: string) => {
+    if (!board) return;
+    await boardService.rejectBoardAccess(board.id, uid);
+  };
+
+  const handleApproveAllRequests = async () => {
+    if (!board) return;
+    await boardService.approveAllBoardAccess(board.id, defaultPermission);
+  };
+
   // Link curto e limpo no padrão /b/:id (sem prefixo redundante board_)
   const cleanId = (board?.id || '').replace(/^board_/, '');
   const cleanShareUrl = cleanId ? `${window.location.origin}/b/${cleanId}` : window.location.href;
@@ -158,7 +180,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   const handleUpdatePersonRole = async (person: AccessPerson, newRole: BoardPermission | 'remove') => {
     if (!board || !onUpdateBoardSettings || person.isOwner) return;
 
-    if (newRole === 'remove') {
+    if (newRole === 'remove' || newRole === 'none') {
       // 1. Marca imediatamente no estado local para remoção instantânea na UI do modal
       const idKey = person.id;
       const uidKey = person.uid || '';
@@ -185,21 +207,10 @@ export const ShareModal: React.FC<ShareModalProps> = ({
         await boardService.removeBoardCollaborator(board.id, person.email);
       }
 
-      // 4. Preserva nos members com role: 'none' para que o proprietário possa ver e re-adicionar quando quiser
+      // 4. Remove definitivamente da lista de membros
       const updatedMembers = { ...(board.members || {}) };
       if (person.uid) {
-        const existing = updatedMembers[person.uid];
-        updatedMembers[person.uid] = {
-          uid: person.uid,
-          name: person.name,
-          email: person.email || null,
-          photoURL: person.photoURL || null,
-          role: 'none',
-          joinedAt: existing?.joinedAt || Date.now(),
-          lastSeen: Date.now(),
-          isAnonymous: person.isAnonymous,
-          color: person.color || '#3b82f6',
-        };
+        delete updatedMembers[person.uid];
       }
       const updatedRemoved = Array.from(
         new Set([...(board.removedMemberIds || []), ...(person.uid ? [person.uid] : [])])
@@ -214,8 +225,18 @@ export const ShareModal: React.FC<ShareModalProps> = ({
         .map((c) => (c?.email ? c.email.toLowerCase() : ''))
         .filter(Boolean);
 
+      const updatedJoinRequests = { ...(board.joinRequests || {}) };
+      if (person.uid && updatedJoinRequests[person.uid]) {
+        updatedJoinRequests[person.uid] = {
+          ...updatedJoinRequests[person.uid],
+          status: 'rejected',
+          respondedAt: Date.now(),
+        };
+      }
+
       await onUpdateBoardSettings({
         members: updatedMembers,
+        joinRequests: updatedJoinRequests,
         removedMemberIds: updatedRemoved,
         collaborators: updatedCollaborators,
         collaboratorEmails,
@@ -223,27 +244,19 @@ export const ShareModal: React.FC<ShareModalProps> = ({
       return;
     }
 
-    // Se estiver re-atribuindo papel válido ('edit' | 'comment' | 'view') ou 'none':
-    const isRestoringValidRole = newRole !== 'none';
-    const updatedRemoved = isRestoringValidRole
-      ? (board.removedMemberIds || []).filter(
-          (id) => id !== person.uid && (!person.email || id !== person.email)
-        )
-      : Array.from(new Set([...(board.removedMemberIds || []), ...(person.uid ? [person.uid] : [])]));
+    // Se estiver re-atribuindo papel válido ('edit' | 'comment' | 'view'):
+    const updatedRemoved = (board.removedMemberIds || []).filter(
+      (id) => id !== person.uid && (!person.email || id !== person.email)
+    );
 
     // Limpa do estado local de remoção do modal
     setRemovedIds((prev) => {
       const next = new Set(prev);
-      if (isRestoringValidRole) {
-        if (person.id) next.delete(person.id);
-        if (person.uid) next.delete(person.uid);
-        if (person.email) {
-          next.delete(person.email);
-          next.delete(`email_${person.email.replace(/[.#$[\]]/g, '_')}`);
-        }
-      } else {
-        if (person.id) next.add(person.id);
-        if (person.uid) next.add(person.uid);
+      if (person.id) next.delete(person.id);
+      if (person.uid) next.delete(person.uid);
+      if (person.email) {
+        next.delete(person.email);
+        next.delete(`email_${person.email.replace(/[.#$[\]]/g, '_')}`);
       }
       return next;
     });
@@ -253,9 +266,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
     };
 
     if (person.uid) {
-      if (isRestoringValidRole) {
-        await boardService.unremoveBoardMember(board.id, person.uid, newRole);
-      }
+      await boardService.unremoveBoardMember(board.id, person.uid, newRole);
       const updatedMembers = { ...(board.members || {}) };
       const existing = updatedMembers[person.uid];
       updatedMembers[person.uid] = {
@@ -275,15 +286,11 @@ export const ShareModal: React.FC<ShareModalProps> = ({
     if (person.email) {
       const emailKey = person.email.replace(/[.#$[\]]/g, '_');
       const updatedCollaborators = { ...(board.collaborators || {}) };
-      if (isRestoringValidRole) {
-        updatedCollaborators[emailKey] = {
-          email: person.email,
-          role: newRole,
-          addedAt: Date.now(),
-        };
-      } else {
-        delete updatedCollaborators[emailKey];
-      }
+      updatedCollaborators[emailKey] = {
+        email: person.email,
+        role: newRole,
+        addedAt: Date.now(),
+      };
       updates.collaborators = updatedCollaborators;
       updates.collaboratorEmails = Object.values(updatedCollaborators)
         .map((c) => c?.email?.toLowerCase() || '')
@@ -331,26 +338,27 @@ export const ShareModal: React.FC<ShareModalProps> = ({
     // 2. Membros registrados no board (visitantes, anônimos e usuários que já acessaram)
     const members = Object.values(board?.members || {});
     for (const m of members) {
+      if (!m || !m.uid) continue;
       if (ownerUid && m.uid === ownerUid) continue;
       if (isOwner && m.uid === currentUser.uid) continue;
       if (isOwner && currentUser.email && m.email && m.email.toLowerCase() === currentUser.email.toLowerCase()) continue;
+      
       const isRemoved = effectiveRemovedSet.has(m.uid) || m.role === 'none';
+      // Usuários com acesso revogado NÃO aparecem na lista de pessoas com acesso
+      if (isRemoved) continue;
+
       const isThisUser = m.uid === currentUser.uid;
       const remoteMatch = remoteUsers?.find((u) => u.userId === m.uid);
-      const isOnline = isRemoved ? false : (isThisUser || Boolean(remoteMatch));
+      const isOnline = isThisUser || Boolean(remoteMatch);
       const isGuest = Boolean(m.isAnonymous || !m.email);
       const displayName = remoteMatch?.name || m.name || (m as { displayName?: string }).displayName || (isGuest ? 'Convidado' : 'Usuário');
       const color = remoteMatch?.color || m.color || '#3b82f6';
 
       const subtitleParts: string[] = [];
-      if (isRemoved) {
-        subtitleParts.push('Acesso revogado');
-      } else {
-        if (isOnline) subtitleParts.push('Online agora');
-        if (isGuest) subtitleParts.push('Convidado via link');
-        else if (m.email) subtitleParts.push(m.email);
-        else subtitleParts.push('Colaborador');
-      }
+      if (isOnline) subtitleParts.push('Online agora');
+      if (isGuest) subtitleParts.push('Convidado via link');
+      else if (m.email) subtitleParts.push(m.email);
+      else subtitleParts.push('Colaborador');
 
       map.set(m.uid, {
         id: m.uid,
@@ -363,9 +371,9 @@ export const ShareModal: React.FC<ShareModalProps> = ({
         isCurrentUser: isThisUser,
         isAnonymous: isGuest,
         isOnline,
-        role: isRemoved ? 'none' : (m.role || defaultPermission),
+        role: m.role || defaultPermission,
         subtitle: subtitleParts.join(' • '),
-        badgeLabel: isRemoved ? 'Sem acesso' : (isGuest ? 'Convidado' : undefined),
+        badgeLabel: isGuest ? 'Convidado' : undefined,
       });
     }
 
@@ -375,6 +383,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
         if (effectiveRemovedSet.has(r.userId)) continue;
         if (ownerUid && r.userId === ownerUid) continue;
         if (isOwner && r.userId === currentUser.uid) continue;
+        if (board?.removedMemberIds?.includes(r.userId) || board?.members?.[r.userId]?.role === 'none') continue;
         if (map.has(r.userId)) {
           const existing = map.get(r.userId)!;
           existing.isOnline = true;
@@ -429,12 +438,13 @@ export const ShareModal: React.FC<ShareModalProps> = ({
     // 5. Convites enviados por e-mail (collaborators)
     const collaborators = Object.values(board?.collaborators || {});
     for (const c of collaborators) {
+      if (!c || !c.email || c.role === 'none') continue;
       const emailLower = c.email.toLowerCase();
       const emailKey = c.email.replace(/[.#$[\]]/g, '_');
       if (
-        removedIds.has(`email_${emailKey}`) ||
-        removedIds.has(c.email) ||
-        removedIds.has(emailKey)
+        effectiveRemovedSet.has(`email_${emailKey}`) ||
+        effectiveRemovedSet.has(c.email) ||
+        effectiveRemovedSet.has(emailKey)
       ) {
         continue;
       }
@@ -460,12 +470,10 @@ export const ShareModal: React.FC<ShareModalProps> = ({
       }
     }
 
-    // Ordenação inteligente: Dono primeiro, Usuário atual a seguir, Ativos primeiro, depois Removidos ao final
+    // Ordenação inteligente: Dono primeiro, Usuário atual a seguir, Ativos primeiro, depois alfabético
     const otherPeople = Array.from(map.values()).sort((a, b) => {
       if (a.isCurrentUser) return -1;
       if (b.isCurrentUser) return 1;
-      if (a.role === 'none' && b.role !== 'none') return 1;
-      if (a.role !== 'none' && b.role === 'none') return -1;
       if (a.isOnline && !b.isOnline) return -1;
       if (!a.isOnline && b.isOnline) return 1;
       return a.name.localeCompare(b.name);
@@ -620,6 +628,105 @@ export const ShareModal: React.FC<ShareModalProps> = ({
           </div>
         )}
 
+        {/* Solicitações Pendentes de Entrada */}
+        {isOwner && pendingRequests.length > 0 && (
+          <div className="space-y-2.5 p-3 rounded-xl border border-primary/30 bg-primary/5 animate-in fade-in-50 duration-200">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Badge variant="default" className="text-[10px] px-1.5 py-0">
+                  {pendingRequests.length}
+                </Badge>
+                <span className="text-xs font-semibold text-foreground">
+                  Aguardando sua autorização
+                </span>
+              </div>
+              {pendingRequests.length > 1 && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleApproveAllRequests}
+                  className="h-6 text-[11px] px-2 text-primary hover:text-primary hover:bg-primary/10"
+                >
+                  Aprovar todos ({pendingRequests.length})
+                </Button>
+              )}
+            </div>
+
+            <div className="space-y-2 max-h-[150px] overflow-y-auto pr-1 divide-y divide-border/30">
+              {pendingRequests.map((req) => (
+                <div key={req.uid} className="flex items-center justify-between pt-2 first:pt-0">
+                  <div className="flex items-center gap-2 min-w-0 pr-2">
+                    <Avatar className="size-7 text-[10px] border border-border shadow-sm">
+                      {req.photoURL && <AvatarImage src={req.photoURL} alt={req.name} />}
+                      <AvatarFallback 
+                        style={{ backgroundColor: req.color || '#3b82f6' }} 
+                        className="text-white font-semibold text-[10px]"
+                      >
+                        {getInitials(req.name)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 truncate">
+                      <p className="text-xs font-medium text-foreground truncate">{req.name}</p>
+                      <p className="text-[10px] text-muted-foreground truncate">
+                        {req.email || (req.isAnonymous ? 'Convidado via link' : 'Usuário')}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1 shrink-0">
+                    <div className="inline-flex items-center rounded-md bg-primary text-primary-foreground shadow-sm overflow-hidden divide-x divide-primary-foreground/20">
+                      <button
+                        type="button"
+                        onClick={() => handleApproveRequest(req.uid, defaultPermission, req)}
+                        className="h-6 px-2 text-[11px] font-medium hover:bg-primary/90 flex items-center gap-1 active:scale-[0.97]"
+                        title="Aprovar com papel padrão"
+                      >
+                        <Check className="size-3" />
+                        <span>Aprovar</span>
+                      </button>
+
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            type="button"
+                            className="h-6 px-1 hover:bg-primary/90 flex items-center justify-center"
+                            title="Escolher nível de permissão"
+                          >
+                            <ChevronDown className="size-2.5" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-40 text-xs">
+                          <DropdownMenuItem onClick={() => handleApproveRequest(req.uid, 'edit', req)}>
+                            Como Editor
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleApproveRequest(req.uid, 'comment', req)}>
+                            Como Comentador
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleApproveRequest(req.uid, 'view', req)}>
+                            Como Visualizador
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleRejectRequest(req.uid)}
+                      className="size-6 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 active:scale-[0.97]"
+                      title="Recusar entrada"
+                    >
+                      <X className="size-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* 4. Pessoas com Acesso (Proprietário, Membros, Visitantes e Convidados) */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
@@ -695,71 +802,33 @@ export const ShareModal: React.FC<ShareModalProps> = ({
                         Proprietário
                       </Badge>
                     ) : isOwner ? (
-                      <div className="flex items-center gap-1">
-                        {person.role === 'none' && (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleUpdatePersonRole(person, 'edit')}
-                            className="h-6 text-[10px] gap-1 px-2 border-emerald-500/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 cursor-pointer"
-                          >
-                            <UserPlus className="size-3" />
-                            <span>Re-adicionar</span>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-6 text-[11px] gap-1 px-1.5 font-medium hover:bg-muted">
+                            <span>{PERMISSION_LABELS[person.role]?.label || 'Pode editar'}</span>
+                            <ChevronDown className="size-3 opacity-60" />
                           </Button>
-                        )}
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm" className="h-6 text-[11px] gap-1 px-1.5 font-medium hover:bg-muted">
-                              <span className={person.role === 'none' ? 'text-destructive font-semibold' : ''}>
-                                {PERMISSION_LABELS[person.role]?.label || 'Pode editar'}
-                              </span>
-                              <ChevronDown className="size-3 opacity-60" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="text-xs w-48">
-                            {person.role === 'none' && (
-                              <>
-                                <DropdownMenuItem
-                                  onClick={() => handleUpdatePersonRole(person, 'edit')}
-                                  className="cursor-pointer justify-between text-emerald-600 dark:text-emerald-400 font-medium"
-                                >
-                                  <span className="flex items-center gap-1.5">
-                                    <UserPlus className="size-3.5" />
-                                    <span>Re-adicionar (Editor)</span>
-                                  </span>
-                                </DropdownMenuItem>
-                                <Separator className="my-1" />
-                              </>
-                            )}
-                            {(['edit', 'comment', 'view'] as BoardPermission[]).map((p) => (
-                              <DropdownMenuItem
-                                key={p}
-                                onClick={() => handleUpdatePersonRole(person, p)}
-                                className="cursor-pointer justify-between"
-                              >
-                                <span>{PERMISSION_LABELS[p].label}</span>
-                                {person.role === p && <Check className="size-3 text-primary" />}
-                              </DropdownMenuItem>
-                            ))}
-                            <Separator className="my-1" />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="text-xs w-44">
+                          {(['edit', 'comment', 'view'] as BoardPermission[]).map((p) => (
                             <DropdownMenuItem
-                              onClick={() => handleUpdatePersonRole(person, 'none')}
-                              className="cursor-pointer justify-between text-amber-600 dark:text-amber-400"
+                              key={p}
+                              onClick={() => handleUpdatePersonRole(person, p)}
+                              className="cursor-pointer justify-between"
                             >
-                              <span>Bloquear acesso</span>
-                              {person.role === 'none' && <Check className="size-3" />}
+                              <span>{PERMISSION_LABELS[p].label}</span>
+                              {person.role === p && <Check className="size-3 text-primary" />}
                             </DropdownMenuItem>
-                            <Separator className="my-1" />
-                            <DropdownMenuItem
-                              onClick={() => handleUpdatePersonRole(person, 'remove')}
-                              className="text-destructive cursor-pointer"
-                            >
-                              Remover da lista
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
+                          ))}
+                          <Separator className="my-1" />
+                          <DropdownMenuItem
+                            onClick={() => handleUpdatePersonRole(person, 'remove')}
+                            className="text-destructive focus:bg-destructive/10 focus:text-destructive cursor-pointer"
+                          >
+                            Revogar acesso
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     ) : (
                       <span className="text-[11px] text-muted-foreground font-medium px-1">
                         {PERMISSION_LABELS[person.role]?.label || 'Pode editar'}
