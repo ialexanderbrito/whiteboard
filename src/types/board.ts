@@ -18,6 +18,21 @@ export interface BoardMember {
   color?: string;
 }
 
+export type JoinRequestStatus = 'pending' | 'approved' | 'rejected';
+
+export interface JoinRequest {
+  uid: string;
+  name: string;
+  email?: string | null;
+  photoURL?: string | null;
+  isAnonymous?: boolean;
+  color?: string;
+  status: JoinRequestStatus;
+  requestedAt: number;
+  respondedAt?: number;
+  assignedRole?: BoardPermission;
+}
+
 export interface Board {
   id: string;
   title: string;
@@ -30,6 +45,8 @@ export interface Board {
   collaboratorEmails?: string[];
   members?: Record<string, BoardMember>;
   removedMemberIds?: string[];
+  waitingRoomEnabled?: boolean;
+  joinRequests?: Record<string, JoinRequest>;
   isPasswordProtected?: boolean;
   password?: string;
 }

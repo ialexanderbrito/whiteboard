@@ -14,7 +14,7 @@ import {
 } from 'firebase/firestore';
 import { ref as rtdbRef, remove as rtdbRemove } from 'firebase/database';
 import { db, rtdb, isFirebaseConfigured } from '../config/firebase';
-import type { Board, BoardCollaborator, BoardMember, BoardPermission, CurrentUser } from '../types/board';
+import type { Board, BoardCollaborator, BoardMember, BoardPermission, CurrentUser, JoinRequest } from '../types/board';
 
 export interface CreateBoardOptions {
   boardId?: string;
@@ -22,8 +22,10 @@ export interface CreateBoardOptions {
   defaultPermission?: BoardPermission;
   collaborators?: Record<string, BoardCollaborator>;
   collaboratorEmails?: string[];
+  waitingRoomEnabled?: boolean;
   isPasswordProtected?: boolean;
   password?: string;
+  templateId?: string;
 }
 
 const LOCAL_BOARDS_KEY = 'mirio_local_boards';
@@ -155,6 +157,8 @@ export const boardService = {
       defaultPermission,
       collaborators,
       collaboratorEmails,
+      waitingRoomEnabled: options.waitingRoomEnabled !== undefined ? options.waitingRoomEnabled : true,
+      joinRequests: {},
       isPasswordProtected,
       password,
     };
@@ -592,7 +596,7 @@ export const boardService = {
 
   async updateBoardSettings(
     rawBoardId: string,
-    updates: Partial<Pick<Board, 'title' | 'ownerId' | 'ownerName' | 'defaultPermission' | 'collaborators' | 'collaboratorEmails' | 'members' | 'removedMemberIds' | 'isPasswordProtected' | 'password'>>
+    updates: Partial<Pick<Board, 'title' | 'ownerId' | 'ownerName' | 'defaultPermission' | 'collaborators' | 'collaboratorEmails' | 'members' | 'removedMemberIds' | 'waitingRoomEnabled' | 'joinRequests' | 'isPasswordProtected' | 'password'>>
   ): Promise<void> {
     const boardId = cleanBoardId(rawBoardId);
     if (!boardId) return;
@@ -670,7 +674,8 @@ export const boardService = {
       try {
         const docRef = doc(db, 'boards', boardId);
         await updateDoc(docRef, {
-          [`members.${memberUid}.role`]: 'none',
+          [`members.${memberUid}`]: deleteField(),
+          [`joinRequests.${memberUid}.status`]: 'rejected',
           removedMemberIds: arrayUnion(memberUid),
           updatedAt: Date.now(),
         });
@@ -691,15 +696,20 @@ export const boardService = {
     const idx = local.findIndex((b) => b && (cleanBoardId(b.id) === boardId || b.id === `board_${boardId}`));
     if (idx !== -1) {
       const updatedMembers = { ...(local[idx].members || {}) };
-      if (updatedMembers[memberUid]) {
-        updatedMembers[memberUid] = { ...updatedMembers[memberUid], role: 'none' };
-      } else {
-        delete updatedMembers[memberUid];
+      delete updatedMembers[memberUid];
+      const updatedJoinRequests = { ...(local[idx].joinRequests || {}) };
+      if (updatedJoinRequests[memberUid]) {
+        updatedJoinRequests[memberUid] = {
+          ...updatedJoinRequests[memberUid],
+          status: 'rejected',
+          respondedAt: Date.now(),
+        };
       }
       const removedIds = Array.from(new Set([...(local[idx].removedMemberIds || []), memberUid]));
       local[idx] = {
         ...local[idx],
         members: updatedMembers,
+        joinRequests: updatedJoinRequests,
         removedMemberIds: removedIds,
         updatedAt: Date.now(),
       };
@@ -753,6 +763,238 @@ export const boardService = {
       localStorage.setItem(LOCAL_BOARDS_KEY, JSON.stringify(local));
       notifyLocalSubscribers();
     }
+  },
+
+  /**
+   * Envia uma solicitação de entrada na Sala de Espera para o anfitrião autorizar.
+   */
+  async requestBoardAccess(rawBoardId: string, user: CurrentUser): Promise<void> {
+    const boardId = cleanBoardId(rawBoardId);
+    if (!boardId || !user || !user.uid) return;
+
+    const joinRequest: JoinRequest = {
+      uid: user.uid,
+      name: user.displayName || (user.isAnonymous ? 'Convidado' : 'Usuário'),
+      email: user.email || null,
+      photoURL: user.photoURL || null,
+      isAnonymous: Boolean(user.isAnonymous),
+      color: user.color || '#3b82f6',
+      status: 'pending',
+      requestedAt: Date.now(),
+    };
+
+    if (isFirebaseConfigured && db) {
+      try {
+        const docRef = doc(db, 'boards', boardId);
+        await updateDoc(docRef, {
+          [`joinRequests.${user.uid}`]: joinRequest,
+          updatedAt: Date.now(),
+        });
+        return;
+      } catch (err) {
+        console.warn('Erro ao registrar solicitação de acesso no Firestore:', err);
+      }
+    }
+
+    // Armazenamento Local
+    let local: Board[] = [];
+    try {
+      local = JSON.parse(localStorage.getItem(LOCAL_BOARDS_KEY) || '[]');
+      if (!Array.isArray(local)) local = [];
+    } catch {
+      local = [];
+    }
+    const idx = local.findIndex((b) => b && (cleanBoardId(b.id) === boardId || b.id === `board_${boardId}`));
+    if (idx !== -1) {
+      local[idx].joinRequests = {
+        ...(local[idx].joinRequests || {}),
+        [user.uid]: joinRequest,
+      };
+      local[idx].updatedAt = Date.now();
+      localStorage.setItem(LOCAL_BOARDS_KEY, JSON.stringify(local));
+      notifyLocalSubscribers();
+    }
+  },
+
+  /**
+   * Aprova uma solicitação de entrada na Sala de Espera, concedendo o papel escolhido
+   * e restaurando o acesso mesmo se o convidado estivesse na lista de removidos.
+   */
+  async approveBoardAccess(
+    rawBoardId: string,
+    requestUid: string,
+    role: BoardPermission = 'edit',
+    requestData?: Partial<JoinRequest>
+  ): Promise<void> {
+    const boardId = cleanBoardId(rawBoardId);
+    if (!boardId || !requestUid) return;
+
+    const memberUpdate: Partial<BoardMember> = {
+      uid: requestUid,
+      name: requestData?.name || 'Convidado',
+      email: requestData?.email || null,
+      photoURL: requestData?.photoURL || null,
+      color: requestData?.color || '#3b82f6',
+      isAnonymous: Boolean(requestData?.isAnonymous),
+      role,
+      lastSeen: Date.now(),
+    };
+
+    if (isFirebaseConfigured && db) {
+      try {
+        const docRef = doc(db, 'boards', boardId);
+        const updates: Record<string, unknown> = {
+          [`joinRequests.${requestUid}.status`]: 'approved',
+          [`joinRequests.${requestUid}.assignedRole`]: role,
+          [`joinRequests.${requestUid}.respondedAt`]: Date.now(),
+          [`members.${requestUid}.uid`]: requestUid,
+          [`members.${requestUid}.name`]: memberUpdate.name,
+          [`members.${requestUid}.email`]: memberUpdate.email,
+          [`members.${requestUid}.photoURL`]: memberUpdate.photoURL,
+          [`members.${requestUid}.color`]: memberUpdate.color,
+          [`members.${requestUid}.isAnonymous`]: memberUpdate.isAnonymous,
+          [`members.${requestUid}.role`]: role,
+          [`members.${requestUid}.lastSeen`]: Date.now(),
+          removedMemberIds: arrayRemove(requestUid),
+          updatedAt: Date.now(),
+        };
+        await updateDoc(docRef, updates);
+        return;
+      } catch (err) {
+        console.warn('Erro ao aprovar solicitação no Firestore:', err);
+      }
+    }
+
+    // Armazenamento Local
+    let local: Board[] = [];
+    try {
+      local = JSON.parse(localStorage.getItem(LOCAL_BOARDS_KEY) || '[]');
+      if (!Array.isArray(local)) local = [];
+    } catch {
+      local = [];
+    }
+    const idx = local.findIndex((b) => b && (cleanBoardId(b.id) === boardId || b.id === `board_${boardId}`));
+    if (idx !== -1) {
+      const b = local[idx];
+      const currentReq = b.joinRequests?.[requestUid] || {
+        uid: requestUid,
+        name: memberUpdate.name || 'Convidado',
+        status: 'pending',
+        requestedAt: Date.now(),
+      };
+      b.joinRequests = {
+        ...(b.joinRequests || {}),
+        [requestUid]: {
+          ...currentReq,
+          status: 'approved',
+          assignedRole: role,
+          respondedAt: Date.now(),
+        },
+      };
+      b.members = {
+        ...(b.members || {}),
+        [requestUid]: {
+          uid: requestUid,
+          name: memberUpdate.name || 'Convidado',
+          email: memberUpdate.email || null,
+          photoURL: memberUpdate.photoURL || null,
+          color: memberUpdate.color || '#3b82f6',
+          isAnonymous: Boolean(memberUpdate.isAnonymous),
+          role,
+          joinedAt: b.members?.[requestUid]?.joinedAt || Date.now(),
+          lastSeen: Date.now(),
+        },
+      };
+      b.removedMemberIds = (b.removedMemberIds || []).filter((id) => id !== requestUid);
+      b.updatedAt = Date.now();
+      localStorage.setItem(LOCAL_BOARDS_KEY, JSON.stringify(local));
+      notifyLocalSubscribers();
+    }
+  },
+
+  /**
+   * Recusa uma solicitação de entrada na Sala de Espera.
+   */
+  async rejectBoardAccess(rawBoardId: string, requestUid: string): Promise<void> {
+    const boardId = cleanBoardId(rawBoardId);
+    if (!boardId || !requestUid) return;
+
+    if (isFirebaseConfigured && db) {
+      try {
+        const docRef = doc(db, 'boards', boardId);
+        await updateDoc(docRef, {
+          [`joinRequests.${requestUid}.status`]: 'rejected',
+          [`joinRequests.${requestUid}.respondedAt`]: Date.now(),
+          [`members.${requestUid}.role`]: 'none',
+          updatedAt: Date.now(),
+        });
+        return;
+      } catch (err) {
+        console.warn('Erro ao recusar solicitação no Firestore:', err);
+      }
+    }
+
+    // Armazenamento Local
+    let local: Board[] = [];
+    try {
+      local = JSON.parse(localStorage.getItem(LOCAL_BOARDS_KEY) || '[]');
+      if (!Array.isArray(local)) local = [];
+    } catch {
+      local = [];
+    }
+    const idx = local.findIndex((b) => b && (cleanBoardId(b.id) === boardId || b.id === `board_${boardId}`));
+    if (idx !== -1) {
+      const b = local[idx];
+      const currentReq = b.joinRequests?.[requestUid] || {
+        uid: requestUid,
+        name: 'Convidado',
+        status: 'pending',
+        requestedAt: Date.now(),
+      };
+      b.joinRequests = {
+        ...(b.joinRequests || {}),
+        [requestUid]: {
+          ...currentReq,
+          status: 'rejected',
+          respondedAt: Date.now(),
+        },
+      };
+      if (b.members?.[requestUid]) {
+        b.members[requestUid].role = 'none';
+      }
+      b.updatedAt = Date.now();
+      localStorage.setItem(LOCAL_BOARDS_KEY, JSON.stringify(local));
+      notifyLocalSubscribers();
+    }
+  },
+
+  /**
+   * Aprova em lote todas as solicitações pendentes na Sala de Espera.
+   */
+  async approveAllBoardAccess(rawBoardId: string, role: BoardPermission = 'edit'): Promise<void> {
+    const boardId = cleanBoardId(rawBoardId);
+    if (!boardId) return;
+
+    const board = await this.getBoard(boardId);
+    if (!board || !board.joinRequests) return;
+
+    const pendingUids = Object.entries(board.joinRequests)
+      .filter(([_, req]) => req && req.status === 'pending')
+      .map(([uid]) => uid);
+
+    if (pendingUids.length === 0) return;
+
+    for (const uid of pendingUids) {
+      const req = board.joinRequests[uid];
+      await this.approveBoardAccess(boardId, uid, role, req);
+    }
+  },
+
+  /**
+   * Ativa ou desativa a Sala de Espera do quadro.
+   */
+  async toggleWaitingRoom(rawBoardId: string, enabled: boolean): Promise<void> {
+    await this.updateBoardSettings(rawBoardId, { waitingRoomEnabled: enabled });
   },
 
   /**

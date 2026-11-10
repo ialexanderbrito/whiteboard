@@ -14,6 +14,62 @@ export function isBoardOwner(board: Board | null, user: CurrentUser | null): boo
 }
 
 /**
+ * Determina se um visitante deve aguardar na Sala de Espera para aprovação do anfitrião.
+ * O proprietário nunca aguarda.
+ * Se a sala de espera estiver ativa (padrão) e o usuário não for um membro/colaborador já aprovado,
+ * ele é direcionado para a Sala de Espera.
+ */
+export function shouldShowWaitingRoom(
+  board: Board | null,
+  user: CurrentUser | null,
+  isPasswordUnlocked = false
+): boolean {
+  if (!board || !user || !user.uid) return false;
+  if (isBoardOwner(board, user)) return false;
+
+  // Se o usuário já desbloqueou o quadro protegido por senha com sucesso
+  if (isPasswordUnlocked && board.isPasswordProtected) return false;
+
+  // Se a Sala de Espera foi expressamente desativada pelo proprietário no quadro
+  if (board.waitingRoomEnabled === false) return false;
+
+  // Se o usuário foi convidado explicitamente pelo e-mail (re-convite ou convite direto tem prioridade)
+  if (user.email && board.collaborators) {
+    const userEmail = user.email.trim().toLowerCase();
+    const collab = Object.values(board.collaborators).find(
+      (c) => c?.email && c.email.trim().toLowerCase() === userEmail
+    );
+    if (collab && collab.role && collab.role !== 'none') {
+      return false;
+    }
+  }
+
+  // Se o anfitrião já aprovou a solicitação de entrada deste usuário
+  const request = board.joinRequests?.[user.uid];
+  if (request?.status === 'approved') {
+    return false;
+  }
+
+  // Se o usuário foi removido pelo proprietário do quadro (via removedMemberIds ou role === 'none'),
+  // ele DEVE aguardar aprovação na Sala de Espera para que o anfitrião decida se aceita novamente
+  const isRemoved = Boolean(
+    (board.removedMemberIds && board.removedMemberIds.includes(user.uid)) ||
+    (board.members && board.members[user.uid]?.role === 'none')
+  );
+  if (isRemoved) {
+    return true;
+  }
+
+  // Se o usuário já é um membro registrado no quadro com papel ativo (edit/comment/view)
+  if (board.members && board.members[user.uid]?.role && board.members[user.uid].role !== 'none') {
+    return false;
+  }
+
+  // Por padrão, links de novos convidados e visitantes passam pela aprovação do anfitrião
+  return true;
+}
+
+/**
  * Calcula o nível de permissão efetivo de um usuário em relação a um quadro.
  * @param board Objeto do quadro
  * @param user Usuário atual autenticado
@@ -31,7 +87,15 @@ export function getUserBoardPermission(
     return 'edit';
   }
 
-  // 2. Verifica se o usuário tem papel específico atribuído por UID em members
+  // 2. Se o anfitrião aprovou expressamente a solicitação de entrada na Sala de Espera
+  if (board.joinRequests && board.joinRequests[user.uid]?.status === 'approved') {
+    const assignedRole = board.joinRequests[user.uid].assignedRole;
+    if (assignedRole && assignedRole !== 'none') {
+      return assignedRole;
+    }
+  }
+
+  // 3. Verifica se o usuário tem papel específico atribuído por UID em members
   if (board.members && board.members[user.uid]?.role) {
     const memberRole = board.members[user.uid].role!;
     if (memberRole === 'none') {
@@ -41,7 +105,7 @@ export function getUserBoardPermission(
     return memberRole;
   }
 
-  // 3. Verifica se o usuário foi convidado explicitamente pelo e-mail (re-convites por e-mail têm precedência)
+  // 4. Verifica se o usuário foi convidado explicitamente pelo e-mail (re-convites por e-mail têm precedência)
   if (user.email && board.collaborators) {
     const userEmail = user.email.trim().toLowerCase();
     const collab = Object.values(board.collaborators).find(
@@ -52,12 +116,17 @@ export function getUserBoardPermission(
     }
   }
 
-  // 4. Se o usuário foi expressamente removido pelo proprietário do quadro (e não foi re-adicionado)
+  // 5. Se o usuário foi expressamente removido pelo proprietário do quadro (e não foi re-adicionado)
   if (board.removedMemberIds && board.removedMemberIds.includes(user.uid)) {
     return 'none';
   }
 
-  // 5. Se o quadro foi desbloqueado com senha válida e a permissão padrão era 'none',
+  // 6. Se o usuário precisa de autorização na Sala de Espera e ainda não foi aprovado
+  if (shouldShowWaitingRoom(board, user, isPasswordUnlocked)) {
+    return 'none';
+  }
+
+  // 7. Se o quadro foi desbloqueado com senha válida e a permissão padrão era 'none',
   // concede permissão de edição por ter validado a senha do proprietário.
   if (isPasswordUnlocked && board.isPasswordProtected) {
     if (!board.defaultPermission || board.defaultPermission === 'none') {
@@ -66,7 +135,7 @@ export function getUserBoardPermission(
     return board.defaultPermission;
   }
 
-  // 6. Permissão configurada para qualquer pessoa com o link
+  // 8. Permissão configurada para qualquer pessoa com o link (quando sala de espera está desativada)
   // Se ainda não estiver definida em quadros legados, o padrão é 'edit'
   return board.defaultPermission ?? 'edit';
 }
