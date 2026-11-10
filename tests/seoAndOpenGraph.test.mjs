@@ -69,6 +69,41 @@ test('Open Graph: public/og.png is valid, non-empty and has exact 1200x630 dimen
   assert.equal(height, 630, 'Altura deve ser exatamente 630px');
 });
 
+test('Adaptive Open Graph: public/og-dark.png and public/og-light.png exist and have exact 1200x630 dimensions', () => {
+  const darkPath = path.join(projectRoot, 'public', 'og-dark.png');
+  const lightPath = path.join(projectRoot, 'public', 'og-light.png');
+
+  assert.ok(fs.existsSync(darkPath), 'public/og-dark.png deve existir');
+  assert.ok(fs.existsSync(lightPath), 'public/og-light.png deve existir');
+
+  const darkBuf = fs.readFileSync(darkPath);
+  const lightBuf = fs.readFileSync(lightPath);
+
+  assert.ok(darkBuf.length > 10000, 'og-dark.png deve ter conteúdo significativo');
+  assert.ok(lightBuf.length > 10000, 'og-light.png deve ter conteúdo significativo');
+
+  assert.equal(darkBuf.readUInt32BE(16), 1200, 'og-dark.png largura deve ser 1200px');
+  assert.equal(darkBuf.readUInt32BE(20), 630, 'og-dark.png altura deve ser 630px');
+
+  assert.equal(lightBuf.readUInt32BE(16), 1200, 'og-light.png largura deve ser 1200px');
+  assert.equal(lightBuf.readUInt32BE(20), 630, 'og-light.png altura deve ser 630px');
+});
+
+test('Dynamic Theme Sync: ThemeContext and api/og.js handle theme-adaptive social sharing', () => {
+  const themeContextPath = path.join(projectRoot, 'src', 'context', 'ThemeContext.tsx');
+  const themeContextContent = fs.readFileSync(themeContextPath, 'utf8');
+
+  assert.ok(themeContextContent.includes('og-dark.png'), 'ThemeContext deve referenciar og-dark.png');
+  assert.ok(themeContextContent.includes('og-light.png'), 'ThemeContext deve referenciar og-light.png');
+  assert.ok(themeContextContent.includes('meta[property="og:image"]'), 'ThemeContext deve atualizar og:image dinamicamente no DOM');
+
+  const apiOgPath = path.join(projectRoot, 'api', 'og.js');
+  assert.ok(fs.existsSync(apiOgPath), 'api/og.js endpoint deve existir');
+
+  const apiOgContent = fs.readFileSync(apiOgPath, 'utf8');
+  assert.ok(apiOgContent.includes('og-light.png') && apiOgContent.includes('og-dark.png'), 'api/og.js deve suportar redirecionamento dinâmico para ambos os temas');
+});
+
 test('Favicon: public/favicon.svg and raster fallbacks exist and represent Mirio logo', () => {
   const svgPath = path.join(projectRoot, 'public', 'favicon.svg');
   assert.ok(fs.existsSync(svgPath), 'public/favicon.svg deve existir');

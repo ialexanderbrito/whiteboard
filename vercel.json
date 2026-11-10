@@ -9,6 +9,22 @@
       ]
     },
     {
+      "source": "/og-dark.png",
+      "headers": [
+        { "key": "Content-Type", "value": "image/png" },
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Cache-Control", "value": "public, max-age=3600, s-maxage=86400, stale-while-revalidate=86400" }
+      ]
+    },
+    {
+      "source": "/og-light.png",
+      "headers": [
+        { "key": "Content-Type", "value": "image/png" },
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Cache-Control", "value": "public, max-age=3600, s-maxage=86400, stale-while-revalidate=86400" }
+      ]
+    },
+    {
       "source": "/favicon.svg",
       "headers": [
         { "key": "Content-Type", "value": "image/svg+xml" },
@@ -19,6 +35,7 @@
     {
       "source": "/(.*)",
       "headers": [
+        { "key": "Accept-CH", "value": "Sec-CH-Prefers-Color-Scheme" },
         { "key": "X-Content-Type-Options", "value": "nosniff" },
         { "key": "X-Frame-Options", "value": "SAMEORIGIN" },
         { "key": "Cross-Origin-Opener-Policy", "value": "same-origin-allow-popups" },

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Mirio — Validador & Preview de Social Cards (Open Graph)</title>
+  <title>Mirio — Validador & Preview de Social Cards (Open Graph Dark & Light)</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -25,7 +25,7 @@
       background: var(--bg);
       color: var(--text);
       font-family: 'Plus Jakarta Sans', sans-serif;
-      padding: 40px 24px 80px;
+      padding: 36px 24px 80px;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -35,12 +35,12 @@
     header {
       width: 100%;
       max-width: 1200px;
-      margin-bottom: 32px;
+      margin-bottom: 24px;
       display: flex;
       align-items: center;
       justify-content: space-between;
       border-bottom: 1px solid var(--border);
-      padding-bottom: 20px;
+      padding-bottom: 18px;
     }
 
     .brand-title {
@@ -65,13 +65,13 @@
     .header-actions {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
     }
     .btn {
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      padding: 8px 16px;
+      padding: 8px 14px;
       border-radius: 8px;
       font-size: 13px;
       font-weight: 600;
@@ -96,12 +96,58 @@
       background: rgba(255, 255, 255, 0.1);
     }
 
+    /* Barra de Seleção de Tema (Dark, Light, Comparar) */
+    .theme-selector-bar {
+      width: 100%;
+      max-width: 1200px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 28px;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 8px 14px;
+    }
+    .theme-nav-pills {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .theme-pill-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .theme-pill-btn.active {
+      background: rgba(255, 255, 255, 0.1);
+      color: #ffffff;
+      border-color: rgba(255, 255, 255, 0.15);
+    }
+    .theme-pill-btn:hover:not(.active) {
+      color: #ffffff;
+    }
+    .theme-hint {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11.5px;
+      color: var(--muted);
+    }
+
     .main-section {
       width: 100%;
       max-width: 1200px;
       display: flex;
       flex-direction: column;
-      gap: 40px;
+      gap: 36px;
     }
 
     /* Vitrine do Banner Real */
@@ -113,6 +159,7 @@
       overflow: hidden;
       box-shadow: 0 30px 80px -20px rgba(0, 0, 0, 0.8);
       background: #000;
+      transition: all 0.25s ease;
     }
     .banner-wrapper img {
       width: 100%;
@@ -124,7 +171,7 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 14px 20px;
+      padding: 12px 18px;
       background: var(--card-bg);
       border-top: 1px solid var(--border);
       font-family: 'JetBrains Mono', monospace;
@@ -132,12 +179,29 @@
       color: var(--muted);
     }
 
+    /* Modo Comparação Lado a Lado */
+    .compare-grid {
+      display: none;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      width: 100%;
+    }
+    .compare-grid.active {
+      display: grid;
+    }
+    .single-view {
+      display: block;
+    }
+    .single-view.hidden {
+      display: none;
+    }
+
     /* Grade de Simuladores de Redes Sociais */
     .simulators-title {
-      font-size: 20px;
+      font-size: 19px;
       font-weight: 700;
       letter-spacing: -0.02em;
-      margin-bottom: 20px;
+      margin-bottom: 18px;
       display: flex;
       align-items: center;
       gap: 10px;
@@ -215,7 +279,7 @@
       background: #1f2c34;
       border-radius: 8px;
       padding: 6px;
-      max-width: 320px;
+      max-width: 340px;
     }
     .whatsapp-card {
       border-radius: 6px;
@@ -254,7 +318,7 @@
       background: var(--card-bg);
       border: 1px solid var(--border);
       border-radius: 14px;
-      padding: 24px;
+      padding: 22px;
     }
     .tags-table {
       width: 100%;
@@ -290,38 +354,89 @@
     <div class="brand-title">
       <img src="/logo-icon-dark.png" alt="Mirio" style="height: 28px; width: auto;" />
       <span>Mirio</span>
-      <span class="badge">SEO & OG Validator</span>
+      <span class="badge">Adaptive Open Graph System</span>
     </div>
 
     <div class="header-actions">
-      <a href="/og.png" download="og.png" class="btn btn-primary">
-        ↓ Baixar og.png
+      <a href="/og-dark.png" download="og-dark.png" class="btn btn-secondary" id="btn-download">
+        ↓ Baixar Banner
       </a>
-      <a href="/og-template.html" target="_blank" class="btn btn-secondary">
+      <a href="/og-dark-template.html" target="_blank" class="btn btn-secondary" id="btn-template">
         ↗ Abrir Template HTML
       </a>
-      <a href="/" class="btn btn-secondary">
+      <a href="/" class="btn btn-primary">
         ← Voltar ao App
       </a>
     </div>
   </header>
 
+  <!-- Barra de Seleção de Tema Interativa -->
+  <div class="theme-selector-bar">
+    <div class="theme-nav-pills">
+      <button type="button" class="theme-pill-btn active" onclick="switchTheme('dark')">
+        🌙 Tema Escuro (Dark)
+      </button>
+      <button type="button" class="theme-pill-btn" onclick="switchTheme('light')">
+        ☀️ Tema Claro (Light)
+      </button>
+      <button type="button" class="theme-pill-btn" onclick="switchTheme('compare')">
+        ⚖️ Comparar Lado a Lado
+      </button>
+    </div>
+
+    <div class="theme-hint" id="theme-status-text">
+      Ativo: og-dark.png (1200x630)
+    </div>
+  </div>
+
   <main class="main-section">
     
-    <!-- Visualizador do Banner Oficial -->
-    <div class="banner-wrapper">
-      <img src="/og.png" alt="Mirio — Banner Open Graph Oficial" />
-      <div class="banner-info-bar">
-        <span>DIMENSÕES: 1200 x 630 px (Proporção 1.91:1)</span>
-        <span>FORMATO: PNG (24-bit RGBA)</span>
-        <span>STATUS: PRODUÇÃO</span>
+    <!-- Visualização Única (Dark ou Light) -->
+    <div class="single-view" id="single-view-container">
+      <div class="banner-wrapper">
+        <img id="main-banner-img" src="/og-dark.png" alt="Mirio — Banner Open Graph Oficial" />
+        <div class="banner-info-bar">
+          <span id="banner-theme-label">TEMA: ESCURO (DARK MODE)</span>
+          <span>DIMENSÕES: 1200 x 630 px (1.91:1)</span>
+          <span>FORMATO: PNG (24-bit RGBA)</span>
+          <span>SINCRONIZAÇÃO: AUTOMÁTICA</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Visualização Comparativa (Lado a Lado) -->
+    <div class="compare-grid" id="compare-grid-container">
+      <div>
+        <div style="font-size: 13px; font-weight: 700; margin-bottom: 8px; color: #a1a1aa; font-family: 'JetBrains Mono', monospace;">
+          🌙 TEMA ESCURO (og-dark.png)
+        </div>
+        <div class="banner-wrapper">
+          <img src="/og-dark.png" alt="Mirio — Banner Escuro" />
+          <div class="banner-info-bar">
+            <span>Fundo #09090b</span>
+            <span>Logo Branca</span>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div style="font-size: 13px; font-weight: 700; margin-bottom: 8px; color: #a1a1aa; font-family: 'JetBrains Mono', monospace;">
+          ☀️ TEMA CLARO (og-light.png)
+        </div>
+        <div class="banner-wrapper">
+          <img src="/og-light.png" alt="Mirio — Banner Claro" />
+          <div class="banner-info-bar">
+            <span>Fundo #f8fafc</span>
+            <span>Logo Escura</span>
+          </div>
+        </div>
       </div>
     </div>
 
     <!-- Seção de Simuladores -->
     <div>
       <h2 class="simulators-title">
-        Simulação de Compartilhamento em Redes Sociais
+        Simulação em Redes Sociais com o Tema Selecionado
       </h2>
 
       <div class="simulators-grid">
@@ -330,15 +445,15 @@
         <div class="sim-card">
           <div class="sim-header">
             <span>Twitter / X (Summary Large Image)</span>
-            <span style="color:#71767b">twitter:card</span>
+            <span style="color:#71767b">twitter:image</span>
           </div>
           <div class="sim-content-twitter">
             <div class="twitter-card-inner">
-              <img src="/og.png" alt="Twitter Preview" />
+              <img id="sim-twitter-img" src="/og-dark.png" alt="Twitter Preview" />
               <div class="twitter-card-meta">
                 <div class="twitter-domain">mirio-wb.vercel.app</div>
                 <div class="twitter-title">Mirio — Ideias visuais em tempo real</div>
-                <div class="twitter-desc">Canvas infinito, retrospectivas de sprint e fluxogramas sincronizados a 60fps com cursores ao vivo para equipes de produto e design.</div>
+                <div class="twitter-desc">O whiteboard colaborativo onde ideias ganham forma. Organize dinâmicas, crie post-its, estruture fluxos e colabore com cursores ao vivo.</div>
               </div>
             </div>
           </div>
@@ -353,10 +468,10 @@
           <div class="sim-content-whatsapp">
             <div class="whatsapp-bubble">
               <div class="whatsapp-card">
-                <img src="/og.png" alt="WhatsApp Preview" />
+                <img id="sim-whatsapp-img" src="/og-dark.png" alt="WhatsApp Preview" />
                 <div class="whatsapp-card-info">
                   <div class="whatsapp-title">Mirio — Ideias visuais em tempo real</div>
-                  <div class="whatsapp-desc">Canvas infinito, retrospectivas de sprint e fluxogramas sincronizados a 60fps com cursores ao vivo para equipes de produto e design.</div>
+                  <div class="whatsapp-desc">O whiteboard colaborativo onde ideias ganham forma. Organize dinâmicas, crie post-its e colabore ao vivo.</div>
                   <div class="whatsapp-domain">mirio-wb.vercel.app</div>
                 </div>
               </div>
@@ -369,52 +484,93 @@
 
     <!-- Tabela de Metatags Ativas no index.html -->
     <div class="tags-section">
-      <h3 style="font-size: 17px; font-weight: 700; margin-bottom: 6px;">Metatags Ativas em Produção</h3>
+      <h3 style="font-size: 17px; font-weight: 700; margin-bottom: 6px;">Metatags Adaptativas de Tema</h3>
       <p style="font-size: 13px; color: var(--muted); margin-bottom: 16px;">
-        Configurações injetadas no <code>index.html</code> para indexação por Google, Apple, Discord, WhatsApp, Slack e LinkedIn.
+        O sistema injeta dinamicamente o banner correto de acordo com a preferência de tema do visitante e suporte a Client Hints.
       </p>
 
       <table class="tags-table">
         <thead>
           <tr>
-            <th>Propriedade / Tag</th>
-            <th>Valor Configurado</th>
+            <th>Propriedade / Recurso</th>
+            <th>Configuração & URLs Adaptativas</th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <td class="tag-prop">&lt;title&gt;</td>
-            <td class="tag-val">Mirio — Ideias visuais em tempo real</td>
+            <td class="tag-prop">og:image (Dark)</td>
+            <td class="tag-val">https://mirio-wb.vercel.app/og-dark.png (1200x630)</td>
           </tr>
           <tr>
-            <td class="tag-prop">meta[description]</td>
-            <td class="tag-val">Canvas infinito, retrospectivas de sprint e fluxogramas sincronizados a 60fps com cursores ao vivo para equipes de produto e design.</td>
+            <td class="tag-prop">og:image (Light)</td>
+            <td class="tag-val">https://mirio-wb.vercel.app/og-light.png (1200x630)</td>
           </tr>
           <tr>
-            <td class="tag-prop">og:image</td>
-            <td class="tag-val">https://mirio-wb.vercel.app/og.png (1200x630)</td>
+            <td class="tag-prop">og:image (Padrão)</td>
+            <td class="tag-val">https://mirio-wb.vercel.app/og.png (Retrocompatibilidade)</td>
           </tr>
           <tr>
-            <td class="tag-prop">og:url</td>
-            <td class="tag-val">https://mirio-wb.vercel.app/</td>
+            <td class="tag-prop">API Dinâmica</td>
+            <td class="tag-val">/api/og?theme=light / /api/og?theme=dark (ou Sec-CH-Prefers-Color-Scheme)</td>
           </tr>
           <tr>
-            <td class="tag-prop">twitter:card</td>
-            <td class="tag-val">summary_large_image</td>
+            <td class="tag-prop">Client-Side Sync</td>
+            <td class="tag-val">ThemeContext atualiza meta[property="og:image"] e twitter:image instantaneamente no DOM</td>
           </tr>
           <tr>
-            <td class="tag-prop">GEO SEO</td>
-            <td class="tag-val">BR / Brasil (-23.550520, -46.633308)</td>
-          </tr>
-          <tr>
-            <td class="tag-prop">schema.org JSON-LD</td>
-            <td class="tag-val">WebApplication (DesignApplication, Free, 60 FPS Canvas)</td>
+            <td class="tag-prop">Accept-CH Header</td>
+            <td class="tag-val">Sec-CH-Prefers-Color-Scheme (Notifica servidores da preferência de tema do navegador)</td>
           </tr>
         </tbody>
       </table>
     </div>
 
   </main>
+
+  <script>
+    let currentTheme = 'dark';
+
+    function switchTheme(theme) {
+      currentTheme = theme;
+      const singleView = document.getElementById('single-view-container');
+      const compareGrid = document.getElementById('compare-grid-container');
+      const mainImg = document.getElementById('main-banner-img');
+      const twitterImg = document.getElementById('sim-twitter-img');
+      const whatsappImg = document.getElementById('sim-whatsapp-img');
+      const themeLabel = document.getElementById('banner-theme-label');
+      const statusText = document.getElementById('theme-status-text');
+      const downloadBtn = document.getElementById('btn-download');
+      const templateBtn = document.getElementById('btn-template');
+
+      document.querySelectorAll('.theme-pill-btn').forEach(btn => btn.classList.remove('active'));
+
+      if (theme === 'compare') {
+        event.currentTarget.classList.add('active');
+        singleView.classList.add('hidden');
+        compareGrid.classList.add('active');
+        statusText.innerText = 'Comparação Lado a Lado (Dark vs Light)';
+        return;
+      }
+
+      event.currentTarget.classList.add('active');
+      singleView.classList.remove('hidden');
+      compareGrid.classList.remove('active');
+
+      const isDark = theme === 'dark';
+      const imgSrc = isDark ? '/og-dark.png' : '/og-light.png';
+      const templateSrc = isDark ? '/og-dark-template.html' : '/og-light-template.html';
+      const filename = isDark ? 'og-dark.png' : 'og-light.png';
+
+      mainImg.src = imgSrc;
+      twitterImg.src = imgSrc;
+      whatsappImg.src = imgSrc;
+      themeLabel.innerText = isDark ? 'TEMA: ESCURO (DARK MODE)' : 'TEMA: CLARO (LIGHT MODE)';
+      statusText.innerText = `Ativo: ${filename} (1200x630)`;
+      downloadBtn.href = imgSrc;
+      downloadBtn.download = filename;
+      templateBtn.href = templateSrc;
+    }
+  </script>
 
 </body>
 </html>
