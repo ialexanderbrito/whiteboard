@@ -26,9 +26,11 @@ import { votingService, type BoardVotingData, type VotingSessionConfig } from '.
 import { playChimeSound } from '../utils/audioChime';
 import { STICKY_COLORS } from '../utils/colors';
 import { alignElements, type AlignmentType } from '../utils/alignment';
-import { getUserBoardPermission, isBoardOwner } from '../utils/permissions';
+import { getUserBoardPermission, isBoardOwner, shouldShowWaitingRoom } from '../utils/permissions';
+import { WaitingRoomScreen } from '../components/whiteboard/WaitingRoomScreen';
+import { HostJoinRequestBanner } from '../components/whiteboard/HostJoinRequestBanner';
 import { Button } from '@/components/ui/button';
-import { Lock } from 'lucide-react';
+import { Lock } from '@/components/ui/icons';
 import { CommandPalette } from '../components/command/CommandPalette';
 import { useTheme } from '../context/ThemeContext';
 import { SprintTemplatesModal } from '../components/whiteboard/SprintTemplatesModal';
@@ -36,11 +38,14 @@ import { EditProfileModal } from '../components/whiteboard/EditProfileModal';
 import { NotFoundPage } from './NotFoundPage';
 import { LoadingScreen } from '../components/layout/LoadingScreen';
 import { MobileReadOnlyDrawer } from '../components/whiteboard/MobileReadOnlyDrawer';
+import { MobileBoardNavbar } from '../components/whiteboard/MobileBoardNavbar';
 import { reactionService } from '../services/reactionService';
 import { MIRIO_REACTION, isMirioReactionUnlocked, unlockMirioReaction } from '../utils/mirioReaction';
 import { publishCursorReadout } from '../utils/cursorReadout';
 import { computeFitToContentViewport } from '../utils/viewport';
 import { getElementWorldBounds } from '../utils/elementBounds';
+import { computeImageGridLayout } from '../utils/imageUpload';
+import type { MediaInsertItem } from '../components/whiteboard/StickersModal';
 
 // Modais pesados carregados sob demanda (Code-Splitting) para carregamento instantâneo do quadro
 const StickersModal = lazy(() => import('../components/whiteboard/StickersModal').then(m => ({ default: m.StickersModal })));
@@ -139,11 +144,29 @@ export const BoardPage: React.FC = () => {
 
   useEffect(() => {
     if (isMobile) {
-      setIsMobileNoticeOpen(true);
+      const dismissedKey = boardId ? `mirio_mobile_notice_${boardId}` : 'mirio_mobile_notice';
+      const alreadyDismissed =
+        typeof sessionStorage !== 'undefined' && sessionStorage.getItem(dismissedKey) === '1';
+      setIsMobileNoticeOpen(!alreadyDismissed);
     } else {
       setIsMobileNoticeOpen(false);
     }
-  }, [isMobile]);
+  }, [isMobile, boardId]);
+
+  const handleMobileNoticeOpenChange = useCallback(
+    (nextOpen: boolean) => {
+      setIsMobileNoticeOpen(nextOpen);
+      if (!nextOpen && typeof sessionStorage !== 'undefined') {
+        const dismissedKey = boardId ? `mirio_mobile_notice_${boardId}` : 'mirio_mobile_notice';
+        sessionStorage.setItem(dismissedKey, '1');
+      }
+    },
+    [boardId]
+  );
+
+  const handleOpenMobileGuide = useCallback(() => {
+    setIsMobileNoticeOpen(true);
+  }, []);
 
   // Configurações avançadas da caneta estilo Miro
   const [penMode, setPenMode] = useState<'pen' | 'highlighter' | 'eraser'>('pen');
@@ -190,6 +213,10 @@ export const BoardPage: React.FC = () => {
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   // Modal de Templates de Sprint disparado via Command K
   const [isSprintTemplatesOpen, setIsSprintTemplatesOpen] = useState(false);
+  // Modal de Compartilhamento e Permissões disparado via Navbar ou Command K
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  // Modal de Apoiar (PIX) disparado via Navbar ou Command K
+  const [isCoffeeModalOpen, setIsCoffeeModalOpen] = useState(false);
 
   const { isDark, toggleTheme } = useTheme();
 
@@ -572,15 +599,16 @@ export const BoardPage: React.FC = () => {
     }
   }, [board?.title]);
 
-  const boardPermission = getUserBoardPermission(board, currentUser, isUnlocked);
   const isOwner = isBoardOwner(board, currentUser);
+  const isWaitingInRoom = shouldShowWaitingRoom(board, currentUser, isUnlocked);
+  const boardPermission = getUserBoardPermission(board, currentUser, isUnlocked);
   const isCommentOnly = !isMobile && !isOwner && boardPermission === 'comment';
   const isReadOnly = isMobile || (!isOwner && boardPermission === 'view');
-  const hasNoAccess = !isOwner && boardPermission === 'none' && !isUnlocked;
+  const hasNoAccess = !isOwner && (boardPermission === 'none' || isWaitingInRoom) && !isUnlocked;
 
-  // Registra que o usuário acessou o quadro através do link (se tiver permissão e não for o dono)
+  // Registra que o usuário acessou o quadro através do link (se tiver permissão e não for o dono nem estiver na sala de espera)
   useEffect(() => {
-    if (boardId && currentUser && board && !hasNoAccess && !boardNotFound) {
+    if (boardId && currentUser && board && !hasNoAccess && !boardNotFound && !isWaitingInRoom) {
       boardService.recordVisitedBoard(boardId, currentUser.uid);
       if (!isOwner) {
         if (!board.members || !board.members[currentUser.uid]) {
@@ -588,7 +616,7 @@ export const BoardPage: React.FC = () => {
         }
       }
     }
-  }, [boardId, currentUser, board, hasNoAccess, isOwner, boardNotFound]);
+  }, [boardId, currentUser, board, hasNoAccess, isOwner, boardNotFound, isWaitingInRoom]);
 
   // Limpa members caso o proprietário estivesse duplicado na lista de participantes
   useEffect(() => {
@@ -921,6 +949,8 @@ export const BoardPage: React.FC = () => {
         currentEl.textDecoration !== targetEl.textDecoration ||
         currentEl.textColor !== targetEl.textColor ||
         JSON.stringify(currentEl.richText) !== JSON.stringify(targetEl.richText) ||
+        currentEl.src !== targetEl.src ||
+        currentEl.alt !== targetEl.alt ||
         currentEl.linkUrl !== targetEl.linkUrl ||
         JSON.stringify(currentEl.links) !== JSON.stringify(targetEl.links) ||
         currentEl.points?.length !== targetEl.points?.length ||
@@ -1277,21 +1307,25 @@ export const BoardPage: React.FC = () => {
     setSelectedElementIds(withIds.map((item) => item.id));
   };
 
-  // Inserção de Stickers e GIFs
+  // Inserção de Stickers, Imagens e GIFs (individual ou em lote organizado em grade)
   const handleInsertMedia = async (
     type: 'sticker' | 'gif',
     src: string,
     alt?: string,
-    text?: string
+    text?: string,
+    dimensions?: { width: number; height: number }
   ) => {
     if (!boardId || !currentUser || isReadOnly || isCommentOnly) return;
     recordSnapshot();
 
+    const w = dimensions?.width || (type === 'gif' ? 220 : 120);
+    const h = dimensions?.height || (type === 'gif' ? 160 : 120);
+
     const centerWorldX = Math.round(
-      (-stagePos.x + window.innerWidth / 2) / scale - (type === 'gif' ? 110 : 60)
+      (-stagePos.x + window.innerWidth / 2) / scale - w / 2
     );
     const centerWorldY = Math.round(
-      (-stagePos.y + window.innerHeight / 2) / scale - (type === 'gif' ? 80 : 60)
+      (-stagePos.y + window.innerHeight / 2) / scale - h / 2
     );
 
     const newMedia: CanvasElement = {
@@ -1302,8 +1336,8 @@ export const BoardPage: React.FC = () => {
       text: text || '',
       x: centerWorldX,
       y: centerWorldY,
-      width: type === 'gif' ? 220 : 120,
-      height: type === 'gif' ? 160 : 120,
+      width: w,
+      height: h,
       zIndex: elements.length + 1,
       updatedBy: currentUser.uid,
       updatedByName: currentUser.displayName,
@@ -1313,6 +1347,44 @@ export const BoardPage: React.FC = () => {
     setElements((prev) => [...prev, newMedia]);
     await elementService.addElement(boardId, newMedia);
     setSelectedElementIds([newMedia.id]);
+  };
+
+  const handleBatchInsertMedia = async (items: MediaInsertItem[]) => {
+    if (!boardId || !currentUser || isReadOnly || isCommentOnly || items.length === 0) return;
+    recordSnapshot();
+
+    const centerWorld = {
+      x: Math.round((-stagePos.x + window.innerWidth / 2) / scale),
+      y: Math.round((-stagePos.y + window.innerHeight / 2) / scale),
+    };
+
+    const normalizedDims = items.map((item) => ({
+      width: item.width || (item.type === 'gif' ? 220 : 240),
+      height: item.height || (item.type === 'gif' ? 160 : 180),
+    }));
+
+    const positions = computeImageGridLayout(normalizedDims, centerWorld);
+    const now = Date.now();
+
+    const newElements: CanvasElement[] = items.map((item, idx) => ({
+      id: 'elem_' + Math.random().toString(36).substring(2, 11) + idx,
+      type: item.type,
+      src: item.src || '',
+      alt: item.alt || '',
+      text: item.text || '',
+      x: positions[idx]?.x ?? centerWorld.x,
+      y: positions[idx]?.y ?? centerWorld.y,
+      width: normalizedDims[idx].width,
+      height: normalizedDims[idx].height,
+      zIndex: elements.length + idx + 1,
+      updatedBy: currentUser.uid,
+      updatedByName: currentUser.displayName,
+      updatedAt: now,
+    }));
+
+    setElements((prev) => [...prev, ...newElements]);
+    await elementService.batchAddElements(boardId, newElements);
+    setSelectedElementIds(newElements.map((el) => el.id));
   };
 
   // Controles de zoom
@@ -1343,12 +1415,18 @@ export const BoardPage: React.FC = () => {
     }
   }, [isMobile]);
 
-  const hasAutoFittedMobileRef = useRef<string | null>(null);
+  const hasAutoFittedRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!isMobile || !boardId || elements.length === 0) return;
-    if (hasAutoFittedMobileRef.current === boardId) return;
-    hasAutoFittedMobileRef.current = boardId;
+    if (!boardId || elements.length === 0) return;
+    const shouldFitFromUrl =
+      typeof window !== 'undefined' && window.location.search.includes('fit=1');
+    if (!isMobile && !shouldFitFromUrl) return;
+    if (hasAutoFittedRef.current === boardId) return;
+    hasAutoFittedRef.current = boardId;
     handleFitToContent();
+    if (shouldFitFromUrl && typeof window !== 'undefined') {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
   }, [isMobile, boardId, elements.length, handleFitToContent]);
 
   const handleOpenShortcuts = useCallback(() => setIsShortcutsModalOpen(true), []);
@@ -1390,6 +1468,17 @@ export const BoardPage: React.FC = () => {
     );
   }
 
+  // Se o usuário precisa aguardar na Sala de Espera para o proprietário autorizar
+  if (board && isWaitingInRoom) {
+    return (
+      <WaitingRoomScreen
+        board={board}
+        currentUser={currentUser}
+        onBackToDashboard={() => navigate('/')}
+      />
+    );
+  }
+
   // Se o usuário acessou um quadro privado sem permissão
   if (board && (boardPermission === 'none' || hasNoAccess)) {
     return (
@@ -1401,7 +1490,7 @@ export const BoardPage: React.FC = () => {
           </div>
           <h2 className="text-base font-semibold text-foreground mb-1">Acesso Restrito</h2>
           <p className="text-xs text-muted-foreground mb-6 leading-relaxed">
-            Este quadro é privado. Apenas o proprietário e colaboradores convidados diretamente por e-mail têm acesso a este conteúdo.
+            Este quadro é privado. Apenas o proprietário e participantes autorizados têm acesso a este conteúdo.
           </p>
           <Button
             size="sm"
@@ -1418,39 +1507,24 @@ export const BoardPage: React.FC = () => {
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-background selection:bg-foreground selection:text-background">
       {isMobile && !isPresentationMode && (
-        <div className="pointer-events-none fixed inset-x-0 top-0 z-40 flex items-center justify-between gap-2 border-b border-border/70 bg-background/95 px-4 py-2.5">
-          <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-foreground">{board.title || 'Quadro sem título'}</p>
-            <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Somente visualização</p>
-          </div>
-          <div className="pointer-events-auto flex shrink-0 items-center gap-1.5">
-            {elements.length > 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 px-2.5 text-xs"
-                onClick={handleFitToContent}
-              >
-                Ajustar
-              </Button>
-            )}
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 px-2.5 text-xs"
-              onClick={() => navigate('/')}
-            >
-              Voltar
-            </Button>
-          </div>
-        </div>
+        <MobileBoardNavbar
+          boardTitle={board.title || 'Quadro sem título'}
+          scale={scale}
+          elementCount={elements.length}
+          onlineCount={remoteUsers.length}
+          onBackToDashboard={() => navigate('/')}
+          onFitToContent={handleFitToContent}
+          onOpenMobileGuide={handleOpenMobileGuide}
+        />
       )}
 
       <MobileReadOnlyDrawer
         open={isMobileNoticeOpen && isMobile}
         boardTitle={board.title || 'Quadro sem título'}
-        onOpenChange={setIsMobileNoticeOpen}
+        elementCount={elements.length}
+        onOpenChange={handleMobileNoticeOpenChange}
         onBackToDashboard={() => navigate('/')}
+        onFitToContent={handleFitToContent}
       />
 
       {/* Barra de Navegação Superior (Oculta no Modo Apresentação) */}
@@ -1493,6 +1567,18 @@ export const BoardPage: React.FC = () => {
           showRemoteCursors={showRemoteCursors}
           onToggleRemoteCursors={handleToggleRemoteCursors}
           mirioReactionUnlocked={mirioReactionUnlocked}
+          isShareModalOpen={isShareModalOpen}
+          onShareModalOpenChange={setIsShareModalOpen}
+          isCoffeeModalOpen={isCoffeeModalOpen}
+          onCoffeeModalOpenChange={setIsCoffeeModalOpen}
+        />
+      )}
+
+      {/* Banner Flutuante de Solicitações de Entrada na Sala de Espera para o Anfitrião */}
+      {isOwner && (
+        <HostJoinRequestBanner
+          board={board}
+          onOpenShareModal={() => setIsShareModalOpen(true)}
         />
       )}
 
@@ -1703,13 +1789,14 @@ export const BoardPage: React.FC = () => {
         </div>
       )}
 
-      {/* Modal de Stickers, Emojis e GIFs */}
+      {/* Modal de Imagens, Stickers, Emojis e GIFs */}
       {!isMobile && isStickersModalOpen && (
         <Suspense fallback={null}>
           <StickersModal
             open={isStickersModalOpen}
             onOpenChange={setIsStickersModalOpen}
             onInsertMedia={handleInsertMedia}
+            onBatchInsertMedia={handleBatchInsertMedia}
           />
         </Suspense>
       )}
@@ -1741,14 +1828,22 @@ export const BoardPage: React.FC = () => {
         boardContext={{
           boardTitle: board?.title || 'Quadro sem título',
           isAnonymous: currentUser?.isAnonymous,
+          isReadOnly,
+          isCommentOnly,
           frames,
           currentTool,
           selectedCount: selectedElementIds.length,
+          canUndo: historyPast.length > 0,
+          onUndo: handleUndo,
+          canRedo: historyFuture.length > 0,
+          onRedo: handleRedo,
           onAlignElements: handleAlignSelectedElements,
           onOpenEditProfile: () => setIsEditProfileOpen(true),
+          onOpenCoffee: () => setIsCoffeeModalOpen(true),
           onSelectTool: setCurrentTool,
           onJumpToFrame: handleJumpToFrame,
           onStartTimer: handleStartTimerQuick,
+          onToggleTimer: handleToggleTimer,
           onOpenVoting: handleOpenVoting,
           onEnterPresentation: handleEnterPresentation,
           onOpenTemplates: () => setIsSprintTemplatesOpen(true),
@@ -1756,8 +1851,10 @@ export const BoardPage: React.FC = () => {
           onOpenShortcuts: () => setIsShortcutsModalOpen(true),
           onExportPNG: handleExportPNG,
           onExportJSON: handleExportJSON,
-          onShare: isOwner ? handleCopyShareLink : undefined,
+          onShare: () => setIsShareModalOpen(true),
+          onCopyLink: handleCopyShareLink,
           onResetZoom: handleResetZoom,
+          onFitToContent: handleFitToContent,
           onOpenCursorChat: () => {
             setMouseScreenPos(currentMousePosRef.current);
             setIsCursorChatOpen(true);
@@ -1788,15 +1885,15 @@ export const BoardPage: React.FC = () => {
         />
       )}
 
-      {/* Camada de Feixes e Ponteiros Laser ao Vivo (Colaborativo e Local) */}
-      {!isMobile && <LaserTrailOverlay
+      {/* Camada de Feixes e Ponteiros Laser ao Vivo (Colaborativo e Local para todas as telas) */}
+      <LaserTrailOverlay
         currentTool={currentTool}
         currentUser={currentUser}
         localLaserPosRef={localLaserPosRef}
         isLocalDrawingRef={isLocalLaserDrawingRef}
         localPointsRef={localLaserPointsRef}
         remoteUsers={remoteUsers}
-      />}
+      />
 
       {/* Camada de Cursores Remotos Voando na Tela */}
       {showRemoteCursors && !isMobile && (
