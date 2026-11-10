@@ -63,8 +63,8 @@ export const SprintTemplatesModal: React.FC<SprintTemplatesModalProps> = ({
     });
   }, [selectedCategory, searchQuery]);
 
-  const handleInsert = () => {
-    onInsertTemplate(selectedTemplate);
+  const handleInsert = (templateToInsert = selectedTemplate) => {
+    onInsertTemplate(templateToInsert);
     setOpen(false);
   };
 
@@ -94,8 +94,8 @@ export const SprintTemplatesModal: React.FC<SprintTemplatesModalProps> = ({
         </Tooltip>
       )}
 
-      <DialogContent className="max-w-3xl p-5 sm:p-6 gap-4 max-h-[90vh] overflow-y-auto">
-        <DialogHeader className="space-y-1">
+      <DialogContent className="max-w-3xl p-5 sm:p-6 gap-3.5 max-h-[88vh] flex flex-col overflow-hidden">
+        <DialogHeader className="space-y-1 shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="flex size-8 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-primary shadow-2xs">
               <LayoutGrid className="size-4" />
@@ -108,15 +108,15 @@ export const SprintTemplatesModal: React.FC<SprintTemplatesModalProps> = ({
                 </span>
               </DialogTitle>
               <DialogDescription className="text-xs text-muted-foreground">
-                Modelos prontos com a mesma arquitetura visual da tela inicial para acelerar dinâmicas e planejamento.
+                Modelos prontos para dinâmicas, retrospectivas e planejamento ágil em 1 clique.
               </DialogDescription>
             </div>
           </div>
         </DialogHeader>
 
-        {/* Barra de Filtros: Categorias por Perfil + Busca Rápida (Idêntica à hierarquia da tela inicial) */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-1">
-          {/* Segmented Control de Categorias (Emil Kowalski) */}
+        {/* Barra de Filtros: Categorias por Perfil + Busca Rápida (Emil Kowalski segmented control) */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-0.5 shrink-0">
+          {/* Segmented Control de Categorias */}
           <div className="flex items-center gap-1 overflow-x-auto p-0.5 bg-muted/60 rounded-lg border border-border/70 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden shrink-0">
             {TEMPLATE_CATEGORIES.map((cat) => {
               const isCatSelected = selectedCategory === cat.id;
@@ -160,9 +160,9 @@ export const SprintTemplatesModal: React.FC<SprintTemplatesModalProps> = ({
           </div>
         </div>
 
-        {/* Grade de Cards com Miniaturas Arquiteturais SVG (Idêntico ao QuickStartTemplatesStrip da Tela Principal) */}
+        {/* Grade de Cards com Miniaturas Arquiteturais SVG (Estilo FigJam: clean, imersivo e sem poluição) */}
         {filteredTemplates.length > 0 ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 max-h-[280px] overflow-y-auto p-0.5 pr-1.5 [scrollbar-width:thin]">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 flex-1 overflow-y-auto p-1 pr-1.5 [scrollbar-width:thin] max-h-[460px]">
             {filteredTemplates.map((tmpl) => {
               const isSelected = selectedTemplate.id === tmpl.id;
               return (
@@ -170,14 +170,16 @@ export const SprintTemplatesModal: React.FC<SprintTemplatesModalProps> = ({
                   key={tmpl.id}
                   type="button"
                   onClick={() => setSelectedTemplate(tmpl)}
-                  className={`group relative text-left rounded-lg border transition-[border-color,box-shadow,transform,background-color] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.98] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                  onDoubleClick={() => handleInsert(tmpl)}
+                  className={`group relative text-left rounded-lg border transition-[border-color,box-shadow,transform,background-color] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.98] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary flex flex-col ${
                     isSelected
                       ? 'border-primary ring-2 ring-primary/20 bg-primary/5 shadow-xs'
                       : 'border-border/80 bg-background hover:border-foreground/30 hover:shadow-xs'
                   }`}
+                  title={`${tmpl.title} (Clique duas vezes para inserir direto)`}
                 >
                   {/* Miniatura Esquema SVG com padrão radial e dot grid */}
-                  <div className="relative h-20 w-full rounded-t-lg border-b border-border/60 bg-muted/25 overflow-hidden flex items-center justify-center p-1">
+                  <div className="relative h-24 w-full rounded-t-lg border-b border-border/60 bg-muted/25 overflow-hidden flex items-center justify-center p-1.5 shrink-0">
                     <div
                       className="absolute inset-0 opacity-[0.3] dark:opacity-[0.18]"
                       style={{
@@ -196,26 +198,36 @@ export const SprintTemplatesModal: React.FC<SprintTemplatesModalProps> = ({
                     )}
                   </div>
 
-                  {/* Rodapé do Card */}
-                  <div className="p-2">
-                    <p
-                      className={`text-xs font-semibold truncate transition-colors ${
-                        isSelected ? 'text-primary' : 'text-foreground group-hover:text-primary'
-                      }`}
-                      title={tmpl.title}
-                    >
-                      {tmpl.shortTitle || tmpl.title}
-                    </p>
-                    <p className="text-[10px] text-muted-foreground truncate mt-0.5">
-                      {tmpl.badge}
-                    </p>
+                  {/* Informações do Card */}
+                  <div className="p-2.5 flex-1 flex flex-col justify-between gap-1.5">
+                    <div>
+                      <p
+                        className={`text-xs font-semibold line-clamp-1 transition-colors ${
+                          isSelected ? 'text-primary' : 'text-foreground group-hover:text-primary'
+                        }`}
+                        title={tmpl.title}
+                      >
+                        {tmpl.shortTitle || tmpl.title}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground line-clamp-1 mt-0.5" title={tmpl.description}>
+                        {tmpl.description}
+                      </p>
+                    </div>
+
+                    {/* Metadados: Badge e contagem de raias */}
+                    <div className="flex items-center justify-between text-[10px] text-muted-foreground pt-1 border-t border-border/50">
+                      <span className="truncate font-medium">{tmpl.badge}</span>
+                      <span className="font-mono text-[9px] px-1.5 py-0.2 rounded bg-muted/80 text-muted-foreground border border-border/60 shrink-0">
+                        {tmpl.columns.length} raias
+                      </span>
+                    </div>
                   </div>
                 </button>
               );
             })}
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center py-8 text-center border border-dashed border-border rounded-lg bg-muted/20">
+          <div className="flex flex-col items-center justify-center py-12 text-center border border-dashed border-border rounded-lg bg-muted/20 flex-1">
             <p className="text-xs font-semibold text-foreground">Nenhum template encontrado</p>
             <p className="text-[11px] text-muted-foreground mt-0.5">
               Tente buscar por outro termo ou selecione a categoria "Todos".
@@ -235,86 +247,41 @@ export const SprintTemplatesModal: React.FC<SprintTemplatesModalProps> = ({
           </div>
         )}
 
-        {/* Painel de Detalhes e Pré-visualização Fiel das Raias do Template Selecionado */}
-        <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-2.5">
-          <div className="flex flex-wrap items-center justify-between gap-1.5 border-b border-border/60 pb-2">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-foreground truncate">
-                  {selectedTemplate.title}
-                </span>
-                <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4.5 font-normal shrink-0">
-                  {selectedTemplate.badge}
-                </Badge>
-              </div>
-              <p className="text-[11px] text-muted-foreground line-clamp-1 mt-0.5">
-                {selectedTemplate.description}
-              </p>
-            </div>
-            <span className="text-[10px] text-muted-foreground font-mono shrink-0">
-              {selectedTemplate.columns.length} raias
+        {/* Rodapé: Resumo Fiel do Template Selecionado + Ação Principal */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 border-t border-border shrink-0">
+          {/* Resumo do que será criado no quadro */}
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="size-2 rounded-full bg-primary shrink-0 animate-pulse" />
+            <span className="text-xs font-semibold text-foreground truncate">
+              {selectedTemplate.title}
             </span>
+            <span className="text-[11px] text-muted-foreground truncate hidden sm:inline">
+              • {selectedTemplate.columns.length} raias com post-its temáticos
+            </span>
+            <Badge variant="outline" className="text-[9.5px] px-1.5 py-0 h-4 font-normal text-muted-foreground shrink-0 hidden md:inline-flex">
+              {selectedTemplate.badge}
+            </Badge>
           </div>
 
-          {/* Raias Renderizadas com Cores e Post-its Autênticos */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-0.5">
-            {selectedTemplate.columns.map((col, idx) => (
-              <div
-                key={idx}
-                className="flex flex-col rounded-md border border-dashed overflow-hidden shadow-2xs"
-                style={{
-                  borderColor: col.frameStroke,
-                  backgroundColor: col.frameFill,
-                }}
-              >
-                {/* Aba Superior com Stroke */}
-                <div
-                  className="px-2 py-0.5 text-[10px] font-bold text-white flex items-center gap-1 shadow-xs truncate"
-                  style={{ backgroundColor: col.frameStroke }}
-                >
-                  <span className="truncate">{col.title}</span>
-                </div>
-
-                {/* Post-it de Exemplo no Interior */}
-                <div className="p-1.5 flex-1 flex flex-col justify-start min-h-[72px]">
-                  <div
-                    className="p-1.5 rounded shadow-2xs border border-black/10 text-zinc-900 flex flex-col justify-between"
-                    style={{ backgroundColor: col.stickyFill }}
-                  >
-                    <p className="text-[9.5px] font-medium leading-tight line-clamp-2">
-                      {col.cards?.[0] || 'Card de exemplo'}
-                    </p>
-                    <div className="mt-1 flex items-center justify-between text-[8px] text-zinc-600 font-mono">
-                      <span>#card-0{idx + 1}</span>
-                      <span>✨</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Rodapé: Contexto, Cancelar e Ação Principal */}
-        <div className="flex items-center justify-between gap-2 pt-1 border-t border-border">
-          <p className="text-[11px] text-muted-foreground hidden sm:block">
-            As raias serão inseridas no centro da sua visualização atual.
-          </p>
-          <div className="flex items-center gap-2 ml-auto">
+          {/* Ações e Dica */}
+          <div className="flex items-center gap-2 shrink-0 ml-auto">
+            <span className="text-[10px] text-muted-foreground hidden lg:inline mr-1">
+              Dica: duplo-clique no card insere direto
+            </span>
             <Button
               type="button"
               variant="ghost"
               size="sm"
               onClick={() => setOpen(false)}
-              className="h-8 text-xs cursor-pointer active:scale-[0.97]"
+              className="h-8 text-xs cursor-pointer active:scale-[0.97] transition-transform"
             >
               Cancelar
             </Button>
             <Button
               type="button"
-              onClick={handleInsert}
+              onClick={() => handleInsert()}
               size="sm"
-              className="gap-1.5 h-8 text-xs font-medium shadow-xs cursor-pointer active:scale-[0.97]"
+              className="gap-1.5 h-8 text-xs font-medium shadow-xs cursor-pointer active:scale-[0.97] transition-[transform,background-color] ease-[cubic-bezier(0.23,1,0.32,1)]"
             >
               <Plus className="size-3.5" />
               <span>Inserir no Quadro</span>
