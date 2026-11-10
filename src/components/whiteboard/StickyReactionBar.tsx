@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import type { CanvasElement } from '../../types/element';
 import { getAppleEmojiUrl } from '../../utils/appleEmoji';
 import { playReactionPopSound } from '../../utils/audioChime';
+import { getElementWorldBounds } from '../../utils/elementBounds';
 import { MIRIO_REACTION, getReactionImageUrl } from '../../utils/mirioReaction';
 import { getViewport, subscribeViewport, type ViewportState } from '../../utils/viewport';
 
@@ -33,15 +34,16 @@ export const StickyReactionBar: React.FC<StickyReactionBarProps> = React.memo(({
     const place = (viewport: ViewportState) => {
       const node = barRef.current;
       if (!node) return;
-      const width = (sticky.width || 180) * viewport.scale;
-      const height = (sticky.height || 180) * viewport.scale;
-      node.style.left = `${sticky.x * viewport.scale + viewport.x + width / 2}px`;
-      node.style.top = `${sticky.y * viewport.scale + viewport.y + height + verticalOffset}px`;
+      const bounds = getElementWorldBounds(sticky);
+      const width = bounds.w * viewport.scale;
+      const height = bounds.h * viewport.scale;
+      node.style.left = `${bounds.x * viewport.scale + viewport.x + width / 2}px`;
+      node.style.top = `${bounds.y * viewport.scale + viewport.y + height + verticalOffset}px`;
     };
 
     place(getViewport());
     return subscribeViewport(place);
-  }, [sticky.x, sticky.y, sticky.width, sticky.height, verticalOffset]);
+  }, [sticky, verticalOffset]);
 
   return (
     <div

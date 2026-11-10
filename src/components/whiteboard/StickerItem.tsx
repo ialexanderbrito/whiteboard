@@ -73,6 +73,7 @@ export const StickerItem: React.FC<StickerItemProps> = React.memo(({
       id={element.id}
       x={element.x}
       y={element.y}
+      rotation={element.rotation || 0}
       draggable={isItemDraggable}
       onClick={(e) => {
         if (element.linkUrl && (e.evt.ctrlKey || e.evt.metaKey)) {

@@ -1,6 +1,7 @@
 import React, { useLayoutEffect, useRef } from 'react';
 import { Plus } from 'lucide-react';
 import type { CanvasElement } from '../../types/element';
+import { getElementWorldBounds } from '../../utils/elementBounds';
 import type { StickyDirection } from '../../utils/stickyPlacement';
 import { getViewport, subscribeViewport, type ViewportState } from '../../utils/viewport';
 
@@ -41,10 +42,11 @@ export const StickyQuickAdd: React.FC<StickyQuickAddProps> = React.memo(({
 
   useLayoutEffect(() => {
     const place = (viewport: ViewportState) => {
-      const width = (sticky.width || 180) * viewport.scale;
-      const height = (sticky.height || 180) * viewport.scale;
-      const centerX = (sticky.x + (sticky.width || 180) / 2) * viewport.scale + viewport.x;
-      const centerY = (sticky.y + (sticky.height || 180) / 2) * viewport.scale + viewport.y;
+      const bounds = getElementWorldBounds(sticky);
+      const width = bounds.w * viewport.scale;
+      const height = bounds.h * viewport.scale;
+      const centerX = (bounds.x + bounds.w / 2) * viewport.scale + viewport.x;
+      const centerY = (bounds.y + bounds.h / 2) * viewport.scale + viewport.y;
 
       const hideAll = () => {
         DIRECTIONS.forEach(({ direction }) => {
@@ -94,7 +96,7 @@ export const StickyQuickAdd: React.FC<StickyQuickAddProps> = React.memo(({
 
     place(getViewport());
     return subscribeViewport(place);
-  }, [sticky.x, sticky.y, sticky.width, sticky.height]);
+  }, [sticky]);
 
   return (
     <div className="pointer-events-none absolute inset-0 z-40 overflow-visible select-none animate-in fade-in-0 duration-150">

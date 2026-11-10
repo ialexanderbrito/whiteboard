@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Globe, ExternalLink, Copy, Check, Trash2, Edit3 } from 'lucide-react';
 import type { CanvasElement } from '../../types/element';
+import { getElementWorldBounds } from '../../utils/elementBounds';
 import { extractAllLinks, getDomainFromUrl } from '../../utils/textLinks';
 import { Button } from '@/components/ui/button';
 import {
@@ -41,18 +42,12 @@ export const ElementLinkBalloon: React.FC<ElementLinkBalloonProps> = ({
     const node = balloonRef.current;
     if (!node) return;
 
-    const elemWidth = (element.width || (element.radius ? element.radius * 2 : 180)) * viewport.scale;
-    const textHeight = (element.fontSize || 20) * 1.2;
-    const elemHeight = (
-      element.height ||
-      (element.type === 'text' ? textHeight : element.radius ? element.radius * 2 : 180)
-    ) * viewport.scale;
+    const bounds = getElementWorldBounds(element);
+    const elemWidth = bounds.w * viewport.scale;
+    const elemHeight = bounds.h * viewport.scale;
 
-    const rawX = element.type === 'circle' && element.radius ? element.x - element.radius : element.x;
-    const rawY = element.type === 'circle' && element.radius ? element.y - element.radius : element.y;
-
-    const screenX = rawX * viewport.scale + viewport.x;
-    const screenY = rawY * viewport.scale + viewport.y;
+    const screenX = bounds.x * viewport.scale + viewport.x;
+    const screenY = bounds.y * viewport.scale + viewport.y;
 
     const isSticky = element.type === 'sticky';
     const isNearBottom =
@@ -77,18 +72,12 @@ export const ElementLinkBalloon: React.FC<ElementLinkBalloonProps> = ({
   if (links.length === 0) return null;
 
   // Posição inicial a partir do viewport já comprometido (evita salto no primeiro paint).
-  const elemWidth = (element.width || (element.radius ? element.radius * 2 : 180)) * scale;
-  const textHeight = (element.fontSize || 20) * 1.2;
-  const elemHeight = (
-    element.height ||
-    (element.type === 'text' ? textHeight : element.radius ? element.radius * 2 : 180)
-  ) * scale;
+  const bounds = getElementWorldBounds(element);
+  const elemWidth = bounds.w * scale;
+  const elemHeight = bounds.h * scale;
 
-  const rawX = element.type === 'circle' && element.radius ? element.x - element.radius : element.x;
-  const rawY = element.type === 'circle' && element.radius ? element.y - element.radius : element.y;
-
-  const screenX = rawX * scale + stagePos.x;
-  const screenY = rawY * scale + stagePos.y;
+  const screenX = bounds.x * scale + stagePos.x;
+  const screenY = bounds.y * scale + stagePos.y;
 
   const isSticky = element.type === 'sticky';
   const isNearBottom = screenY + elemHeight + (isSticky ? stickyBottomOffset + 44 : 60) > (typeof window !== 'undefined' ? window.innerHeight : 800);

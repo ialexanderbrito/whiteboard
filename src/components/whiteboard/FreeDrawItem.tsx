@@ -34,6 +34,7 @@ export const FreeDrawItem: React.FC<FreeDrawItemProps> = React.memo(({
       id={element.id}
       x={element.x}
       y={element.y}
+      rotation={element.rotation || 0}
       draggable={isItemDraggable}
       onClick={onSelect}
       onTap={onSelect}
