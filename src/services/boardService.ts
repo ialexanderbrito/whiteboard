@@ -837,6 +837,7 @@ export const boardService = {
       color: requestData?.color || '#3b82f6',
       isAnonymous: Boolean(requestData?.isAnonymous),
       role,
+      hasCustomRole: true,
       lastSeen: Date.now(),
     };
 
@@ -854,6 +855,7 @@ export const boardService = {
           [`members.${requestUid}.color`]: memberUpdate.color,
           [`members.${requestUid}.isAnonymous`]: memberUpdate.isAnonymous,
           [`members.${requestUid}.role`]: role,
+          [`members.${requestUid}.hasCustomRole`]: true,
           [`members.${requestUid}.lastSeen`]: Date.now(),
           removedMemberIds: arrayRemove(requestUid),
           updatedAt: Date.now(),
@@ -901,6 +903,7 @@ export const boardService = {
           color: memberUpdate.color || '#3b82f6',
           isAnonymous: Boolean(memberUpdate.isAnonymous),
           role,
+          hasCustomRole: true,
           joinedAt: b.members?.[requestUid]?.joinedAt || Date.now(),
           lastSeen: Date.now(),
         },
@@ -1068,6 +1071,7 @@ export const boardService = {
       email: user.email || null,
       photoURL: user.photoURL || null,
       role: defaultRole,
+      hasCustomRole: false,
       joinedAt: Date.now(),
       lastSeen: Date.now(),
       isAnonymous: Boolean(user.isAnonymous),
@@ -1099,12 +1103,13 @@ export const boardService = {
         return;
       }
       const currentMembers = local[idx].members || {};
-      const existingRole = currentMembers[user.uid]?.role;
+      const existingMember = currentMembers[user.uid];
       local[idx].members = {
         ...currentMembers,
         [user.uid]: {
           ...memberData,
-          role: existingRole || memberData.role,
+          role: existingMember?.role || memberData.role,
+          hasCustomRole: Boolean(existingMember?.hasCustomRole),
           lastSeen: Date.now(),
         },
       };
@@ -1117,6 +1122,9 @@ export const boardService = {
       try {
         const boardRef = doc(db, 'boards', boardId);
         const boardSnap = await getDoc(boardRef);
+        let finalRole = memberData.role;
+        let finalHasCustom = false;
+
         if (boardSnap.exists()) {
           const boardData = boardSnap.data() as Board;
           // O proprietário nunca deve ser registrado como membro/visitante do seu próprio quadro
@@ -1132,6 +1140,13 @@ export const boardService = {
           // Se o usuário foi removido deste quadro e não foi re-adicionado, não permite auto-registro
           if (!isReinvitedFirestore && (boardData.removedMemberIds?.includes(user.uid) || boardData.members?.[user.uid]?.role === 'none')) {
             return;
+          }
+
+          // Se já havia um papel ou customRole registrado, preserva para não sobrescrever papéis atribuídos pelo dono
+          const existingFirestoreMember = boardData.members?.[user.uid];
+          if (existingFirestoreMember) {
+            finalRole = existingFirestoreMember.role || finalRole;
+            finalHasCustom = Boolean(existingFirestoreMember.hasCustomRole);
           }
 
           // Se foi re-convidado, limpa seu UID de removedMemberIds no Firestore
@@ -1151,7 +1166,11 @@ export const boardService = {
           boardRef,
           {
             members: {
-              [user.uid]: memberData,
+              [user.uid]: {
+                ...memberData,
+                role: finalRole,
+                hasCustomRole: finalHasCustom,
+              },
             },
             updatedAt: Date.now(),
           },

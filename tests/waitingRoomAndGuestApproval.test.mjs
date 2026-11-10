@@ -184,6 +184,85 @@ test('getUserBoardPermission: se o anfitrião recusa a solicitação, o convidad
   assert.equal(getUserBoardPermission(board, rejectedUser), 'none');
 });
 
+test('getUserBoardPermission: atualiza imediatamente para edit ou comment quando anfitrião altera permissão após conceder view', () => {
+  // Cenário reportado pelo usuário: Concedeu 'view' inicialmente na Sala de Espera e depois alterou para 'edit'
+  const boardAfterRoleChange = {
+    id: 'b1',
+    title: 'Design Sprint',
+    ownerId: 'owner_123',
+    ownerName: 'Alexander',
+    waitingRoomEnabled: true,
+    defaultPermission: 'view',
+    joinRequests: {
+      guest_user: {
+        uid: 'guest_user',
+        name: 'Colaborador',
+        status: 'approved',
+        assignedRole: 'view', // resíduo inicial da aprovação
+        requestedAt: Date.now() - 5000,
+        respondedAt: Date.now() - 4000,
+      },
+    },
+    members: {
+      guest_user: {
+        uid: 'guest_user',
+        name: 'Colaborador',
+        role: 'edit', // alterado pelo anfitrião para 'edit'
+        hasCustomRole: true,
+        joinedAt: Date.now() - 4000,
+        lastSeen: Date.now(),
+      },
+    },
+  };
+
+  const collaboratorUser = { uid: 'guest_user', displayName: 'Colaborador', email: null, photoURL: null, isAnonymous: true, color: '#10b981' };
+  
+  // Deve refletir imediatamente a permissão atualizada ('edit'), sem ficar preso ao 'view' de joinRequests
+  assert.equal(getUserBoardPermission(boardAfterRoleChange, collaboratorUser), 'edit');
+
+  // Teste de alteração para 'comment'
+  const boardComment = {
+    ...boardAfterRoleChange,
+    members: {
+      guest_user: {
+        ...boardAfterRoleChange.members.guest_user,
+        role: 'comment',
+      },
+    },
+  };
+  assert.equal(getUserBoardPermission(boardComment, collaboratorUser), 'comment');
+});
+
+test('getUserBoardPermission: sincroniza participantes sem customRole quando a permissão geral do link muda', () => {
+  const visitorUser = { uid: 'guest_link', displayName: 'Visitante Link', email: null, photoURL: null, isAnonymous: true, color: '#3b82f6' };
+
+  // Usuário entrou quando a permissão padrão era 'view'
+  const boardOldDefault = {
+    id: 'b2',
+    title: 'Planejamento',
+    ownerId: 'owner_123',
+    waitingRoomEnabled: false,
+    defaultPermission: 'view',
+    members: {
+      guest_link: {
+        uid: 'guest_link',
+        name: 'Visitante Link',
+        role: 'view',
+        hasCustomRole: false,
+        joinedAt: Date.now() - 10000,
+      },
+    },
+  };
+  assert.equal(getUserBoardPermission(boardOldDefault, visitorUser), 'view');
+
+  // Dono altera a permissão geral para 'edit'
+  const boardNewDefault = {
+    ...boardOldDefault,
+    defaultPermission: 'edit',
+  };
+  assert.equal(getUserBoardPermission(boardNewDefault, visitorUser), 'edit');
+});
+
 test('LGPD e Privacidade: WaitingRoomScreen não expõe nome do proprietário nem seu status online/ausente', async () => {
   const fs = await import('node:fs');
   const path = await import('node:path');

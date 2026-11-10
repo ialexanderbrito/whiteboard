@@ -87,7 +87,34 @@ export function getUserBoardPermission(
     return 'edit';
   }
 
-  // 2. Se o anfitrião aprovou expressamente a solicitação de entrada na Sala de Espera
+  // 2. Se o usuário foi expressamente removido pelo proprietário do quadro (e não foi re-adicionado com papel ativo)
+  const isExplicitlyRemoved = Boolean(
+    board.removedMemberIds &&
+    board.removedMemberIds.includes(user.uid) &&
+    (!board.members?.[user.uid]?.role || board.members[user.uid].role === 'none') &&
+    (!user.email || !board.collaborators || !Object.values(board.collaborators).some((c) => c?.email?.toLowerCase() === user.email?.toLowerCase()))
+  );
+  if (isExplicitlyRemoved) {
+    return 'none';
+  }
+
+  // 3. Verifica se o usuário tem papel específico atribuído por UID em members
+  // A lista de members reflete os membros e suas alterações feitas em tempo real pelo anfitrião
+  if (board.members && board.members[user.uid]?.role) {
+    const member = board.members[user.uid];
+    const memberRole = member.role!;
+    if (memberRole === 'none') {
+      return 'none';
+    }
+    // Se o anfitrião definiu ou alterou o papel individualmente, ou se não há defaultPermission divergente
+    if (member.hasCustomRole || !board.defaultPermission || board.defaultPermission === memberRole) {
+      return memberRole;
+    }
+    // Se o participante apenas herdou a permissão padrão e a geral foi alterada, segue a geral
+    return board.defaultPermission;
+  }
+
+  // 4. Se o anfitrião aprovou expressamente a solicitação de entrada na Sala de Espera (fallback caso members ainda não tenha sido registrado)
   if (board.joinRequests && board.joinRequests[user.uid]?.status === 'approved') {
     const assignedRole = board.joinRequests[user.uid].assignedRole;
     if (assignedRole && assignedRole !== 'none') {
@@ -95,17 +122,7 @@ export function getUserBoardPermission(
     }
   }
 
-  // 3. Verifica se o usuário tem papel específico atribuído por UID em members
-  if (board.members && board.members[user.uid]?.role) {
-    const memberRole = board.members[user.uid].role!;
-    if (memberRole === 'none') {
-      return 'none';
-    }
-    // Papel explícito ativo (edit, comment, view) concedido ao membro
-    return memberRole;
-  }
-
-  // 4. Verifica se o usuário foi convidado explicitamente pelo e-mail (re-convites por e-mail têm precedência)
+  // 5. Verifica se o usuário foi convidado explicitamente pelo e-mail (re-convites por e-mail têm precedência)
   if (user.email && board.collaborators) {
     const userEmail = user.email.trim().toLowerCase();
     const collab = Object.values(board.collaborators).find(
@@ -114,11 +131,6 @@ export function getUserBoardPermission(
     if (collab) {
       return collab.role;
     }
-  }
-
-  // 5. Se o usuário foi expressamente removido pelo proprietário do quadro (e não foi re-adicionado)
-  if (board.removedMemberIds && board.removedMemberIds.includes(user.uid)) {
-    return 'none';
   }
 
   // 6. Se o usuário precisa de autorização na Sala de Espera e ainda não foi aprovado

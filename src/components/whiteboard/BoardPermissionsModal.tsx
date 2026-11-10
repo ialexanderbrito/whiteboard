@@ -261,7 +261,18 @@ export const BoardPermissionsModal: React.FC<BoardPermissionsModalProps> = ({
 
   const handleUpdateGeneralPermission = async (perm: BoardPermission) => {
     try {
-      await onUpdateBoardSettings(board.id, { defaultPermission: perm });
+      const updatedMembers = { ...(board?.members || {}) };
+      let membersChanged = false;
+      Object.entries(updatedMembers).forEach(([uid, m]) => {
+        if (m && !m.hasCustomRole && m.role !== 'none') {
+          updatedMembers[uid] = { ...m, role: perm };
+          membersChanged = true;
+        }
+      });
+      await onUpdateBoardSettings(board.id, {
+        defaultPermission: perm,
+        ...(membersChanged ? { members: updatedMembers } : {}),
+      });
     } catch (err) {
       console.error('Erro ao atualizar permissão geral:', err);
     }
@@ -311,18 +322,32 @@ export const BoardPermissionsModal: React.FC<BoardPermissionsModalProps> = ({
     }
 
     // Atualiza papel individual do membro
-    const updates: Partial<Pick<Board, 'collaborators' | 'collaboratorEmails' | 'members' | 'removedMemberIds'>> = {};
+    const updates: Partial<Pick<Board, 'collaborators' | 'collaboratorEmails' | 'members' | 'removedMemberIds' | 'joinRequests'>> = {};
 
     if (member.uid) {
       const updatedMembers = { ...(board.members || {}) };
+      const existing = updatedMembers[member.uid];
       updatedMembers[member.uid] = {
-        ...(updatedMembers[member.uid] || { joinedAt: Date.now() }),
+        ...(existing || { joinedAt: Date.now() }),
         uid: member.uid,
         name: member.name,
         role: newRole,
+        hasCustomRole: true,
         lastSeen: Date.now(),
       };
       updates.members = updatedMembers;
+
+      // Mantém joinRequests perfeitamente sincronizado com o novo papel
+      const updatedJoinRequests = { ...(board.joinRequests || {}) };
+      if (updatedJoinRequests[member.uid]) {
+        updatedJoinRequests[member.uid] = {
+          ...updatedJoinRequests[member.uid],
+          status: 'approved',
+          assignedRole: newRole,
+          respondedAt: Date.now(),
+        };
+        updates.joinRequests = updatedJoinRequests;
+      }
     }
 
     await onUpdateBoardSettings(board.id, updates);

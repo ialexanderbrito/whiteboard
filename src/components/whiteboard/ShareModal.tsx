@@ -173,7 +173,18 @@ export const ShareModal: React.FC<ShareModalProps> = ({
 
   const handleUpdateGeneralPermission = async (perm: BoardPermission) => {
     if (onUpdateBoardSettings) {
-      await onUpdateBoardSettings({ defaultPermission: perm });
+      const updatedMembers = { ...(board?.members || {}) };
+      let membersChanged = false;
+      Object.entries(updatedMembers).forEach(([uid, m]) => {
+        if (m && !m.hasCustomRole && m.role !== 'none') {
+          updatedMembers[uid] = { ...m, role: perm };
+          membersChanged = true;
+        }
+      });
+      await onUpdateBoardSettings({
+        defaultPermission: perm,
+        ...(membersChanged ? { members: updatedMembers } : {}),
+      });
     }
   };
 
@@ -261,7 +272,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
       return next;
     });
 
-    const updates: Partial<Pick<Board, 'collaborators' | 'collaboratorEmails' | 'members' | 'removedMemberIds'>> = {
+    const updates: Partial<Pick<Board, 'collaborators' | 'collaboratorEmails' | 'members' | 'removedMemberIds' | 'joinRequests'>> = {
       removedMemberIds: updatedRemoved,
     };
 
@@ -275,12 +286,25 @@ export const ShareModal: React.FC<ShareModalProps> = ({
         email: person.email || null,
         photoURL: person.photoURL || null,
         role: newRole,
+        hasCustomRole: true,
         joinedAt: existing?.joinedAt || Date.now(),
         lastSeen: Date.now(),
         isAnonymous: person.isAnonymous,
         color: person.color || '#3b82f6',
       };
       updates.members = updatedMembers;
+
+      // Mantém joinRequests perfeitamente sincronizado com o novo papel
+      const updatedJoinRequests = { ...(board.joinRequests || {}) };
+      if (updatedJoinRequests[person.uid]) {
+        updatedJoinRequests[person.uid] = {
+          ...updatedJoinRequests[person.uid],
+          status: 'approved',
+          assignedRole: newRole,
+          respondedAt: Date.now(),
+        };
+        updates.joinRequests = updatedJoinRequests;
+      }
     }
 
     if (person.email) {

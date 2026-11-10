@@ -606,6 +606,15 @@ export const BoardPage: React.FC = () => {
   const isReadOnly = isMobile || (!isOwner && boardPermission === 'view');
   const hasNoAccess = !isOwner && (boardPermission === 'none' || isWaitingInRoom) && !isUnlocked;
 
+  // Ajusta automaticamente a ferramenta ativa se as permissões do usuário mudarem em tempo real
+  useEffect(() => {
+    if (isReadOnly && !['select', 'pan', 'laser'].includes(currentTool)) {
+      setCurrentTool('select');
+    } else if (isCommentOnly && !['select', 'pan', 'laser', 'sticky'].includes(currentTool)) {
+      setCurrentTool('select');
+    }
+  }, [isReadOnly, isCommentOnly, currentTool]);
+
   // Registra que o usuário acessou o quadro através do link (se tiver permissão e não for o dono nem estiver na sala de espera)
   useEffect(() => {
     if (boardId && currentUser && board && !hasNoAccess && !boardNotFound && !isWaitingInRoom) {
@@ -897,7 +906,7 @@ export const BoardPage: React.FC = () => {
   };
 
   const handleUpdateBoardSettings = async (
-    updates: Partial<Pick<Board, 'defaultPermission' | 'collaborators' | 'collaboratorEmails' | 'members' | 'removedMemberIds' | 'isPasswordProtected' | 'password'>>
+    updates: Partial<Pick<Board, 'defaultPermission' | 'collaborators' | 'collaboratorEmails' | 'members' | 'removedMemberIds' | 'waitingRoomEnabled' | 'joinRequests' | 'isPasswordProtected' | 'password'>>
   ) => {
     if (!boardId || !board || !isOwner) return;
     setBoard({ ...board, ...updates });

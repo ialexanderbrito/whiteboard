@@ -12,6 +12,7 @@ export interface BoardMember {
   email?: string | null;
   photoURL?: string | null;
   role?: BoardPermission;
+  hasCustomRole?: boolean;
   joinedAt: number;
   lastSeen?: number;
   isAnonymous?: boolean;

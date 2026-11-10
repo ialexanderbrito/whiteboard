@@ -273,7 +273,7 @@ export const DashboardPage: React.FC = () => {
 
   const handleUpdateBoardSettings = async (
     boardId: string,
-    updates: Partial<Pick<Board, 'title' | 'defaultPermission' | 'collaborators' | 'collaboratorEmails' | 'members' | 'removedMemberIds' | 'isPasswordProtected' | 'password'>>
+    updates: Partial<Pick<Board, 'title' | 'defaultPermission' | 'collaborators' | 'collaboratorEmails' | 'members' | 'removedMemberIds' | 'waitingRoomEnabled' | 'joinRequests' | 'isPasswordProtected' | 'password'>>
   ) => {
     // Atualização otimista
     setBoards((prev) =>
