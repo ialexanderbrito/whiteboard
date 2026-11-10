@@ -101,7 +101,7 @@ import {
   PlusSignIcon,
   QrCodeIcon,
   RadioIcon,
-  ArrowReloadHorizontalIcon,
+  Redo03Icon,
   RotateLeft01Icon,
   RotateRight01Icon,
   ScissorsIcon,
@@ -128,7 +128,7 @@ import {
   Tv01Icon,
   TextIcon,
   TextUnderlineIcon,
-  ArrowTurnBackwardIcon,
+  Undo03Icon,
   LockOpenIcon,
   Upload01Icon,
   UserIcon,
@@ -140,8 +140,8 @@ import {
   CheckmarkBadge01Icon,
   MagicWand01Icon,
   Cancel01Icon,
-  ZoomInAreaIcon,
-  ZoomOutAreaIcon,
+  ZoomInIcon,
+  ZoomOutIcon,
 } from '@hugeicons/core-free-icons';
 import { cn } from '@/lib/utils';
 
@@ -309,7 +309,7 @@ export const Plus = createHugeIcon(PlusSignIcon, 'Plus');
 
 export const QrCode = createHugeIcon(QrCodeIcon, 'QrCode');
 export const Radio = createHugeIcon(RadioIcon, 'Radio');
-export const Redo2 = createHugeIcon(ArrowReloadHorizontalIcon, 'Redo2');
+export const Redo2 = createHugeIcon(Redo03Icon, 'Redo2');
 export const RotateCcw = createHugeIcon(RotateLeft01Icon, 'RotateCcw');
 export const RotateCw = createHugeIcon(RotateRight01Icon, 'RotateCw');
 
@@ -341,7 +341,7 @@ export const Tv = createHugeIcon(Tv01Icon, 'Tv');
 export const Type = createHugeIcon(TextIcon, 'Type');
 
 export const Underline = createHugeIcon(TextUnderlineIcon, 'Underline');
-export const Undo2 = createHugeIcon(ArrowTurnBackwardIcon, 'Undo2');
+export const Undo2 = createHugeIcon(Undo03Icon, 'Undo2');
 export const Unlock = createHugeIcon(LockOpenIcon, 'Unlock');
 export const Upload = createHugeIcon(Upload01Icon, 'Upload');
 export const User = createHugeIcon(UserIcon, 'User');
@@ -355,5 +355,5 @@ export const Vote = createHugeIcon(CheckmarkBadge01Icon, 'Vote');
 
 export const Wand2 = createHugeIcon(MagicWand01Icon, 'Wand2');
 export const X = createHugeIcon(Cancel01Icon, 'X');
-export const ZoomIn = createHugeIcon(ZoomInAreaIcon, 'ZoomIn');
-export const ZoomOut = createHugeIcon(ZoomOutAreaIcon, 'ZoomOut');
+export const ZoomIn = createHugeIcon(ZoomInIcon, 'ZoomIn');
+export const ZoomOut = createHugeIcon(ZoomOutIcon, 'ZoomOut');

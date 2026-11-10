@@ -829,45 +829,6 @@ export const Toolbar: React.FC<ToolbarProps> = React.memo(({
                 </p>
               </TooltipContent>
             </Tooltip>
-
-            {/* Ações de Desfazer/Refazer (Apenas Modo Edição Completa) */}
-            {!canCommentOnly && (
-              <>
-                <div className={`${isBottom ? 'h-5 w-px mx-1' : 'w-5 h-px my-1'} bg-border`} />
-
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      onClick={onUndo}
-                      disabled={!canUndo}
-                      className="size-8 rounded-md transition-colors flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed active:scale-[0.98]"
-                    >
-                      <Undo2 className="size-4" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side={tooltipSide}>
-                    <p className="font-medium text-xs">Desfazer <span className="opacity-60 text-[10px]">(Ctrl+Z)</span></p>
-                  </TooltipContent>
-                </Tooltip>
-
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      onClick={onRedo}
-                      disabled={!canRedo}
-                      className="size-8 rounded-md transition-colors flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed active:scale-[0.98]"
-                    >
-                      <Redo2 className="size-4" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side={tooltipSide}>
-                    <p className="font-medium text-xs">Refazer <span className="opacity-60 text-[10px]">(Ctrl+Y)</span></p>
-                  </TooltipContent>
-                </Tooltip>
-              </>
-            )}
           </>
         )}
       </div>
