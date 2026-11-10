@@ -48,7 +48,6 @@ import {
 } from '../../utils/clipboard';
 import {
   processImageFiles,
-  saveRecentUploadedImages,
   computeImageGridLayout,
   validateDroppedFiles,
   formatUnsupportedFileMessage,
@@ -72,6 +71,7 @@ import {
 import { StickyReactionBar } from './StickyReactionBar';
 import { StickyQuickAdd } from './StickyQuickAdd';
 import { getAdjacentStickyRect, type StickyDirection } from '../../utils/stickyPlacement';
+import { isMirioReaction, MIRIO_REACTION } from '../../utils/mirioReaction';
 
 if (typeof window !== 'undefined' && isCoarseOrMobileViewport()) {
   Konva.pixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
@@ -891,6 +891,10 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
   // Alternar reação de emoji em post-its
   const handleToggleReactionInternal = useCallback(
     async (elementId: string, emoji: string) => {
+      if (isMirioReaction(emoji) && !mirioReactionUnlocked) {
+        return;
+      }
+
       const elem = elementsRef.current.find((e) => e.id === elementId);
       if (elem) {
         playReactionPopSound();
@@ -903,8 +907,18 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
 
       if (!elem) return;
 
+      const targetEmoji = isMirioReaction(emoji) ? MIRIO_REACTION : emoji;
       const reactions = { ...(elem.reactions || {}) };
-      const currentUsers = reactions[emoji] || [];
+
+      if (reactions['__mirio_original__']) {
+        const legacyUsers = reactions['__mirio_original__'] || [];
+        reactions[MIRIO_REACTION] = [
+          ...new Set([...(reactions[MIRIO_REACTION] || []), ...legacyUsers]),
+        ];
+        delete reactions['__mirio_original__'];
+      }
+
+      const currentUsers = reactions[targetEmoji] || [];
 
       let updatedUsers: string[];
       if (currentUsers.includes(currentUserRef.current.uid)) {
@@ -914,14 +928,14 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       }
 
       if (updatedUsers.length > 0) {
-        reactions[emoji] = updatedUsers;
+        reactions[targetEmoji] = updatedUsers;
       } else {
-        delete reactions[emoji];
+        delete reactions[targetEmoji];
       }
 
       await onUpdateElement(elementId, { reactions });
     },
-    [onToggleReaction, onUpdateElement]
+    [onToggleReaction, onUpdateElement, mirioReactionUnlocked]
   );
 
   // Duplicar elemento individual
@@ -1027,8 +1041,6 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
             try {
               const processed = await processImageFiles(validation.validFiles);
               if (processed.length > 0) {
-                saveRecentUploadedImages(processed);
-
                 const targetX = customTargetCenter
                   ? customTargetCenter.x
                   : mouseWorldPosRef.current && isMouseOverCanvasRef.current
@@ -3068,6 +3080,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
               remoteSelector={remoteSelector}
               draggable={canDragItem}
               canEdit={canEditItem}
+              mirioReactionUnlocked={mirioReactionUnlocked}
               onSelect={handlers.onSelect}
               onChange={handlers.onChange}
               onToggleReaction={handleToggleReactionInternal}
@@ -3744,7 +3757,6 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         return;
       }
 
-      saveRecentUploadedImages(processed);
       const positions = computeImageGridLayout(processed, { x: dropWorldX, y: dropWorldY });
       const now = Date.now();
 

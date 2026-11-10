@@ -40,7 +40,7 @@ import { LoadingScreen } from '../components/layout/LoadingScreen';
 import { MobileReadOnlyDrawer } from '../components/whiteboard/MobileReadOnlyDrawer';
 import { MobileBoardNavbar } from '../components/whiteboard/MobileBoardNavbar';
 import { reactionService } from '../services/reactionService';
-import { MIRIO_REACTION, isMirioReactionUnlocked, unlockMirioReaction } from '../utils/mirioReaction';
+import { MIRIO_REACTION, isMirioReaction, isMirioReactionUnlocked, unlockMirioReaction } from '../utils/mirioReaction';
 import { publishCursorReadout } from '../utils/cursorReadout';
 import { computeFitToContentViewport } from '../utils/viewport';
 import { getElementWorldBounds } from '../utils/elementBounds';
@@ -1212,11 +1212,23 @@ export const BoardPage: React.FC = () => {
   const handleToggleReaction = useCallback(
     async (elementId: string, emoji: string) => {
       if (!boardId || !currentUser) return;
+      if (isMirioReaction(emoji) && !mirioReactionUnlocked) return;
       const elem = elementsRef.current.find((e) => e.id === elementId);
       if (!elem) return;
 
+      const targetEmoji = isMirioReaction(emoji) ? MIRIO_REACTION : emoji;
       const reactions = { ...(elem.reactions || {}) };
-      const currentUsers = reactions[emoji] || [];
+
+      // Se houver chave legada __mirio_original__, migra para mirio_original para não quebrar no Firestore
+      if (reactions['__mirio_original__']) {
+        const legacyUsers = reactions['__mirio_original__'] || [];
+        reactions[MIRIO_REACTION] = [
+          ...new Set([...(reactions[MIRIO_REACTION] || []), ...legacyUsers]),
+        ];
+        delete reactions['__mirio_original__'];
+      }
+
+      const currentUsers = reactions[targetEmoji] || [];
 
       let updatedUsers: string[];
       if (currentUsers.includes(currentUser.uid)) {
@@ -1226,9 +1238,9 @@ export const BoardPage: React.FC = () => {
       }
 
       if (updatedUsers.length > 0) {
-        reactions[emoji] = updatedUsers;
+        reactions[targetEmoji] = updatedUsers;
       } else {
-        delete reactions[emoji];
+        delete reactions[targetEmoji];
       }
 
       // Otimista
@@ -1237,7 +1249,7 @@ export const BoardPage: React.FC = () => {
       );
       await elementService.updateElement(boardId, elementId, { reactions });
     },
-    [boardId, currentUser]
+    [boardId, currentUser, mirioReactionUnlocked]
   );
 
   // Início de sessão de borracha parcial: grava snapshot de histórico antes da remoção

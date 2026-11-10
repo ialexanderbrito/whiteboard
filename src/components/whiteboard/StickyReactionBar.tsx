@@ -3,7 +3,7 @@ import type { CanvasElement } from '../../types/element';
 import { getAppleEmojiUrl } from '../../utils/appleEmoji';
 import { playReactionPopSound } from '../../utils/audioChime';
 import { getElementWorldBounds } from '../../utils/elementBounds';
-import { MIRIO_REACTION, getReactionImageUrl } from '../../utils/mirioReaction';
+import { MIRIO_REACTION, getReactionImageUrl, isMirioReaction } from '../../utils/mirioReaction';
 import { getViewport, subscribeViewport, type ViewportState } from '../../utils/viewport';
 
 const QUICK_EMOJIS = ['👍', '❤️', '🔥', '🎉', '🚀', '💡', '🤔', '👀'];
@@ -53,6 +53,8 @@ export const StickyReactionBar: React.FC<StickyReactionBarProps> = React.memo(({
     >
       {[...QUICK_EMOJIS, ...(mirioReactionUnlocked ? [MIRIO_REACTION] : [])].map((emoji) => {
         const imageUrl = getReactionImageUrl(emoji) || getAppleEmojiUrl(emoji);
+        const isMirio = isMirioReaction(emoji);
+
         return (
           <button
             key={emoji}
@@ -62,12 +64,12 @@ export const StickyReactionBar: React.FC<StickyReactionBarProps> = React.memo(({
               onToggleReaction(sticky.id, emoji);
               playReactionPopSound();
             }}
-            className="size-7 rounded-full hover:bg-muted/80 transition-[transform,background-color] duration-150 ease-out hover:scale-120 active:scale-[0.93] flex items-center justify-center cursor-pointer"
-            title={emoji === MIRIO_REACTION ? 'Reagir com Mirio' : `Reagir com ${emoji}`}
+            className="size-7 rounded-full hover:bg-muted/80 transition-[transform,background-color] duration-150 ease-out hover:scale-120 active:scale-[0.93] flex items-center justify-center cursor-pointer select-none"
+            title={isMirio ? 'Reagir com Mirio' : `Reagir com ${emoji}`}
           >
             <img
               src={imageUrl}
-              alt={emoji === MIRIO_REACTION ? 'Reação Mirio' : emoji}
+              alt={isMirio ? 'Reação Mirio' : emoji}
               className="size-5 select-none pointer-events-none drop-shadow-xs object-contain"
               loading="eager"
               onError={(e) => {

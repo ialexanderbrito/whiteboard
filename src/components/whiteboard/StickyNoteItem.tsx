@@ -1,10 +1,11 @@
-import React, { useRef, useMemo } from 'react';
-import { Group, Rect, Text } from 'react-konva';
+import React, { useRef, useMemo, useState, useEffect } from 'react';
+import { Group, Rect, Text, Image as KonvaImage } from 'react-konva';
 import type Konva from 'konva';
 import type { CanvasElement } from '../../types/element';
 import { extractAllLinks, stripMarkdownLinks, layoutFormattedWords, normalizeUrl } from '../../utils/textLinks';
 import { getContrastTextColor } from '../../utils/colors';
 import { isCoarseOrMobileViewport } from '../../utils/viewport';
+import { isMirioReaction, loadMirioReactionImage, getCachedMirioReactionImage } from '../../utils/mirioReaction';
 
 interface StickyNoteItemProps {
   element: CanvasElement;
@@ -14,6 +15,7 @@ interface StickyNoteItemProps {
   remoteSelector?: { name: string; color: string };
   draggable?: boolean;
   canEdit?: boolean;
+  mirioReactionUnlocked?: boolean;
   onSelect: (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => void;
   onChange: (updates: Partial<CanvasElement>) => void;
   onToggleReaction?: (elementId: string, emoji: string) => void;
@@ -36,6 +38,7 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
   remoteSelector,
   draggable,
   canEdit = true,
+  mirioReactionUnlocked = false,
   onSelect,
   onChange,
   onToggleReaction,
@@ -130,9 +133,69 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
     handleDblClick();
   };
 
-  // Processa reações existentes
+  // Processa reações existentes, unificando chaves legado do Mirio se existirem
   const reactions = element.reactions || {};
-  const activeReactions = Object.entries(reactions).filter(([, users]) => users && users.length > 0);
+  const activeReactions = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const [key, users] of Object.entries(reactions)) {
+      if (!users || users.length === 0) continue;
+      const canonicalKey = isMirioReaction(key) ? 'mirio_original' : key;
+      const current = map.get(canonicalKey) || [];
+      map.set(canonicalKey, [...new Set([...current, ...users])]);
+    }
+    return Array.from(map.entries());
+  }, [reactions]);
+
+  const hasMirioReaction = useMemo(
+    () => activeReactions.some(([emoji]) => isMirioReaction(emoji)),
+    [activeReactions]
+  );
+
+  const [mirioImage, setMirioImage] = useState<HTMLImageElement | null>(() => getCachedMirioReactionImage());
+
+  useEffect(() => {
+    if (!hasMirioReaction) return;
+    if (mirioImage) return;
+
+    let isMounted = true;
+    void loadMirioReactionImage().then((img) => {
+      if (isMounted && img) {
+        setMirioImage(img);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [hasMirioReaction, mirioImage]);
+
+  const reactionBadges = useMemo(() => {
+    let currentX = 0;
+    const GAP = 4;
+
+    return activeReactions.map(([emoji, users]) => {
+      const isMirio = isMirioReaction(emoji);
+      const countStr = users.length.toString();
+      const countDigits = countStr.length;
+      const countWidth = countDigits * 7.5;
+
+      const badgeWidth = isMirio
+        ? Math.max(38, Math.round(24 + countWidth + 8))
+        : Math.max(36, Math.round(24 + countWidth + 6));
+
+      const x = currentX;
+      currentX += badgeWidth + GAP;
+
+      return {
+        emoji,
+        users,
+        isMirio,
+        countStr,
+        badgeWidth,
+        x,
+      };
+    });
+  }, [activeReactions]);
 
   return (
     <Group
@@ -295,23 +358,33 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
       )}
 
       {/* Badges de Reações na base inferior do Post-it */}
-      {activeReactions.length > 0 && (
+      {reactionBadges.length > 0 && (
         <Group y={height + 6} x={4}>
-          {activeReactions.map(([emoji, users], index) => {
+          {reactionBadges.map(({ emoji, users, isMirio, countStr, badgeWidth, x }) => {
             const hasUserReacted = currentUserId ? users.includes(currentUserId) : false;
-            const badgeWidth = Math.max(36, 24 + users.length.toString().length * 8);
+            const isLocked = isMirio && !mirioReactionUnlocked;
 
             return (
               <Group
                 key={emoji}
-                x={index * 42}
+                x={x}
                 onClick={(e) => {
                   e.cancelBubble = true;
+                  if (isLocked) return;
                   onToggleReaction?.(element.id, emoji);
                 }}
                 onTap={(e) => {
                   e.cancelBubble = true;
+                  if (isLocked) return;
                   onToggleReaction?.(element.id, emoji);
+                }}
+                onMouseEnter={(e) => {
+                  const stage = e.target.getStage();
+                  if (stage) stage.container().style.cursor = isLocked ? 'default' : 'pointer';
+                }}
+                onMouseLeave={(e) => {
+                  const stage = e.target.getStage();
+                  if (stage) stage.container().style.cursor = '';
                 }}
               >
                 <Rect
@@ -328,16 +401,53 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
                   perfectDrawEnabled={false}
                   shadowForStrokeEnabled={false}
                 />
-                <Text
-                  text={`${emoji} ${users.length}`}
-                  fontSize={11}
-                  fill={hasUserReacted ? '#15803d' : '#334155'}
-                  fontFamily="system-ui, -apple-system, sans-serif"
-                  fontStyle="bold"
-                  x={5}
-                  y={5}
-                  listening={false}
-                />
+                {isMirio ? (
+                  <>
+                    {mirioImage ? (
+                      <KonvaImage
+                        image={mirioImage}
+                        x={6}
+                        y={4}
+                        width={14}
+                        height={14}
+                        cornerRadius={2}
+                        listening={false}
+                        perfectDrawEnabled={false}
+                      />
+                    ) : (
+                      <Rect
+                        x={6}
+                        y={4}
+                        width={14}
+                        height={14}
+                        fill={hasUserReacted ? '#86efac' : '#cbd5e1'}
+                        cornerRadius={7}
+                        listening={false}
+                      />
+                    )}
+                    <Text
+                      text={countStr}
+                      x={24}
+                      y={5}
+                      fontSize={11}
+                      fill={hasUserReacted ? '#15803d' : '#334155'}
+                      fontFamily="system-ui, -apple-system, sans-serif"
+                      fontStyle="bold"
+                      listening={false}
+                    />
+                  </>
+                ) : (
+                  <Text
+                    text={`${emoji} ${countStr}`}
+                    x={5}
+                    y={5}
+                    fontSize={11}
+                    fill={hasUserReacted ? '#15803d' : '#334155'}
+                    fontFamily="system-ui, -apple-system, sans-serif"
+                    fontStyle="bold"
+                    listening={false}
+                  />
+                )}
               </Group>
             );
           })}
