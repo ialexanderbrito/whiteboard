@@ -380,6 +380,7 @@ html, body {
 }
 
 /* Cursores Colaborativos Fakes: Animações de Física Fluida e 100% GPU */
+/* 1. Sofia (Índigo) — Drag and drop de sticky note */
 @keyframes mirio-cursor-sofia {
   0% {
     transform: translate3d(-18px, -24px, 0) rotate(-6deg);
@@ -454,6 +455,7 @@ html, body {
   }
 }
 
+/* 2. Lucas (Esmeralda) — Marquee selection & cursor chat */
 @keyframes mirio-cursor-lucas {
   0% {
     transform: translate3d(16px, 20px, 0) rotate(8deg);
@@ -539,24 +541,112 @@ html, body {
   }
 }
 
-@keyframes mirio-cursor-camila {
+/* 3. Mateo (Âmbar) — Posiciona sticker de prioridade */
+@keyframes mirio-cursor-mateo {
   0% {
-    transform: translate3d(10px, -16px, 0) rotate(-8deg);
+    transform: translate3d(-14px, -18px, 0) rotate(-6deg);
   }
-  28% {
-    transform: translate3d(-14px, 6px, 0) rotate(-2deg);
+  26% {
+    transform: translate3d(10px, 12px, 0) rotate(2deg);
+  }
+  36% {
+    transform: translate3d(16px, 18px, 0) rotate(0deg) scale(0.92);
   }
   42% {
-    transform: translate3d(-8px, 12px, 0) scale(0.94) rotate(0deg);
+    transform: translate3d(16px, 18px, 0) scale(1);
   }
-  46% {
-    transform: translate3d(-8px, 12px, 0) scale(1) rotate(0deg);
+  65% {
+    transform: translate3d(-6px, -4px, 0) rotate(4deg);
   }
-  70% {
-    transform: translate3d(16px, -4px, 0) rotate(6deg);
+  85% {
+    transform: translate3d(-12px, -14px, 0) rotate(-4deg);
   }
   100% {
-    transform: translate3d(10px, -16px, 0) rotate(-8deg);
+    transform: translate3d(-14px, -18px, 0) rotate(-6deg);
+  }
+}
+
+@keyframes mirio-sticker-mateo {
+  0% {
+    transform: translate3d(-14px, -18px, 0) rotate(-2deg);
+  }
+  26% {
+    transform: translate3d(10px, 12px, 0) rotate(1deg);
+  }
+  36% {
+    transform: translate3d(16px, 18px, 0) rotate(0deg);
+  }
+  42% {
+    transform: translate3d(16px, 18px, 0) rotate(0deg);
+  }
+  70% {
+    transform: translate3d(16px, 18px, 0) rotate(0deg);
+  }
+  85% {
+    transform: translate3d(-6px, -8px, 0) rotate(-1deg);
+  }
+  100% {
+    transform: translate3d(-14px, -18px, 0) rotate(-2deg);
+  }
+}
+
+@keyframes mirio-ripple-mateo {
+  0%, 35% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  36% {
+    opacity: 0.9;
+    transform: scale(0.4);
+  }
+  48% {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+}
+
+/* 4. Camila (Rosa) — Conexão de nós de fluxograma */
+@keyframes mirio-cursor-camila {
+  0% {
+    transform: translate3d(12px, -18px, 0) rotate(-8deg);
+  }
+  28% {
+    transform: translate3d(-14px, 8px, 0) rotate(-2deg);
+  }
+  42% {
+    transform: translate3d(-8px, 14px, 0) scale(0.94) rotate(0deg);
+  }
+  46% {
+    transform: translate3d(-8px, 14px, 0) scale(1) rotate(0deg);
+  }
+  70% {
+    transform: translate3d(18px, -4px, 0) rotate(6deg);
+  }
+  100% {
+    transform: translate3d(12px, -18px, 0) rotate(-8deg);
+  }
+}
+
+@keyframes mirio-node-camila {
+  0%, 25% {
+    opacity: 0.6;
+    transform: scale(0.94);
+  }
+  42% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  75% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  90%, 100% {
+    opacity: 0.6;
+    transform: scale(0.94);
   }
 }
 
@@ -579,6 +669,74 @@ html, body {
   }
 }
 
+/* 5. Gabriel (Azul) — Chat multiplayer em tempo real */
+@keyframes mirio-cursor-gabriel {
+  0% {
+    transform: translate3d(-20px, 16px, 0) rotate(-4deg);
+  }
+  22% {
+    transform: translate3d(14px, -6px, 0) rotate(6deg);
+  }
+  34% {
+    transform: translate3d(14px, -6px, 0) scale(0.92) rotate(0deg);
+  }
+  38% {
+    transform: translate3d(14px, -6px, 0) scale(1);
+  }
+  60% {
+    transform: translate3d(24px, 4px, 0) rotate(-2deg);
+  }
+  82% {
+    transform: translate3d(-10px, 12px, 0) rotate(4deg);
+  }
+  100% {
+    transform: translate3d(-20px, 16px, 0) rotate(-4deg);
+  }
+}
+
+@keyframes mirio-gabriel-chat {
+  0%, 32% {
+    opacity: 0;
+    transform: scale(0.85) translateY(4px);
+  }
+  38% {
+    opacity: 1;
+    transform: scale(1.02) translateY(0);
+  }
+  42% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  72% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  82%, 100% {
+    opacity: 0;
+    transform: scale(0.92) translateY(-2px);
+  }
+}
+
+@keyframes mirio-ripple-gabriel {
+  0%, 33% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  34% {
+    opacity: 0.9;
+    transform: scale(0.4);
+  }
+  46% {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+}
+
+/* Classes utilitárias com 100% GPU */
 .animate-mirio-cursor-sofia {
   animation: mirio-cursor-sofia 6.4s cubic-bezier(0.45, 0, 0.25, 1) infinite;
   will-change: transform;
@@ -609,12 +767,315 @@ html, body {
   will-change: transform, opacity;
 }
 
+.animate-mirio-cursor-mateo {
+  animation: mirio-cursor-mateo 6.4s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+  will-change: transform;
+}
+.animate-mirio-sticker-mateo {
+  animation: mirio-sticker-mateo 6.4s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+  will-change: transform;
+}
+.animate-mirio-ripple-mateo {
+  animation: mirio-ripple-mateo 6.4s ease-out infinite;
+  will-change: transform, opacity;
+}
+
 .animate-mirio-cursor-camila {
   animation: mirio-cursor-camila 6.4s cubic-bezier(0.45, 0, 0.25, 1) infinite;
   will-change: transform;
 }
+.animate-mirio-node-camila {
+  animation: mirio-node-camila 6.4s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+  will-change: transform, opacity;
+}
 .animate-mirio-ripple-camila {
   animation: mirio-ripple-camila 6.4s ease-out infinite;
+  will-change: transform, opacity;
+}
+
+.animate-mirio-cursor-gabriel {
+  animation: mirio-cursor-gabriel 6.4s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+  will-change: transform;
+}
+.animate-mirio-gabriel-chat {
+  animation: mirio-gabriel-chat 6.4s cubic-bezier(0.23, 1, 0.32, 1) infinite;
+  will-change: transform, opacity;
+}
+.animate-mirio-ripple-gabriel {
+  animation: mirio-ripple-gabriel 6.4s ease-out infinite;
+  will-change: transform, opacity;
+}
+
+/* ==========================================================================
+   Login Board Showcase: Cursors Colaborativos Vivos em Tempo Real (100% GPU)
+   ========================================================================== */
+
+@keyframes login-cursor-sofia {
+  0% {
+    transform: translate3d(0, 0, 0) rotate(-4deg);
+  }
+  18% {
+    transform: translate3d(36px, 32px, 0) rotate(0deg);
+  }
+  24% {
+    transform: translate3d(40px, 40px, 0) scale(0.94) rotate(0deg);
+  }
+  28% {
+    transform: translate3d(40px, 40px, 0) scale(1) rotate(0deg);
+  }
+  45% {
+    transform: translate3d(70px, 30px, 0) rotate(3deg);
+  }
+  70% {
+    transform: translate3d(50px, -6px, 0) rotate(-2deg);
+  }
+  88% {
+    transform: translate3d(15px, 8px, 0) rotate(-5deg);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) rotate(-4deg);
+  }
+}
+
+@keyframes login-chat-sofia {
+  0%, 24% {
+    opacity: 0;
+    transform: scale(0.95) translateY(4px);
+    pointer-events: none;
+  }
+  30% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  64% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  72%, 100% {
+    opacity: 0;
+    transform: scale(0.95) translateY(-2px);
+    pointer-events: none;
+  }
+}
+
+@keyframes login-ripple-sofia {
+  0%, 23% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  24% {
+    opacity: 0.9;
+    transform: scale(0.4);
+  }
+  36% {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+}
+
+@keyframes login-cursor-lucas {
+  0% {
+    transform: translate3d(0, 0, 0) rotate(4deg);
+  }
+  20% {
+    transform: translate3d(-35px, -20px, 0) rotate(-2deg);
+  }
+  38% {
+    transform: translate3d(-50px, 15px, 0) scale(0.94) rotate(0deg);
+  }
+  42% {
+    transform: translate3d(-50px, 15px, 0) scale(1) rotate(0deg);
+  }
+  65% {
+    transform: translate3d(-20px, 45px, 0) rotate(3deg);
+  }
+  85% {
+    transform: translate3d(20px, 25px, 0) rotate(5deg);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) rotate(4deg);
+  }
+}
+
+@keyframes login-chat-lucas {
+  0%, 39% {
+    opacity: 0;
+    transform: scale(0.95) translateY(4px);
+    pointer-events: none;
+  }
+  45% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  75% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  83%, 100% {
+    opacity: 0;
+    transform: scale(0.95) translateY(-2px);
+    pointer-events: none;
+  }
+}
+
+@keyframes login-ripple-lucas {
+  0%, 37% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  38% {
+    opacity: 0.9;
+    transform: scale(0.4);
+  }
+  50% {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+}
+
+@keyframes login-lucas-selection {
+  0%, 15% {
+    opacity: 0.4;
+    transform: scale(1);
+  }
+  25%, 65% {
+    opacity: 1;
+    transform: scale(1.01);
+  }
+  75%, 100% {
+    opacity: 0.4;
+    transform: scale(1);
+  }
+}
+
+@keyframes login-cursor-camila {
+  0% {
+    transform: translate3d(0, 0, 0) rotate(-3deg);
+  }
+  25% {
+    transform: translate3d(35px, -35px, 0) rotate(2deg);
+  }
+  52% {
+    transform: translate3d(15px, -15px, 0) scale(0.94) rotate(0deg);
+  }
+  56% {
+    transform: translate3d(15px, -15px, 0) scale(1) rotate(0deg);
+  }
+  75% {
+    transform: translate3d(-40px, -20px, 0) rotate(-5deg);
+  }
+  90% {
+    transform: translate3d(-20px, 10px, 0) rotate(-2deg);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) rotate(-3deg);
+  }
+}
+
+@keyframes login-chat-camila {
+  0%, 53% {
+    opacity: 0;
+    transform: scale(0.95) translateY(4px);
+    pointer-events: none;
+  }
+  59% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  86% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  94%, 100% {
+    opacity: 0;
+    transform: scale(0.95) translateY(-2px);
+    pointer-events: none;
+  }
+}
+
+@keyframes login-ripple-camila {
+  0%, 51% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  52% {
+    opacity: 0.9;
+    transform: scale(0.4);
+  }
+  64% {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+}
+
+@keyframes local-reaction-pop {
+  0% {
+    opacity: 1;
+    transform: translate3d(-50%, 0, 0) scale(0.7);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(-50%, -36px, 0) scale(1.25);
+  }
+}
+
+.animate-login-cursor-sofia {
+  animation: login-cursor-sofia 7.2s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+  will-change: transform;
+}
+.animate-login-chat-sofia {
+  animation: login-chat-sofia 7.2s cubic-bezier(0.23, 1, 0.32, 1) infinite;
+  will-change: transform, opacity;
+}
+.animate-login-ripple-sofia {
+  animation: login-ripple-sofia 7.2s ease-out infinite;
+  will-change: transform, opacity;
+}
+
+.animate-login-cursor-lucas {
+  animation: login-cursor-lucas 7.2s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+  will-change: transform;
+}
+.animate-login-chat-lucas {
+  animation: login-chat-lucas 7.2s cubic-bezier(0.23, 1, 0.32, 1) infinite;
+  will-change: transform, opacity;
+}
+.animate-login-ripple-lucas {
+  animation: login-ripple-lucas 7.2s ease-out infinite;
+  will-change: transform, opacity;
+}
+.animate-login-lucas-selection {
+  animation: login-lucas-selection 7.2s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+  will-change: transform, opacity;
+}
+
+.animate-login-cursor-camila {
+  animation: login-cursor-camila 7.2s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+  will-change: transform;
+}
+.animate-login-chat-camila {
+  animation: login-chat-camila 7.2s cubic-bezier(0.23, 1, 0.32, 1) infinite;
+  will-change: transform, opacity;
+}
+.animate-login-ripple-camila {
+  animation: login-ripple-camila 7.2s ease-out infinite;
+  will-change: transform, opacity;
+}
+
+.animate-local-reaction-pop {
+  animation: local-reaction-pop 650ms cubic-bezier(0.23, 1, 0.32, 1) forwards;
   will-change: transform, opacity;
 }
 
@@ -631,12 +1092,30 @@ html, body {
   .animate-mirio-cursor-sofia,
   .animate-mirio-sticky-drag,
   .animate-mirio-cursor-lucas,
+  .animate-mirio-cursor-mateo,
+  .animate-mirio-sticker-mateo,
   .animate-mirio-cursor-camila,
+  .animate-mirio-node-camila,
+  .animate-mirio-cursor-gabriel,
   .animate-mirio-lucas-selection,
   .animate-mirio-lucas-chat,
+  .animate-mirio-gabriel-chat,
   .animate-mirio-ripple-sofia,
   .animate-mirio-ripple-lucas,
-  .animate-mirio-ripple-camila {
+  .animate-mirio-ripple-mateo,
+  .animate-mirio-ripple-camila,
+  .animate-mirio-ripple-gabriel,
+  .animate-login-cursor-sofia,
+  .animate-login-chat-sofia,
+  .animate-login-ripple-sofia,
+  .animate-login-cursor-lucas,
+  .animate-login-chat-lucas,
+  .animate-login-ripple-lucas,
+  .animate-login-lucas-selection,
+  .animate-login-cursor-camila,
+  .animate-login-chat-camila,
+  .animate-login-ripple-camila,
+  .animate-local-reaction-pop {
     animation: none !important;
   }
 }
