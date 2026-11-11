@@ -795,7 +795,7 @@ export const Toolbar: React.FC<ToolbarProps> = React.memo(({
                 </button>
               </TooltipTrigger>
               <TooltipContent side={tooltipSide}>
-                <p className="font-medium text-xs">Templates de Sprint <span className="opacity-60 text-[10px]">(⌘K)</span></p>
+                <p className="font-medium text-xs">Templates de Sprint <span className="opacity-60 text-[10px]">(S)</span></p>
               </TooltipContent>
             </Tooltip>
           )}

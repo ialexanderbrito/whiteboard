@@ -1576,7 +1576,18 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           if (e.key === 'o' || e.key === 'O') onSelectTool('circle');
           if (e.key === 'a' || e.key === 'A') onSelectTool('arrow');
           if (e.key === 'p' || e.key === 'P') onSelectTool('pen');
-          if (e.key === 't' || e.key === 'T') onSelectTool('text');
+          if (e.key === 't' || e.key === 'T') {
+            if (e.shiftKey && onOpenTemplates) {
+              e.preventDefault();
+              onOpenTemplates();
+            } else {
+              onSelectTool('text');
+            }
+          }
+          if ((e.key === 's' || e.key === 'S') && onOpenTemplates) {
+            e.preventDefault();
+            onOpenTemplates();
+          }
           if (e.key === 'e' || e.key === 'E') onSelectTool('eraser');
           if ((e.key === 'u' || e.key === 'U') && onOpenStickers) {
             e.preventDefault();
@@ -1620,6 +1631,8 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     onUpdateElement,
     onBatchUpdateElements,
     onOpenShortcuts,
+    onOpenTemplates,
+    onOpenStickers,
     onSelectTool,
     onSelectionChange,
     handleBatchDuplicate,

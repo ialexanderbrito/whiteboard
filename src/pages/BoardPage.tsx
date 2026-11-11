@@ -212,7 +212,7 @@ export const BoardPage: React.FC = () => {
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   // Modal de Edição de Perfil / Nome de Convidado
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
-  // Modal de Templates de Sprint disparado via Command K
+  // Modal de Templates de Sprint (Disparado via Toolbar / Atalho S / Command Palette)
   const [isSprintTemplatesOpen, setIsSprintTemplatesOpen] = useState(false);
   // Modal de Compartilhamento e Permissões disparado via Navbar ou Command K
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
@@ -1578,7 +1578,6 @@ export const BoardPage: React.FC = () => {
           remoteUsers={remoteUsers}
           followingUserId={followingUserId}
           onFollowUser={handleFollowUser}
-          onInsertSprintTemplate={handleInsertSprintTemplate}
           onLogout={logout}
           isReadOnly={isReadOnly}
           isCommentOnly={isCommentOnly}
@@ -1918,7 +1917,7 @@ export const BoardPage: React.FC = () => {
         }}
       />}
 
-      {/* Modal de Templates de Sprint disparado via Command K */}
+      {/* Modal de Templates de Sprint (Disparado via Toolbar / Atalho S / Command Palette) */}
       {!isMobile && isSprintTemplatesOpen && (
         <SprintTemplatesModal
           open={isSprintTemplatesOpen}

@@ -10,7 +10,6 @@ import {
   UserPen
 } from '@/components/ui/icons';
 import type { Board, CurrentUser, UserPresence } from '../../types/board';
-import type { SprintTemplate } from '../../utils/sprintTemplates';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -18,7 +17,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { BuyMeACoffeeModal } from '@/components/layout/BuyMeACoffeeModal';
 import { MirioLogo } from '@/components/layout/MirioLogo';
-import { SprintTemplatesModal } from '@/components/whiteboard/SprintTemplatesModal';
 import { ShareModal } from '@/components/whiteboard/ShareModal';
 import { FacilitationMenu } from '@/components/whiteboard/FacilitationMenu';
 import { CanvasPreferencesMenu } from '@/components/whiteboard/CanvasPreferencesMenu';
@@ -36,7 +34,6 @@ interface NavbarProps {
   remoteUsers: UserPresence[];
   followingUserId: string | null;
   onFollowUser: (userId: string, userName: string) => void;
-  onInsertSprintTemplate: (template: SprintTemplate) => void;
   onLogout: () => void;
   isReadOnly?: boolean;
   isCommentOnly?: boolean;
@@ -79,7 +76,6 @@ export const Navbar: React.FC<NavbarProps> = React.memo(({
   remoteUsers,
   followingUserId,
   onFollowUser,
-  onInsertSprintTemplate,
   onLogout,
   isReadOnly = false,
   isCommentOnly = false,
@@ -231,11 +227,8 @@ export const Navbar: React.FC<NavbarProps> = React.memo(({
         )}
       </div>
 
-      {/* Lado Direito: Templates, Apoiar, Avatares, Ferramentas e Compartilhar */}
+      {/* Lado Direito: Apoiar, Avatares, Ferramentas e Compartilhar */}
       <div className="flex items-center gap-1.5 pointer-events-auto">
-        {/* Modal de Templates de Sprint (Apenas para quem pode editar) */}
-        {!isReadOnly && !isCommentOnly && <SprintTemplatesModal onInsertTemplate={onInsertSprintTemplate} />}
-
         {/* Botão de Apoio PIX Buy Me A Coffee */}
         <BuyMeACoffeeModal
           open={controlledCoffeeOpen}

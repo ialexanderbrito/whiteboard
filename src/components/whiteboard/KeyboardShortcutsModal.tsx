@@ -34,6 +34,7 @@ const SHORTCUTS: ShortcutItem[] = [
   { keys: ['P'], description: 'Caneta / Desenho Livre', category: 'tools' },
   { keys: ['T'], description: 'Caixa de Texto', category: 'tools' },
   { keys: ['F'], description: 'Moldura / Raia de Sprint', category: 'tools' },
+  { keys: ['S'], description: 'Templates de Sprint (Scrum, Retro, Kanban)', category: 'tools' },
   { keys: ['U'], description: 'Enviar Imagens do Computador, Stickers & GIFs', category: 'tools' },
   { keys: ['E'], description: 'Borracha (Eraser)', category: 'tools' },
   { keys: ['L'], description: 'Apontador Laser (Laser Pointer)', category: 'tools' },

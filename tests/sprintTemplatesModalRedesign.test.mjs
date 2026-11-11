@@ -35,9 +35,21 @@ test('SprintTemplatesModal redesign aligns with main screen QuickStartTemplatesS
   assert.match(modalSrc, /selectedTemplate\.columns\.length/);
   assert.match(modalSrc, /Inserir no Quadro/);
 
-  // 6. Industry alignment: Templates button available both in Navbar and Creation Toolbar
+  // 6. Industry alignment: Templates button available in Creation Toolbar and top Navbar cleaned
+  const navbarSrc = readSource('src/components/layout/Navbar.tsx');
+  const canvasSrc = readSource('src/components/whiteboard/WhiteboardCanvas.tsx');
+  const contextMenuSrc = readSource('src/components/whiteboard/BoardContextMenu.tsx');
+  const shortcutsModalSrc = readSource('src/components/whiteboard/KeyboardShortcutsModal.tsx');
+
+  assert.doesNotMatch(navbarSrc, /SprintTemplatesModal/);
   assert.match(toolbarSrc, /onOpenTemplates/);
   assert.match(toolbarSrc, /LayoutTemplate/);
   assert.match(toolbarSrc, /aria-label="Inserir Templates de Sprint"/);
+  assert.match(toolbarSrc, /Templates de Sprint[\s\S]*?\(S\)/);
   assert.match(boardPageSrc, /onOpenTemplates=\{\(\) => setIsSprintTemplatesOpen\(true\)\}/);
+
+  // 7. Shortcut S directly opens templates modal on canvas (matching single-key tool convention)
+  assert.match(canvasSrc, /\(e\.key === ['"]s['"]\s*\|\|\s*e\.key === ['"]S['"]\)\s*&&\s*onOpenTemplates/);
+  assert.match(contextMenuSrc, /Modelos de Sprint\.\.\.[\s\S]*?<kbd[^>]*>\s*S\s*<\/kbd>/);
+  assert.match(shortcutsModalSrc, /keys:\s*\['S'\][\s\S]*?Templates de Sprint/);
 });

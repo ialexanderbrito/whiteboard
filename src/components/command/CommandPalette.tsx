@@ -696,6 +696,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     <LayoutTemplate className="size-3.5" />
                   </div>
                   <span>Inserir Templates de Sprint (Scrum, Retro, Kanban)</span>
+                  <CommandShortcut>
+                    <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] font-bold">
+                      S
+                    </kbd>
+                  </CommandShortcut>
                 </CommandItem>
               )}
             </CommandGroup>
