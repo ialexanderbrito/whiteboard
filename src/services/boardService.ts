@@ -10,11 +10,14 @@ import {
   onSnapshot,
   deleteField,
   arrayUnion,
-  arrayRemove
+  arrayRemove,
+  query,
+  where
 } from 'firebase/firestore';
 import { ref as rtdbRef, remove as rtdbRemove } from 'firebase/database';
 import { db, rtdb, isFirebaseConfigured } from '../config/firebase';
 import type { Board, BoardCollaborator, BoardMember, BoardPermission, CurrentUser, JoinRequest } from '../types/board';
+import { hashBoardPassword } from '../utils/security';
 
 export interface CreateBoardOptions {
   boardId?: string;
@@ -145,7 +148,7 @@ export const boardService = {
       options.collaborators ? Object.values(options.collaborators).map((c) => c.email.toLowerCase()) : []
     );
     const isPasswordProtected = Boolean(options.isPasswordProtected && options.password?.trim());
-    const password = isPasswordProtected && options.password ? options.password.trim() : '';
+    const password = isPasswordProtected && options.password ? await hashBoardPassword(options.password.trim()) : '';
 
     const newBoard: Board = {
       id: boardId,
@@ -298,105 +301,134 @@ export const boardService = {
     }
 
     // Modo Firebase:
-    // Escuta em tempo real todos os quadros da coleção 'boards'
-    // e inclui os quadros do proprietário, convidados diretos e quadros compartilhados com convidados
+    // Consulta segmentada com isolamento estrito no servidor (sem varredura global de coleção):
+    // 1. Quadros dos quais o usuário é proprietário (ownerId == user.uid)
+    // 2. Quadros compartilhados onde o usuário foi convidado por e-mail
+    // 3. Quadros acessados previamente pelo usuário via link específico
     const boardsRef = collection(db, 'boards');
-    const unsub = onSnapshot(
-      boardsRef,
-      (snapshot) => {
-        const visitedIds = getVisitedBoardIds(user.uid);
-        const userEmailLower = user.email ? user.email.toLowerCase() : null;
-        const validBoards: Board[] = [];
+    const ownedBoardsMap = new Map<string, Board>();
+    const collabBoardsMap = new Map<string, Board>();
+    const visitedBoardsMap = new Map<string, Board>();
+    const unsubs: Array<() => void> = [];
 
-        snapshot.docs.forEach((docSnap) => {
-          const rawData = docSnap.data() as Partial<Board>;
-          if (!rawData || typeof rawData !== 'object') return;
+    const publishMergedBoards = () => {
+      const mergedMap = new Map<string, Board>();
+      const userEmailLower = user.email ? user.email.toLowerCase() : null;
 
-          const cleanId = cleanBoardId(docSnap.id || rawData?.id);
-          if (!cleanId) return;
-          const b: Board = {
-            id: cleanId,
-            title: typeof rawData.title === 'string' && rawData.title.trim() ? rawData.title.trim() : 'Quadro sem título',
-            ownerId: rawData.ownerId || '',
-            ownerName: typeof rawData.ownerName === 'string' && rawData.ownerName.trim() ? rawData.ownerName.trim() : 'Criador',
-            createdAt: rawData.createdAt || Date.now(),
-            updatedAt: rawData.updatedAt || rawData.createdAt || Date.now(),
-            defaultPermission: rawData.defaultPermission || 'edit',
-            collaborators: rawData.collaborators || {},
-            collaboratorEmails: Array.isArray(rawData.collaboratorEmails)
-              ? rawData.collaboratorEmails.filter(Boolean).map((e) => String(e).toLowerCase())
-              : [],
-            members: rawData.members || {},
-            removedMemberIds: Array.isArray(rawData.removedMemberIds) ? rawData.removedMemberIds : [],
-            isPasswordProtected: Boolean(rawData.isPasswordProtected),
-            password: rawData.password || '',
-          };
-
+      [ownedBoardsMap, collabBoardsMap, visitedBoardsMap].forEach((m) => {
+        m.forEach((b, id) => {
           const isReinvited = (userEmailLower && (
             (b.collaboratorEmails && b.collaboratorEmails.includes(userEmailLower)) ||
             (b.collaborators && Object.values(b.collaborators).some((c) => c?.email && String(c.email).toLowerCase() === userEmailLower))
           )) || Boolean(b.members && b.members[user.uid] && b.members[user.uid].role !== 'none');
 
-          // Se o usuário foi expressamente removido pelo proprietário deste quadro e não foi re-adicionado, não exibe
           if (!isReinvited) {
-            if (b.removedMemberIds && b.removedMemberIds.includes(user.uid)) {
-              return;
-            }
-            if (b.members && b.members[user.uid]?.role === 'none') {
-              return;
-            }
+            if (b.removedMemberIds && b.removedMemberIds.includes(user.uid)) return;
+            if (b.members && b.members[user.uid]?.role === 'none') return;
           }
-
-          // 1. É o proprietário do quadro
-          if (b.ownerId === user.uid) {
-            validBoards.push(b);
-            return;
-          }
-
-          // 2. Convidado diretamente por e-mail
-          if (userEmailLower) {
-            if (b.collaboratorEmails && b.collaboratorEmails.includes(userEmailLower)) {
-              validBoards.push(b);
-              return;
-            }
-            if (b.collaborators && Object.values(b.collaborators).some((c) => c?.email && String(c.email).toLowerCase() === userEmailLower)) {
-              validBoards.push(b);
-              return;
-            }
-          }
-
-          // 3. É membro registrado no quadro com acesso permitido (role !== 'none')
-          if (b.members && b.members[user.uid] && b.members[user.uid].role !== 'none') {
-            validBoards.push(b);
-            return;
-          }
-
-          // 4. Foi visitado por este usuário via link e não possui acesso restrito ('none')
-          if (visitedIds.includes(b.id) && b.defaultPermission !== 'none') {
-            validBoards.push(b);
-            return;
-          }
+          mergedMap.set(id, b);
         });
+      });
 
-        // Deduplica por ID limpo
-        const uniqueMap = new Map<string, Board>();
-        validBoards.forEach((b) => {
-          const id = cleanBoardId(b?.id);
-          if (id && !uniqueMap.has(id)) {
-            uniqueMap.set(id, { ...b, id });
-          }
+      const list = Array.from(mergedMap.values());
+      list.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+      callback(list);
+    };
+
+    const parseDocToBoard = (docSnap: any): Board | null => {
+      const rawData = docSnap.data() as Partial<Board>;
+      if (!rawData || typeof rawData !== 'object') return null;
+      const cleanId = cleanBoardId(docSnap.id || rawData?.id);
+      if (!cleanId) return null;
+      return {
+        id: cleanId,
+        title: typeof rawData.title === 'string' && rawData.title.trim() ? rawData.title.trim() : 'Quadro sem título',
+        ownerId: rawData.ownerId || '',
+        ownerName: typeof rawData.ownerName === 'string' && rawData.ownerName.trim() ? rawData.ownerName.trim() : 'Criador',
+        createdAt: rawData.createdAt || Date.now(),
+        updatedAt: rawData.updatedAt || rawData.createdAt || Date.now(),
+        defaultPermission: rawData.defaultPermission || 'edit',
+        collaborators: rawData.collaborators || {},
+        collaboratorEmails: Array.isArray(rawData.collaboratorEmails)
+          ? rawData.collaboratorEmails.filter(Boolean).map((e) => String(e).toLowerCase())
+          : [],
+        members: rawData.members || {},
+        removedMemberIds: Array.isArray(rawData.removedMemberIds) ? rawData.removedMemberIds : [],
+        isPasswordProtected: Boolean(rawData.isPasswordProtected),
+        password: rawData.password || '',
+      };
+    };
+
+    // 1. Escuta quadros de propriedade do usuário
+    const ownedQuery = query(boardsRef, where('ownerId', '==', user.uid));
+    const unsubOwned = onSnapshot(
+      ownedQuery,
+      (snapshot) => {
+        ownedBoardsMap.clear();
+        snapshot.docs.forEach((d) => {
+          const b = parseDocToBoard(d);
+          if (b) ownedBoardsMap.set(b.id, b);
         });
-
-        const list = Array.from(uniqueMap.values());
-        list.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-        callback(list);
+        publishMergedBoards();
       },
       (error) => {
-        console.error('Erro ao escutar quadros no Firestore:', error);
+        console.warn('Aviso ao consultar quadros próprios no Firestore:', error);
       }
     );
+    unsubs.push(unsubOwned);
 
-    return () => unsub();
+    // 2. Escuta quadros onde o usuário foi convidado por e-mail
+    if (user.email) {
+      const emailLower = user.email.trim().toLowerCase();
+      const collabQuery = query(boardsRef, where('collaboratorEmails', 'array-contains', emailLower));
+      const unsubCollab = onSnapshot(
+        collabQuery,
+        (snapshot) => {
+          collabBoardsMap.clear();
+          snapshot.docs.forEach((d) => {
+            const b = parseDocToBoard(d);
+            if (b) collabBoardsMap.set(b.id, b);
+          });
+          publishMergedBoards();
+        },
+        (error) => {
+          console.warn('Aviso ao consultar quadros compartilhados no Firestore:', error);
+        }
+      );
+      unsubs.push(unsubCollab);
+    }
+
+    // 3. Quadros acessados previamente via link
+    const visitedIds = getVisitedBoardIds(user.uid).slice(0, 20);
+    visitedIds.forEach((vId) => {
+      const cleanId = cleanBoardId(vId);
+      if (!cleanId) return;
+      const docRef = doc(boardsRef, cleanId);
+      const unsubVisited = onSnapshot(
+        docRef,
+        (snap) => {
+          if (snap.exists()) {
+            const b = parseDocToBoard(snap);
+            if (b && b.defaultPermission !== 'none') {
+              visitedBoardsMap.set(b.id, b);
+            } else {
+              visitedBoardsMap.delete(cleanId);
+            }
+          } else {
+            visitedBoardsMap.delete(cleanId);
+          }
+          publishMergedBoards();
+        },
+        () => {
+          visitedBoardsMap.delete(cleanId);
+        }
+      );
+      unsubs.push(unsubVisited);
+    });
+
+    return () => {
+      unsubs.forEach((u) => u());
+    };
   },
 
   async ensureBoardExists(rawBoardId: string, initialBoard: Board): Promise<void> {
@@ -605,6 +637,15 @@ export const boardService = {
       ...updates,
       updatedAt: Date.now(),
     };
+
+    if (updates.password !== undefined) {
+      const p = updates.password ? updates.password.trim() : '';
+      if (p) {
+        payload.password = /^[0-9a-fA-F]{64}$/.test(p) ? p : await hashBoardPassword(p);
+      } else {
+        payload.password = '';
+      }
+    }
 
     // Mantém o array collaboratorEmails sincronizado automaticamente com os colaboradores
     if (updates.collaborators && !updates.collaboratorEmails) {

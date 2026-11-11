@@ -275,11 +275,11 @@ export const BoardPasswordSettingsModal: React.FC<BoardPasswordSettingsModalProp
                   </button>
                 </div>
 
-                {currentHasPassword && board.password && (
+                {currentHasPassword && (
                   <p className="text-[11px] text-muted-foreground flex items-center gap-1.5 pt-0.5">
                     <ShieldCheck className="size-3.5 text-emerald-500 shrink-0" />
                     <span>
-                      Senha atual salva: <code className="font-mono bg-muted px-1 py-0.5 rounded text-[10px] text-foreground">{board.password}</code>
+                      Senha de segurança ativa (protegida por hash criptográfico SHA-256).
                     </span>
                   </p>
                 )}

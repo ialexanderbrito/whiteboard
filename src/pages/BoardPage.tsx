@@ -27,6 +27,7 @@ import { playChimeSound } from '../utils/audioChime';
 import { STICKY_COLORS } from '../utils/colors';
 import { alignElements, type AlignmentType } from '../utils/alignment';
 import { getUserBoardPermission, isBoardOwner, shouldShowWaitingRoom } from '../utils/permissions';
+import { verifyBoardPassword } from '../utils/security';
 import { WaitingRoomScreen } from '../components/whiteboard/WaitingRoomScreen';
 import { HostJoinRequestBanner } from '../components/whiteboard/HostJoinRequestBanner';
 import { Button } from '@/components/ui/button';
@@ -433,8 +434,9 @@ export const BoardPage: React.FC = () => {
     !isUnlocked
   );
 
-  const handleUnlockPassword = (passwordEntered: string) => {
-    if (passwordEntered === board?.password) {
+  const handleUnlockPassword = async (passwordEntered: string): Promise<boolean> => {
+    const isMatch = await verifyBoardPassword(passwordEntered, board?.password);
+    if (isMatch) {
       setIsUnlocked(true);
       if (boardId) {
         sessionStorage.setItem(`mirio_unlocked_${boardId}`, 'true');

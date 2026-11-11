@@ -96,7 +96,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   useEffect(() => {
     if (board) {
       setHasPassword(Boolean(board.isPasswordProtected));
-      setBoardPassword(board.password || '');
+      setBoardPassword('');
     }
   }, [board]);
 
@@ -617,7 +617,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
                 <div className="relative flex-1">
                   <Input
                     type={showPasswordText ? 'text' : 'password'}
-                    placeholder="Defina a senha de acesso..."
+                    placeholder={board?.password ? "Alterar senha de acesso..." : "Defina a senha de acesso..."}
                     value={boardPassword}
                     onChange={(e) => setBoardPassword(e.target.value)}
                     onKeyDown={(e) => {

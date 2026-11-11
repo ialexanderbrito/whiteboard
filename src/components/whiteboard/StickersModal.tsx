@@ -178,9 +178,6 @@ const parseKlipyResponse = (payload: unknown): GifItem[] => {
     .filter((item) => Boolean(item.url));
 };
 
-const DEFAULT_KLIPY_KEY =
-  'DxJbnSmA6hJPpCHiYX7fYppxzJcH7zqXNh03ZGT2L7t8OyShfh6fxZc7aVN6QWNQ';
-
 export interface MediaInsertItem {
   type: 'sticker' | 'gif';
   src: string;
@@ -226,8 +223,8 @@ export const StickersModal: React.FC<StickersModalProps> = ({
   const hasLoadedTrendingRef = useRef(false);
 
   const klipyApiKey =
-    (import.meta.env.VITE_KLIPY_API_KEY as string) || DEFAULT_KLIPY_KEY;
-  const giphyApiKey = import.meta.env.VITE_GIPHY_API_KEY as string;
+    (import.meta.env.VITE_KLIPY_API_KEY as string) || '';
+  const giphyApiKey = (import.meta.env.VITE_GIPHY_API_KEY as string) || '';
 
   useEffect(() => {
     if (open) {
