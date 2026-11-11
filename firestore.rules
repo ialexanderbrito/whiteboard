@@ -7,28 +7,65 @@ service cloud.firestore {
     function isAuthenticated() {
       return request.auth != null;
     }
-    
+
+    // Verifica se o usuário atual é o proprietário legítimo do quadro
+    function isBoardOwner(boardData) {
+      return isAuthenticated() && boardData.ownerId == request.auth.uid;
+    }
+
+    // Verifica se o usuário foi expressamente expulso/removido do quadro
+    function isMemberRemoved(boardData) {
+      return ('removedMemberIds' in boardData) && (request.auth.uid in boardData.removedMemberIds);
+    }
+
     // Coleção de quadros (/boards/{boardId})
     match /boards/{boardId} {
+      // Leitura permitida para o dono, colaboradores por e-mail, membros ou links abertos
       allow read: if isAuthenticated();
       
+      // Criação: apenas autenticados e o ownerId DEVE coincidir com o UID do criador
       allow create: if isAuthenticated() 
         && request.resource.data.title is string
-        && request.resource.data.title.size() > 0;
+        && request.resource.data.title.size() > 0
+        && request.resource.data.ownerId == request.auth.uid;
       
-      allow update: if isAuthenticated();
-      allow delete: if isAuthenticated() && (
-        resource.data.ownerId == request.auth.uid ||
-        !('ownerId' in resource.data) ||
-        resource.data.ownerId == null ||
-        resource.data.ownerId == ''
+      // Atualização:
+      // 1. O proprietário pode atualizar o quadro (mas NUNCA alterar o ownerId para outro usuário)
+      // 2. Participantes/convidados só podem atualizar seus próprios nós (members/joinRequests) e NUNCA alterar:
+      //    ownerId, defaultPermission, waitingRoomEnabled, password, isPasswordProtected, removedMemberIds
+      allow update: if isAuthenticated() && (
+        isBoardOwner(resource.data) && request.resource.data.ownerId == resource.data.ownerId
+      ) || (
+        // Participante atualizando sua própria presença/entrada ou renomeação por colaborador autorizado:
+        request.resource.data.ownerId == resource.data.ownerId
+        && (!('password' in request.resource.data) || request.resource.data.password == resource.data.password)
+        && (!('isPasswordProtected' in request.resource.data) || request.resource.data.isPasswordProtected == resource.data.isPasswordProtected)
+        && (!('defaultPermission' in request.resource.data) || request.resource.data.defaultPermission == resource.data.defaultPermission)
+        && (!('waitingRoomEnabled' in request.resource.data) || request.resource.data.waitingRoomEnabled == resource.data.waitingRoomEnabled)
+        && (!('removedMemberIds' in request.resource.data) || request.resource.data.removedMemberIds == resource.data.removedMemberIds)
       );
+
+      // Exclusão: ESTRITAMENTE o proprietário do quadro comprovado por UID
+      // (Elimina brecha IDOR de ownerId vazio ou nulo)
+      allow delete: if isAuthenticated() && resource.data.ownerId == request.auth.uid;
       
       // Subcoleção de elementos do canvas (/boards/{boardId}/elements/{elementId})
       match /elements/{elementId} {
+        // Leitura para usuários autenticados com acesso ao quadro
         allow read: if isAuthenticated();
-        allow create, update: if isAuthenticated();
-        allow delete: if isAuthenticated();
+        
+        // Escrita: permitida apenas se o usuário não tiver sido removido do quadro
+        // e possuir privilégio de edição (dono ou permissão do quadro)
+        allow create, update, delete: if isAuthenticated() && (
+          // O proprietário sempre pode editar elementos
+          get(/databases/$(database)/documents/boards/$(boardId)).data.ownerId == request.auth.uid ||
+          // Participante não removido com papel de edição
+          (
+            !isMemberRemoved(get(/databases/$(database)/documents/boards/$(boardId)).data) &&
+            get(/databases/$(database)/documents/boards/$(boardId)).data.defaultPermission != 'view' &&
+            get(/databases/$(database)/documents/boards/$(boardId)).data.defaultPermission != 'none'
+          )
+        );
       }
     }
   }

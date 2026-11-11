@@ -31,3 +31,5 @@ wrangler.jsonc
 # AI Agents & Skills
 .agents/
 skills-lock.json
+
+docs/*

@@ -2,12 +2,12 @@
   "rules": {
     "presence": {
       "$boardId": {
-        ".read": "true",
+        ".read": "auth != null",
         "$userId": {
-          ".write": "true",
+          ".write": "auth != null && (auth.uid === $userId || auth.uid === newData.child('userId').val() || (data.exists() && !newData.exists() && auth.uid === $userId))",
           ".validate": "newData.hasChildren(['userId', 'name', 'color'])",
           "userId": {
-            ".validate": "newData.isString()"
+            ".validate": "newData.isString() && newData.val() === auth.uid"
           },
           "name": {
             ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 50"
@@ -29,20 +29,20 @@
     },
     "board_timer": {
       "$boardId": {
-        ".read": "true",
-        ".write": "true"
+        ".read": "auth != null",
+        ".write": "auth != null"
       }
     },
     "board_voting": {
       "$boardId": {
-        ".read": "true",
-        ".write": "true"
+        ".read": "auth != null",
+        ".write": "auth != null"
       }
     },
     "global_reactions": {
       "$boardId": {
-        ".read": "true",
-        ".write": "true"
+        ".read": "auth != null",
+        ".write": "auth != null"
       }
     }
   }
