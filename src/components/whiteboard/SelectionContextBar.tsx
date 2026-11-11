@@ -86,6 +86,13 @@ import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectSeparator,
+  SelectTrigger,
+} from '@/components/ui/select';
+import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
@@ -125,6 +132,37 @@ interface SelectionContextBarProps {
   isSessionActive?: boolean;
   isElementEligible?: boolean;
 }
+
+// Escala visual do número do preset (log): 10px→~10, 144px→~15 — dá leitura de proporção sem estourar a linha.
+const fontSizeLabelSize = (sz: number) =>
+  Math.max(10, Math.min(15, Math.round(10 + Math.log2(sz / 10) * 2)));
+
+const FONT_SIZES = [10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 48, 64, 80, 96, 120, 144];
+
+interface FontSizeSelectItemProps {
+  value: string;
+  currentFontSize: number;
+  children: number;
+}
+
+const FontSizeSelectItem: React.FC<FontSizeSelectItemProps> = ({ value, currentFontSize, children }) => {
+  const sz = Number(value);
+  const isSelected = currentFontSize === sz;
+  return (
+    <SelectItem
+      value={value}
+      className="py-1 pl-8 pr-2 font-mono text-xs tabular-nums"
+    >
+      <span
+        className={isSelected ? 'font-bold' : undefined}
+        style={{ fontSize: fontSizeLabelSize(sz) }}
+      >
+        {children}
+      </span>
+      <span className="ml-auto text-[10px] text-muted-foreground">px</span>
+    </SelectItem>
+  );
+};
 
 interface LockButtonProps {
   isLocked: boolean;
@@ -292,7 +330,7 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
   const [editingLinkUrl, setEditingLinkUrl] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
 
-  const [isFontSizePopoverOpen, setIsFontSizePopoverOpen] = useState(false);
+  const [isFontSizeSelectOpen, setIsFontSizeSelectOpen] = useState(false);
   const [customFontSizeInput, setCustomFontSizeInput] = useState('');
   const [isStrokeWidthPopoverOpen, setIsStrokeWidthPopoverOpen] = useState(false);
   const [customStrokeWidthInput, setCustomStrokeWidthInput] = useState('');
@@ -1270,7 +1308,6 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
     onUpdateElement(primaryElement.id, { textDecoration: next });
   };
 
-  const FONT_SIZES = [10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 48, 64, 80, 96, 120, 144];
   const currentFontSize = primaryElement.fontSize || (isSticky ? 14 : isShape ? 16 : 20);
   const currentTextAlign = primaryElement.textAlign || (isShape ? 'center' : 'left');
 
@@ -1293,18 +1330,36 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
     }
   };
 
-  const handleSelectFontSize = (sz: number) => {
-    applyElementFontSize(sz);
-    setIsFontSizePopoverOpen(false);
+  const handleSelectFontSize = (value: string) => {
+    const sz = parseInt(value, 10);
+    if (!isNaN(sz)) applyElementFontSize(sz);
   };
 
-  const handleApplyCustomFontSize = () => {
+  const handleApplyCustomFontSize = (closeSelect = true) => {
     const parsed = parseInt(customFontSizeInput, 10);
     if (!isNaN(parsed) && parsed >= 8 && parsed <= 300) {
       applyElementFontSize(parsed);
-      setIsFontSizePopoverOpen(false);
-      setCustomFontSizeInput('');
+      if (closeSelect) {
+        setIsFontSizeSelectOpen(false);
+        setCustomFontSizeInput('');
+      }
+      return true;
     }
+    return false;
+  };
+
+  // Stepper ±1 (segura Shift para ±10): lê o campo digitado se houver, senão o tamanho atual.
+  const stepFontSize = (delta: number) => {
+    const parsed = parseInt(customFontSizeInput, 10);
+    const base = !isNaN(parsed) && parsed >= 8 && parsed <= 300 ? parsed : currentFontSize;
+    const next = Math.min(300, Math.max(8, base + delta));
+    setCustomFontSizeInput(String(next));
+    applyElementFontSize(next);
+  };
+
+  // Commit ao sair do campo (sem fechar o Select): aplica se válido, senão limpa.
+  const handleCommitFontSizeOnBlur = () => {
+    if (!handleApplyCustomFontSize(false)) setCustomFontSizeInput('');
   };
 
   const currentStrokeWidth = primaryElement.strokeWidth || (primaryElement.type === 'pen' ? 3 : 2);
@@ -2423,86 +2478,86 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
       {/* ========================================================= */}
       {hasTextFormatting && (
         <div className="flex items-center gap-0.5">
-          {/* 2.1 Tamanho da Fonte (Pílula Única Dropdown) */}
-          <Popover open={isFontSizePopoverOpen} onOpenChange={setIsFontSizePopoverOpen}>
+          {/* 2.1 Tamanho da Fonte (Select compacto com escala visual) */}
+          <Select
+            value={String(currentFontSize)}
+            onValueChange={handleSelectFontSize}
+            open={isFontSizeSelectOpen}
+            onOpenChange={(open) => {
+              setIsFontSizeSelectOpen(open);
+              if (!open) {
+                setCustomFontSizeInput('');
+                if (typeof window !== 'undefined') (window as any).__mirio_menu_dismissed_at = Date.now();
+              }
+            }}
+          >
             <Tooltip>
               <TooltipTrigger asChild>
-                <PopoverTrigger asChild>
-                  <button
-                    type="button"
-                    className="h-7 px-1.5 text-xs font-mono font-semibold flex items-center gap-1 text-foreground hover:bg-muted rounded-md transition cursor-pointer active:scale-[0.97]"
-                    aria-label="Tamanho da fonte"
-                  >
-                    <span className="tabular-nums">{currentFontSize}</span>
-                    <ChevronDown className="size-2.5 opacity-60" />
-                  </button>
-                </PopoverTrigger>
+                <SelectTrigger
+                  aria-label="Tamanho da fonte"
+                  className="h-7 w-auto gap-1 rounded-md border-none bg-transparent px-1.5 font-mono text-xs font-semibold text-foreground shadow-none hover:bg-muted focus:ring-1 focus:ring-ring focus:ring-offset-0 data-[state=open]:bg-muted [&_svg]:size-2.5 [&_svg]:opacity-60"
+                >
+                  <span className="tabular-nums">{currentFontSize}</span>
+                </SelectTrigger>
               </TooltipTrigger>
               <TooltipContent side="top">Tamanho do texto ({currentFontSize}px)</TooltipContent>
             </Tooltip>
 
-            <PopoverContent
+            <SelectContent
               side="top"
               align="center"
-              className="w-48 p-2.5 text-xs shadow-xl border-border bg-popover"
               onCloseAutoFocus={handlePopoverCloseAutoFocus}
-              onPointerDownOutside={() => {
-                if (typeof window !== 'undefined') (window as any).__mirio_menu_dismissed_at = Date.now();
-              }}
-              onInteractOutside={() => {
-                if (typeof window !== 'undefined') (window as any).__mirio_menu_dismissed_at = Date.now();
-              }}
+              className="w-32"
             >
-              <div className="flex items-center justify-between mb-2 pb-1.5 border-b border-border">
-                <span className="font-semibold text-[11px] text-foreground">Tamanho da Fonte</span>
-                <span className="text-[10px] text-muted-foreground font-mono">{currentFontSize}px</span>
-              </div>
-
-              {/* Campo Numérico Livre */}
-              <div className="flex items-center gap-1 mb-2">
+              {/* Valor livre: stepper − / valor / + (Enter aplica e fecha) */}
+              <div className="flex items-stretch gap-1 px-1 pb-1" onKeyDown={(e) => e.stopPropagation()}>
+                <button
+                  type="button"
+                  onClick={(e) => stepFontSize(e.shiftKey ? -10 : -1)}
+                  disabled={currentFontSize <= 8}
+                  className="size-7 shrink-0 rounded-md border border-border bg-muted/40 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-40 disabled:pointer-events-none transition cursor-pointer active:scale-[0.95]"
+                  aria-label="Diminuir tamanho (Shift: −10)"
+                >
+                  <Minus className="size-3" />
+                </button>
                 <Input
                   type="number"
                   min={8}
                   max={300}
                   placeholder={`${currentFontSize}`}
                   value={customFontSizeInput}
-                  onChange={(e) => setCustomFontSizeInput(e.target.value)}
+                  onChange={(e) => {
+                    const v = e.target.value.replace(/[^0-9]/g, '');
+                    if (v === '' || (parseInt(v, 10) <= 300)) setCustomFontSizeInput(v);
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') handleApplyCustomFontSize();
+                    if (e.key === 'Escape') setIsFontSizeSelectOpen(false);
                   }}
-                  className="h-7 text-xs px-2 font-mono"
+                  onBlur={handleCommitFontSizeOnBlur}
+                  className="h-7 min-w-0 flex-1 text-xs px-1.5 font-mono text-center tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                 />
-                <Button
-                  size="icon-sm"
-                  onClick={handleApplyCustomFontSize}
-                  className="size-7 shrink-0 text-xs font-semibold"
+                <button
+                  type="button"
+                  onClick={(e) => stepFontSize(e.shiftKey ? 10 : 1)}
+                  disabled={currentFontSize >= 300}
+                  className="size-7 shrink-0 rounded-md border border-border bg-muted/40 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-40 disabled:pointer-events-none transition cursor-pointer active:scale-[0.95]"
+                  aria-label="Aumentar tamanho (Shift: +10)"
                 >
-                  OK
-                </Button>
+                  <Plus className="size-3" />
+                </button>
               </div>
 
-              {/* Grade de Tamanhos Rápidos (Miro Presets) */}
-              <div className="grid grid-cols-4 gap-1">
-                {FONT_SIZES.map((sz) => {
-                  const isSelected = currentFontSize === sz;
-                  return (
-                    <button
-                      key={sz}
-                      type="button"
-                      onClick={() => handleSelectFontSize(sz)}
-                      className={`h-6 rounded text-[11px] font-mono transition flex items-center justify-center ${
-                        isSelected
-                          ? 'bg-primary text-primary-foreground font-bold shadow-xs'
-                          : 'hover:bg-muted text-muted-foreground hover:text-foreground'
-                      }`}
-                    >
-                      {sz}
-                    </button>
-                  );
-                })}
-              </div>
-            </PopoverContent>
-          </Popover>
+              <SelectSeparator />
+
+              {/* Presets (lista única, padrão do projeto) */}
+              {FONT_SIZES.map((sz) => (
+                <FontSizeSelectItem key={sz} value={String(sz)} currentFontSize={currentFontSize}>
+                  {sz}
+                </FontSizeSelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
           {/* 2.2 Negrito Direto na Barra */}
           <Tooltip>
