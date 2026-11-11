@@ -35,9 +35,16 @@ import {
   BringToFront,
   SendToBack,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  CheckSquare,
+  StickyNote
 } from '@/components/ui/icons';
 import type { CanvasElement } from '../../types/element';
+import { 
+  convertStickyToChecklist,
+  convertChecklistToSticky,
+  computeChecklistHeight
+} from '../../utils/checklist';
 import { 
   STICKY_COLORS, 
   SHAPE_FILL_CATEGORIES,
@@ -1117,6 +1124,7 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
 
   // Elemento único selecionado (mesmo contêiner para bloqueado ou desbloqueado)
   const isSticky = primaryElement.type === 'sticky';
+  const isChecklist = primaryElement.type === 'checklist';
   const isShape = ['rect', 'circle', 'diamond', 'triangle', 'star'].includes(primaryElement.type);
   const isLineOrArrow = ['arrow', 'line', 'pen'].includes(primaryElement.type);
   const isText = primaryElement.type === 'text';
@@ -1774,8 +1782,8 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
       {/* SLOT 1: CORES E APARÊNCIA                                 */}
       {/* ========================================================= */}
 
-      {/* 1.1 Post-it: 1 botão compacto com preview da cor atual */}
-      {isSticky && (
+      {/* 1.1 Post-it & Checklist: 1 botão compacto com preview da cor atual */}
+      {(isSticky || isChecklist) && (
         <Popover>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -1783,17 +1791,17 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
                 <button
                   type="button"
                   className="flex items-center gap-1 px-1.5 h-7 rounded-md hover:bg-muted transition cursor-pointer border border-transparent hover:border-border active:scale-[0.97]"
-                  aria-label="Cor do post-it"
+                  aria-label={isChecklist ? "Cor do checklist" : "Cor do post-it"}
                 >
                   <span
                     className="size-4 rounded-md border border-black/15 shadow-2xs shrink-0"
-                    style={{ backgroundColor: primaryElement.fill || '#fff9b1' }}
+                    style={{ backgroundColor: primaryElement.fill || (isChecklist ? '#ffffff' : '#fff9b1') }}
                   />
                   <ChevronDown className="size-2.5 text-muted-foreground" />
                 </button>
               </PopoverTrigger>
             </TooltipTrigger>
-            <TooltipContent side="top">Cor do Post-it</TooltipContent>
+            <TooltipContent side="top">{isChecklist ? 'Cor do Checklist' : 'Cor do Post-it'}</TooltipContent>
           </Tooltip>
           <PopoverContent
             side="top"
@@ -1807,15 +1815,15 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
             }}
           >
             <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-border">
-              <span className="font-semibold text-[11px] text-foreground">Cor do Post-it</span>
+              <span className="font-semibold text-[11px] text-foreground">{isChecklist ? 'Cor do Checklist' : 'Cor do Post-it'}</span>
               <span className="text-[10px] text-muted-foreground font-mono uppercase">
-                {primaryElement.fill || '#fff9b1'}
+                {primaryElement.fill || (isChecklist ? '#ffffff' : '#fff9b1')}
               </span>
             </div>
             <p className="text-[10px] font-semibold text-muted-foreground uppercase mb-1.5 px-0.5 tracking-wider">Cores Clássicas</p>
             <div className="grid grid-cols-4 gap-1.5 mb-2.5">
               {STICKY_COLORS.map((c) => {
-                const isCurrent = (primaryElement.fill || '#fff9b1').toLowerCase() === c.value.toLowerCase();
+                const isCurrent = (primaryElement.fill || (isChecklist ? '#ffffff' : '#fff9b1')).toLowerCase() === c.value.toLowerCase();
                 return (
                   <Tooltip key={c.value}>
                     <TooltipTrigger asChild>
@@ -1847,7 +1855,7 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
               <div className="flex items-center gap-1.5">
                 <input
                   type="color"
-                  value={primaryElement.fill && primaryElement.fill.startsWith('#') && primaryElement.fill.length === 7 ? primaryElement.fill : '#fff9b1'}
+                  value={primaryElement.fill && primaryElement.fill.startsWith('#') && primaryElement.fill.length === 7 ? primaryElement.fill : (isChecklist ? '#ffffff' : '#fff9b1')}
                   onChange={(e) => onUpdateElement(primaryElement.id, { fill: e.target.value })}
                   className="size-6 p-0 border border-border rounded-md cursor-pointer bg-transparent"
                   title="Escolher qualquer cor hexadecimal"
@@ -1855,7 +1863,7 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
                 <input
                   type="text"
                   maxLength={7}
-                  placeholder="#fff9b1"
+                  placeholder={isChecklist ? '#ffffff' : '#fff9b1'}
                   value={customFillInput !== '' ? customFillInput : (primaryElement.fill?.startsWith('#') ? primaryElement.fill : '')}
                   onChange={(e) => setCustomFillInput(e.target.value)}
                   onKeyDown={(e) => {
@@ -1877,6 +1885,62 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
             </div>
           </PopoverContent>
         </Popover>
+      )}
+
+      {/* Botão de conversão mútua entre Post-it e Checklist */}
+      {isSticky && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={() => {
+                const { title, items } = convertStickyToChecklist(primaryElement.text);
+                onUpdateElement(primaryElement.id, {
+                  type: 'checklist',
+                  checklistTitle: title,
+                  checklistItems: items,
+                  width: Math.max(260, primaryElement.width || 260),
+                  height: computeChecklistHeight(items.length),
+                  updatedAt: Date.now(),
+                });
+              }}
+              className="flex items-center gap-1.5 px-2 h-7 rounded-md hover:bg-muted text-xs text-muted-foreground hover:text-foreground transition cursor-pointer active:scale-[0.97]"
+              aria-label="Converter em Checklist"
+            >
+              <CheckSquare className="size-3.5 text-primary shrink-0" />
+              <span className="hidden sm:inline font-medium text-[11px]">Checklist</span>
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top">Converter em Checklist Interativo</TooltipContent>
+        </Tooltip>
+      )}
+
+      {isChecklist && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={() => {
+                const text = convertChecklistToSticky(primaryElement.checklistItems, primaryElement.checklistTitle);
+                onUpdateElement(primaryElement.id, {
+                  type: 'sticky',
+                  text,
+                  checklistTitle: undefined,
+                  checklistItems: undefined,
+                  width: Math.max(180, primaryElement.width || 180),
+                  height: Math.max(180, primaryElement.height || 180),
+                  updatedAt: Date.now(),
+                });
+              }}
+              className="flex items-center gap-1.5 px-2 h-7 rounded-md hover:bg-muted text-xs text-muted-foreground hover:text-foreground transition cursor-pointer active:scale-[0.97]"
+              aria-label="Converter em Post-it"
+            >
+              <StickyNote className="size-3.5 text-amber-500 shrink-0" />
+              <span className="hidden sm:inline font-medium text-[11px]">Post-it</span>
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top">Converter em Post-it Convencional</TooltipContent>
+        </Tooltip>
       )}
 
       {/* 1.2 Formas: Cor de Preenchimento + Cor de Borda */}
@@ -3004,6 +3068,51 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
                   <span>Editar Texto</span>
                 </span>
                 <span className="text-[10px] text-muted-foreground font-mono">Duplo clique</span>
+              </DropdownMenuItem>
+            )}
+
+            {isSticky && (
+              <DropdownMenuItem
+                onClick={() => {
+                  const { title, items } = convertStickyToChecklist(primaryElement.text);
+                  onUpdateElement(primaryElement.id, {
+                    type: 'checklist',
+                    checklistTitle: title,
+                    checklistItems: items,
+                    width: Math.max(260, primaryElement.width || 260),
+                    height: computeChecklistHeight(items.length),
+                    updatedAt: Date.now(),
+                  });
+                }}
+                className="flex items-center justify-between text-xs cursor-pointer py-1.5"
+              >
+                <span className="flex items-center gap-2">
+                  <CheckSquare className="size-3.5 text-primary" />
+                  <span>Converter em Checklist</span>
+                </span>
+              </DropdownMenuItem>
+            )}
+
+            {isChecklist && (
+              <DropdownMenuItem
+                onClick={() => {
+                  const text = convertChecklistToSticky(primaryElement.checklistItems, primaryElement.checklistTitle);
+                  onUpdateElement(primaryElement.id, {
+                    type: 'sticky',
+                    text,
+                    checklistTitle: undefined,
+                    checklistItems: undefined,
+                    width: Math.max(180, primaryElement.width || 180),
+                    height: Math.max(180, primaryElement.height || 180),
+                    updatedAt: Date.now(),
+                  });
+                }}
+                className="flex items-center justify-between text-xs cursor-pointer py-1.5"
+              >
+                <span className="flex items-center gap-2">
+                  <StickyNote className="size-3.5 text-amber-500" />
+                  <span>Converter em Post-it</span>
+                </span>
               </DropdownMenuItem>
             )}
 

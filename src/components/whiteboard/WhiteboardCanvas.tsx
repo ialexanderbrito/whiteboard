@@ -4,6 +4,9 @@ import Konva from 'konva';
 import type { CanvasElement, ToolType, ElementType } from '../../types/element';
 import type { UserPresence, CurrentUser } from '../../types/board';
 import { StickyNoteItem } from './StickyNoteItem';
+import { ChecklistItem } from './ChecklistItem';
+import { createDefaultChecklistItems, computeChecklistHeight } from '../../utils/checklist';
+import confetti from 'canvas-confetti';
 import { ShapeItem } from './ShapeItem';
 import { ArrowItem } from './ArrowItem';
 import { FreeDrawItem } from './FreeDrawItem';
@@ -403,6 +406,12 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
 
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   const [inlineEditing, setInlineEditing] = useState<InlineEditingState | null>(null);
+  const [activeChecklistEditor, setActiveChecklistEditor] = useState<{
+    elementId: string;
+    target: 'title' | string;
+    text: string;
+    itemY: number;
+  } | null>(null);
   const [isTransforming, setIsTransforming] = useState(false);
   const rotationHudRef = useRef<HTMLDivElement>(null);
   const rotationHudValueRef = useRef<HTMLSpanElement>(null);
@@ -1570,6 +1579,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         if (e.key === 'v' || e.key === 'V') onSelectTool('select');
         if (e.key === 'h' || e.key === 'H') onSelectTool('pan');
         if (!readOnly && (e.key === 'n' || e.key === 'N')) onSelectTool('sticky');
+        if (!readOnly && (e.key === 'c' || e.key === 'C')) onSelectTool('checklist');
         if (!readOnly && !canCommentOnly) {
           if (e.key === 'f' || e.key === 'F') onSelectTool('frame');
           if (e.key === 'r' || e.key === 'R') onSelectTool('rect');
@@ -2537,6 +2547,25 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         });
         onSelectionChange([id]);
         onSelectTool('select');
+      } else if (currentTool === 'checklist') {
+        const posX = Math.round(worldPos.x - 130);
+        const posY = Math.round(worldPos.y - 105);
+        const defaultItems = createDefaultChecklistItems();
+        const id = await onAddElement({
+          type: 'checklist',
+          x: posX,
+          y: posY,
+          width: 260,
+          height: computeChecklistHeight(defaultItems.length),
+          fill: selectedColor || '#ffffff',
+          checklistTitle: 'Lista de Tarefas',
+          checklistItems: defaultItems,
+          zIndex: elements.length + 1,
+          updatedBy: currentUser.uid,
+          updatedByName: currentUser.displayName,
+        });
+        onSelectionChange([id]);
+        onSelectTool('select');
       } else if (currentTool === 'frame') {
         const id = await onAddElement({
           type: 'frame',
@@ -3139,6 +3168,24 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     }
   }, []);
 
+  const triggerCanvasConfetti = useCallback((worldX: number, worldY: number) => {
+    try {
+      const screenX = (worldX * scale + stagePos.x) / window.innerWidth;
+      const screenY = (worldY * scale + stagePos.y) / window.innerHeight;
+      confetti({
+        particleCount: 50,
+        spread: 60,
+        origin: {
+          x: Math.max(0.05, Math.min(0.95, screenX)),
+          y: Math.max(0.05, Math.min(0.95, screenY)),
+        },
+        disableForReducedMotion: true,
+      });
+    } catch {
+      // Silencioso se bloqueado
+    }
+  }, [scale, stagePos]);
+
   const handleItemSelectRef = useRef(handleItemSelect);
   const handleElementChangeRef = useRef(handleElementChange);
   handleItemSelectRef.current = handleItemSelect;
@@ -3247,6 +3294,33 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
                 setReactionPickerTarget({ elementId, anchor, mode });
               }}
               onStartEditing={handlers.onStartEditing}
+            />
+          );
+        }
+
+        if (elem.type === 'checklist') {
+          return (
+            <ChecklistItem
+              key={elem.id}
+              element={elem}
+              isSelected={isSelected}
+              userSelectionColor={userSelectionColor}
+              remoteSelector={remoteSelector}
+              draggable={canDragItem}
+              canEdit={canEditItem}
+              onSelect={handlers.onSelect}
+              onChange={handlers.onChange}
+              onStartEditingItem={(elementId, target, initialText, itemY) => {
+                setActiveChecklistEditor({
+                  elementId,
+                  target,
+                  text: initialText,
+                  itemY,
+                });
+              }}
+              onCelebration={(cx, cy) => {
+                triggerCanvasConfetti(cx, cy);
+              }}
             />
           );
         }
@@ -5099,6 +5173,124 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           }}
         />
       )}
+
+      {/* Editor Inline Dinâmico de Checklist (Item ou Título) */}
+      {activeChecklistEditor && (() => {
+        const elem = elements.find((e) => e.id === activeChecklistEditor.elementId);
+        if (!elem) return null;
+
+        const isTitle = activeChecklistEditor.target === 'title';
+        const cardFill = elem.fill || '#ffffff';
+        const isDark = getContrastTextColor(cardFill, '#0f172a', '#f8fafc') === '#f8fafc';
+
+        const offsetX = isTitle ? 38 : 40;
+        const inputWidth = Math.max(120, (elem.width || 260) - (isTitle ? 116 : 74));
+
+        const handleCommitChecklistEdit = (textToSave: string, actionNext?: 'next_item' | 'close') => {
+          if (isTitle) {
+            onUpdateElement(elem.id, {
+              checklistTitle: textToSave.trim() || 'Lista de Tarefas',
+              updatedAt: Date.now(),
+            });
+            setActiveChecklistEditor(null);
+            return;
+          }
+
+          const currentItems = elem.checklistItems || [];
+          const updated = currentItems.map((item) =>
+            item.id === activeChecklistEditor.target ? { ...item, text: textToSave } : item
+          );
+
+          if (actionNext === 'next_item') {
+            const newItemId = 'chk_' + Math.random().toString(36).substring(2, 9);
+            const targetIdx = currentItems.findIndex((i) => i.id === activeChecklistEditor.target);
+            const inserted = [...updated];
+            const insertIdx = targetIdx >= 0 ? targetIdx + 1 : inserted.length;
+            inserted.splice(insertIdx, 0, {
+              id: newItemId,
+              text: '',
+              completed: false,
+            });
+
+            const newHeight = computeChecklistHeight(inserted.length);
+            onUpdateElement(elem.id, {
+              checklistItems: inserted,
+              height: newHeight,
+              updatedAt: Date.now(),
+            });
+
+            const nextItemY = 56 + insertIdx * 34;
+            setActiveChecklistEditor({
+              elementId: elem.id,
+              target: newItemId,
+              text: '',
+              itemY: nextItemY,
+            });
+            return;
+          }
+
+          onUpdateElement(elem.id, {
+            checklistItems: updated,
+            updatedAt: Date.now(),
+          });
+          setActiveChecklistEditor(null);
+        };
+
+        return (
+          <input
+            autoFocus
+            type="text"
+            value={activeChecklistEditor.text}
+            onChange={(e) => setActiveChecklistEditor({ ...activeChecklistEditor, text: e.target.value })}
+            onBlur={() => handleCommitChecklistEdit(activeChecklistEditor.text)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleCommitChecklistEdit(activeChecklistEditor.text, isTitle ? 'close' : 'next_item');
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                handleCommitChecklistEdit(activeChecklistEditor.text, 'close');
+              } else if (e.key === 'Backspace' && activeChecklistEditor.text === '' && !isTitle) {
+                const currentItems = elem.checklistItems || [];
+                if (currentItems.length > 1) {
+                  e.preventDefault();
+                  const targetIdx = currentItems.findIndex((i) => i.id === activeChecklistEditor.target);
+                  const filtered = currentItems.filter((i) => i.id !== activeChecklistEditor.target);
+                  const newHeight = computeChecklistHeight(filtered.length);
+                  onUpdateElement(elem.id, {
+                    checklistItems: filtered,
+                    height: newHeight,
+                    updatedAt: Date.now(),
+                  });
+                  if (targetIdx > 0) {
+                    const prevItem = filtered[targetIdx - 1];
+                    setActiveChecklistEditor({
+                      elementId: elem.id,
+                      target: prevItem.id,
+                      text: prevItem.text,
+                      itemY: 56 + (targetIdx - 1) * 34,
+                    });
+                  } else {
+                    setActiveChecklistEditor(null);
+                  }
+                }
+              }
+            }}
+            className={`absolute z-50 font-sans outline-none rounded px-1.5 py-0.5 border border-primary shadow-xs ${
+              isTitle ? 'font-bold text-[13px]' : 'text-[13px]'
+            }`}
+            style={{
+              left: `${(elem.x + offsetX) * scale + stagePos.x}px`,
+              top: `${(elem.y + activeChecklistEditor.itemY + 4) * scale + stagePos.y}px`,
+              width: `${inputWidth * scale}px`,
+              height: `${24 * scale}px`,
+              backgroundColor: isDark ? '#1e293b' : '#ffffff',
+              color: isDark ? '#ffffff' : '#0f172a',
+              fontSize: `${(isTitle ? 14 : 13) * scale}px`,
+            }}
+          />
+        );
+      })()}
 
       {/* Modal no padrão do projeto para inserção e edição de hiperlinks */}
       {linkModalState && (

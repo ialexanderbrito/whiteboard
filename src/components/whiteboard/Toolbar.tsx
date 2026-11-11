@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { 
   MousePointer, 
   StickyNote, 
+  CheckSquare,
   Square, 
   Circle, 
   Diamond,
@@ -164,7 +165,7 @@ export const Toolbar: React.FC<ToolbarProps> = React.memo(({
   onOpenShortcuts,
   onOpenTemplates,
 }) => {
-  const [activePicker, setActivePicker] = useState<'sticky' | 'pen' | 'shapes' | null>(null);
+  const [activePicker, setActivePicker] = useState<'sticky' | 'checklist' | 'pen' | 'shapes' | null>(null);
   const [currentShape, setCurrentShape] = useState<ToolType>('rect');
 
   const isBottom = position === 'bottom';
@@ -304,6 +305,62 @@ export const Toolbar: React.FC<ToolbarProps> = React.memo(({
                     onClick={() => {
                       onSelectColor(c.value);
                       onSelectTool('sticky');
+                      setActivePicker(null);
+                    }}
+                    className={`size-5 rounded transition-transform hover:scale-110 border ${
+                      selectedColor === c.value ? 'ring-2 ring-primary ring-offset-1 ring-offset-background' : 'border-border'
+                    }`}
+                    style={{ backgroundColor: c.value }}
+                    title={c.name}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Checklist Interativo (Micro-Widget Vivo) */}
+          <div className="relative">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSelectTool('checklist');
+                    if (selectedColor === '#0f172a' || !STICKY_COLORS.some((c) => c.value === selectedColor)) {
+                      onSelectColor('#ffffff');
+                    }
+                    setActivePicker(activePicker === 'checklist' ? null : 'checklist');
+                  }}
+                  className={`size-8 rounded-md transition-colors flex items-center justify-center relative active:scale-[0.98] ${
+                    currentTool === 'checklist'
+                      ? 'bg-primary text-primary-foreground shadow-xs'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                  }`}
+                >
+                  <CheckSquare className="size-4" />
+                  <span
+                    className="absolute bottom-1 right-1 size-1.5 rounded-full border border-background"
+                    style={{ backgroundColor: selectedColor || '#ffffff' }}
+                  />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side={tooltipSide}>
+                <p className="font-medium text-xs">
+                  Checklist <span className="opacity-60 text-[10px]">(C)</span>
+                </p>
+              </TooltipContent>
+            </Tooltip>
+
+            {/* Paleta flutuante de cor do Checklist */}
+            {activePicker === 'checklist' && (
+              <div className={`absolute ${isBottom ? 'bottom-full mb-2.5 left-1/2 -translate-x-1/2' : 'left-full ml-2 top-0'} bg-popover text-popover-foreground p-1.5 rounded-md shadow-md border border-border flex gap-1 z-40 animate-in fade-in-0 zoom-in-95`}>
+                {STICKY_COLORS.map((c) => (
+                  <button
+                    key={c.value}
+                    type="button"
+                    onClick={() => {
+                      onSelectColor(c.value);
+                      onSelectTool('checklist');
                       setActivePicker(null);
                     }}
                     className={`size-5 rounded transition-transform hover:scale-110 border ${

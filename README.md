@@ -38,6 +38,7 @@ O **Mirio** foi concebido para eliminar barreiras entre uma ideia e sua execuç�
 - **⚡ Entrada Sem Burocracia**: Participe em 1 clique como convidado ou conecte-se com sua conta Google.
 - **🎨 Canvas Infinito & Fluido**: Motor gráfico em Konva.js com zoom suave, navegação a 60 FPS e suporte a telas Retina.
 - **📝 Post-its Inteligentes**: Notas adesivas com paleta pensada para contraste, hiperlinks clicáveis e tipografia moderna.
+- **✅ Micro-Widgets Vivos**: Checklists táteis em tempo real com barra de progresso comemorativa, feedback sonoro e conversão instantânea de post-its.
 - **🔷 Formas Geométricas & Desenho Livre**: Retângulos, círculos, triângulos, losangos, estrelas, conectores direcionais e caneta com suavização.
 - **💬 Cursor Chat & Interações Vivas**: Pressione `/` e converse diretamente pela posição do seu mouse (estilo Figma), aponte com feixe Laser (`L`) e envie reações flutuantes.
 - **⏱️ Facilitação Profissional**: Cronômetro colaborativo sincronizado na sala e sessões de votação anônima com pódio automático.
@@ -85,6 +86,7 @@ Ganhe velocidade dominando os atalhos do teclado:
 | <kbd>V</kbd> | Ferramenta Seleção / Mover |
 | <kbd>Espaço</kbd> ou <kbd>H</kbd> | Arrastar a Tela (Pan) |
 | <kbd>N</kbd> | Criar Post-it |
+| <kbd>C</kbd> | Criar Checklist Interativo (Micro-Widget) |
 | <kbd>R</kbd> | Retângulo |
 | <kbd>O</kbd> | Círculo |
 | <kbd>T</kbd> | Caixa de Texto |

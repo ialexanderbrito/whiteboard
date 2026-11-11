@@ -28,6 +28,7 @@ const SHORTCUTS: ShortcutItem[] = [
   { keys: ['V'], description: 'Mover e Selecionar', category: 'tools' },
   { keys: ['H'], description: 'Mão / Mover Tela (Pan)', category: 'tools' },
   { keys: ['N'], description: 'Novo Post-it (Sticky Note)', category: 'tools' },
+  { keys: ['C'], description: 'Checklist Interativo (Micro-Widget)', category: 'tools' },
   { keys: ['R'], description: 'Criar Retângulo', category: 'tools' },
   { keys: ['O'], description: 'Criar Círculo', category: 'tools' },
   { keys: ['A'], description: 'Criar Seta Conectora', category: 'tools' },

@@ -1,5 +1,6 @@
 export type ElementType = 
   | 'sticky' 
+  | 'checklist'
   | 'rect' 
   | 'circle' 
   | 'diamond'
@@ -16,6 +17,7 @@ export type ElementType =
 export type ToolType = 
   | 'select' 
   | 'sticky' 
+  | 'checklist'
   | 'rect' 
   | 'circle' 
   | 'diamond'
@@ -30,6 +32,15 @@ export type ToolType =
   | 'laser'
   | 'pan' 
   | 'frame';
+
+/**
+ * Item individual de um Micro-Widget de Checklist
+ */
+export interface ChecklistItem {
+  id: string;
+  text: string;
+  completed: boolean;
+}
 
 /**
  * Run de texto rico: permite formatar trechos independentes (letra, palavra ou frase)
@@ -75,6 +86,10 @@ export interface CanvasElement {
 
   // Bloqueio do elemento
   locked?: boolean;
+
+  // Atributos de Checklist (Micro-Widget Vivo)
+  checklistTitle?: string;
+  checklistItems?: ChecklistItem[];
 
   // Formatação tipográfica avançada e hiperlink
   fontWeight?: 'normal' | 'bold';
