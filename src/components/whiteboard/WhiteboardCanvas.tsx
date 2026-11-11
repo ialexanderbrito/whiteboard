@@ -2,7 +2,7 @@ import React, { useRef, useState, useEffect, useLayoutEffect, useCallback } from
 import { Stage, Layer, Transformer, Rect, Circle, Line, Star, Group, Text } from 'react-konva';
 import Konva from 'konva';
 import type { CanvasElement, ToolType, ElementType } from '../../types/element';
-import type { UserPresence, CurrentUser } from '../../types/board';
+import type { UserPresence, CurrentUser, BoardMember } from '../../types/board';
 import { StickyNoteItem } from './StickyNoteItem';
 import { ChecklistItem } from './ChecklistItem';
 import { createDefaultChecklistItems, computeChecklistHeight } from '../../utils/checklist';
@@ -73,6 +73,7 @@ import {
 } from '../../utils/elementBounds';
 import { calculateSmartGuidesAndSnap, type GuideLine } from '../../utils/smartGuides';
 import { StickyReactionBar } from './StickyReactionBar';
+import { ReactionBadgeTooltip } from './ReactionBadgeTooltip';
 import { StickyQuickAdd } from './StickyQuickAdd';
 import { getAdjacentStickyRect, type StickyDirection } from '../../utils/stickyPlacement';
 import { isMirioReaction, MIRIO_REACTION } from '../../utils/mirioReaction';
@@ -134,6 +135,8 @@ interface WhiteboardCanvasProps {
   onToggleGrid?: () => void;
   smartGuidesEnabled?: boolean;
   onToggleSmartGuides?: () => void;
+  boardMembers?: Record<string, BoardMember>;
+  boardOwner?: { id?: string; name?: string };
   mirioReactionUnlocked?: boolean;
   onLaserMove?: (worldPos: { x: number; y: number }, isDrawing: boolean) => void;
   onLaserDown?: (worldPos: { x: number; y: number }) => void;
@@ -353,6 +356,8 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
   onToggleGrid,
   smartGuidesEnabled = true,
   onToggleSmartGuides,
+  boardMembers,
+  boardOwner,
   mirioReactionUnlocked = false,
   onLaserMove,
   onLaserDown,
@@ -3413,6 +3418,19 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     stageRef.current?.batchDraw();
   }, [renderedElements]);
 
+  // Resolução de nomes para tooltip de reações e colaboração
+  const resolveUserName = useCallback(
+    (userId: string): string => {
+      if (userId === currentUser.uid) return 'Você';
+      const remote = remoteUsers.find((u) => u.userId === userId);
+      if (remote?.name) return remote.name;
+      if (boardMembers?.[userId]?.name) return boardMembers[userId].name;
+      if (boardOwner?.id === userId && boardOwner?.name) return boardOwner.name;
+      return 'Participante';
+    },
+    [currentUser.uid, remoteUsers, boardMembers, boardOwner]
+  );
+
   // Post-it alvo do seletor flutuante de reações ancorado ao botão '+' interno
   const reactionPickerSticky = reactionPickerTarget
     ? elements.find((e) => e.id === reactionPickerTarget.elementId)
@@ -4263,6 +4281,13 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           mirioReactionUnlocked={mirioReactionUnlocked}
         />
       )}
+
+      {/* Tooltip flutuante em Hover com nome de quem deu a reação no post-it */}
+      <ReactionBadgeTooltip
+        elements={elements}
+        currentUserId={currentUser.uid}
+        resolveUserName={resolveUserName}
+      />
 
       {/* GIFs Animados a 60fps Nativo em Overlay HTML 100% Sincronizado no Pan e Zoom */}
       <div

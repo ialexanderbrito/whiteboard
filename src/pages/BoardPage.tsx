@@ -1999,6 +1999,8 @@ export const BoardPage: React.FC = () => {
         smartGuidesEnabled={smartGuidesEnabled}
         onToggleSmartGuides={handleToggleSmartGuides}
         mirioReactionUnlocked={mirioReactionUnlocked}
+        boardMembers={board?.members}
+        boardOwner={{ id: board?.ownerId, name: board?.ownerName }}
       />
     </div>
   );

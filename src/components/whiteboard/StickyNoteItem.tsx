@@ -15,6 +15,10 @@ import {
   loadAppleEmojiImage,
 } from '../../utils/appleEmoji';
 import { playReactionPopSound } from '../../utils/audioChime';
+import {
+  publishReactionTooltip,
+  getActiveReactionTooltip,
+} from '../../utils/reactionTooltip';
 
 interface StickyNoteItemProps {
   element: CanvasElement;
@@ -203,6 +207,16 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
     });
   }, [activeReactions]);
 
+  // Fecha o tooltip de reação se o post-it for desmontado (ex: deletado)
+  useEffect(() => {
+    return () => {
+      const active = getActiveReactionTooltip();
+      if (active?.elementId === element.id) {
+        publishReactionTooltip(null);
+      }
+    };
+  }, [element.id]);
+
   // Layout responsivo das pílulas de reações ancoradas na borda inferior externa estilo Miro
   const footerBadgesLayout = useMemo(() => {
     const START_X = 8;
@@ -319,6 +333,7 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
       onMouseLeave={handleMouseLeave}
       onDragStart={() => {
         isDraggingRef.current = true;
+        publishReactionTooltip(null);
       }}
       onDragEnd={(e) => {
         setTimeout(() => {
@@ -520,10 +535,36 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
                 onMouseEnter={(e) => {
                   const stage = e.target.getStage();
                   if (stage) stage.container().style.cursor = isLocked ? 'default' : 'pointer';
+
+                  if (!isCoarseOrMobileViewport()) {
+                    const rotationRad = ((element.rotation || 0) * Math.PI) / 180;
+                    const localCenterX = x + badgeWidth / 2;
+                    const localBottomY = footerBadgesLayout.y + footerBadgesLayout.height;
+                    const localTopY = footerBadgesLayout.y;
+
+                    const cos = Math.cos(rotationRad);
+                    const sin = Math.sin(rotationRad);
+
+                    const worldBottomX = element.x + (localCenterX * cos - localBottomY * sin);
+                    const worldBottomY = element.y + (localCenterX * sin + localBottomY * cos);
+                    const worldTopY = element.y + (localCenterX * sin + localTopY * cos);
+
+                    publishReactionTooltip({
+                      elementId: element.id,
+                      emoji,
+                      users,
+                      anchor: {
+                        x: worldBottomX,
+                        y: worldBottomY,
+                        topY: worldTopY,
+                      },
+                    });
+                  }
                 }}
                 onMouseLeave={(e) => {
                   const stage = e.target.getStage();
                   if (stage) stage.container().style.cursor = '';
+                  publishReactionTooltip(null);
                 }}
               >
                 <Rect
