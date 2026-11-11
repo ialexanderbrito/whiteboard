@@ -63,7 +63,8 @@ export interface RichTextFormatState {
 
 /**
  * Converte rgb()/rgba() em hexadecimal para manter o Firestore compacto e previsível.
- * Cores já em hex (ou nomes CSS) passam intactas.
+ * Valida estritamente se o valor é uma cor segura (hexadecimal, rgb/rgba ou nome CSS)
+ * para impedir injeção de HTML/CSS (XSS).
  */
 export function normalizeColor(color?: string): string | undefined {
   if (!color) return undefined;
@@ -78,7 +79,18 @@ export function normalizeColor(color?: string): string | undefined {
     return `#${toHex(rgb[1])}${toHex(rgb[2])}${toHex(rgb[3])}`;
   }
 
-  return value;
+  // Validação estrita de formato hexadecimal seguro
+  if (/^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(value)) {
+    return value;
+  }
+
+  // Validação estrita de nomes de cores CSS comuns (somente letras alfabéticas ASCII)
+  if (/^[a-zA-Z]{3,20}$/.test(value)) {
+    return value.toLowerCase();
+  }
+
+  // Qualquer string arbitrária que não seja cor válida é rejeitada
+  return undefined;
 }
 
 export function getElementBaseStyle(element: CanvasElement): RichTextBaseStyle {
@@ -186,8 +198,9 @@ export function runsToHtml(runs: ResolvedRun[]): string {
   return runs
     .map((run) => {
       let html = escapeHtml(run.text).replace(/\n/g, '<br>');
-      if (run.color) {
-        html = `<span style="color:${run.color}">${html}</span>`;
+      const safeColor = run.color ? normalizeColor(run.color) : undefined;
+      if (safeColor) {
+        html = `<span style="color:${escapeAttribute(safeColor)}">${html}</span>`;
       }
       if (run.strikethrough) {
         html = `<s>${html}</s>`;

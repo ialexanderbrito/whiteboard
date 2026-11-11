@@ -6,6 +6,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import DOMPurify from 'dompurify';
 import type { CanvasElement, TextRun } from '../../types/element';
 import {
   RICH_TEXT_FONT_FAMILY,
@@ -163,7 +164,10 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
   useLayoutEffect(() => {
     const editor = editorRef.current;
     if (!editor) return;
-    editor.innerHTML = runsToHtml(initialRunsRef.current || []);
+    editor.innerHTML = DOMPurify.sanitize(runsToHtml(initialRunsRef.current || []), {
+      ALLOWED_TAGS: ['b', 'i', 'u', 's', 'span', 'a', 'br'],
+      ALLOWED_ATTR: ['style', 'href', 'data-mirio-link', 'target', 'rel'],
+    });
     editor.focus();
 
     const range = document.createRange();
