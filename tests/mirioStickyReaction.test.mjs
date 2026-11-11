@@ -95,3 +95,50 @@ test('WhiteboardCanvas & BoardPage: block reaction attempt if locked and synchro
     'BoardPage must sanitize legacy double-underscore key so Firestore document writes succeed'
   );
 });
+
+test('Whiteboard shortcuts: image modal uses U and letters M, I, R, O never open modals', () => {
+  const canvasPath = path.resolve('src/components/whiteboard/WhiteboardCanvas.tsx');
+  const canvasContent = fs.readFileSync(canvasPath, 'utf-8');
+
+  // Shortcut for opening stickers/images modal must NOT be I or i
+  assert.doesNotMatch(
+    canvasContent,
+    /key === ['"]i['"]\s*\|\|\s*e\.key === ['"]I['"][\s\S]*?onOpenStickers/,
+    'Shortcut I must not open stickers modal'
+  );
+
+  // Shortcut for opening stickers/images modal must be U / u
+  assert.match(
+    canvasContent,
+    /\(e\.key === ['"]u['"]\s*\|\|\s*e\.key === ['"]U['"]\)\s*&&\s*onOpenStickers/,
+    'Shortcut U must open stickers modal'
+  );
+
+  // Letters M, I, R, O must not trigger onOpenStickers or open any modal
+  const mirioLetters = ['m', 'M', 'i', 'I', 'r', 'R', 'o', 'O'];
+  for (const letter of mirioLetters) {
+    const modalTriggerRegex = new RegExp(
+      `e\\.key === ['"]${letter}['"][\\s\\S]{0,60}onOpen(Stickers|Shortcuts|Templates|Modal)`
+    );
+    assert.doesNotMatch(
+      canvasContent,
+      modalTriggerRegex,
+      `Letter ${letter} must never open a modal`
+    );
+  }
+
+  // Check UI references: KeyboardShortcutsModal, Toolbar, BoardContextMenu, CommandPalette
+  const shortcutsModalContent = fs.readFileSync(path.resolve('src/components/whiteboard/KeyboardShortcutsModal.tsx'), 'utf-8');
+  assert.match(shortcutsModalContent, /keys:\s*\['U'\][\s\S]*?Stickers/);
+  assert.doesNotMatch(shortcutsModalContent, /keys:\s*\['I'\][\s\S]*?Stickers/);
+
+  const toolbarContent = fs.readFileSync(path.resolve('src/components/whiteboard/Toolbar.tsx'), 'utf-8');
+  assert.match(toolbarContent, /Imagens, Stickers & GIFs[\s\S]*?\(U\)/);
+  assert.doesNotMatch(toolbarContent, /Imagens, Stickers & GIFs[\s\S]*?\(I\)/);
+
+  const contextMenuContent = fs.readFileSync(path.resolve('src/components/whiteboard/BoardContextMenu.tsx'), 'utf-8');
+  assert.match(contextMenuContent, /Imagens, Stickers & Emojis\.\.\.[\s\S]*?<kbd[^>]*>\s*U\s*<\/kbd>/);
+
+  const commandPaletteContent = fs.readFileSync(path.resolve('src/components/command/CommandPalette.tsx'), 'utf-8');
+  assert.match(commandPaletteContent, /Imagens do Computador, Stickers, Emojis & GIFs[\s\S]*?<kbd[^>]*>U<\/kbd>/);
+});

@@ -823,7 +823,7 @@ export const Toolbar: React.FC<ToolbarProps> = React.memo(({
                     </button>
                   </TooltipTrigger>
                   <TooltipContent side={tooltipSide}>
-                    <p className="font-medium text-xs">Imagens, Stickers & GIFs <span className="opacity-60 text-[10px]">(I)</span></p>
+                    <p className="font-medium text-xs">Imagens, Stickers & GIFs <span className="opacity-60 text-[10px]">(U)</span></p>
                   </TooltipContent>
                 </Tooltip>
               </>

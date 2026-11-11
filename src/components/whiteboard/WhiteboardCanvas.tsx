@@ -1578,7 +1578,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           if (e.key === 'p' || e.key === 'P') onSelectTool('pen');
           if (e.key === 't' || e.key === 'T') onSelectTool('text');
           if (e.key === 'e' || e.key === 'E') onSelectTool('eraser');
-          if ((e.key === 'i' || e.key === 'I') && onOpenStickers) {
+          if ((e.key === 'u' || e.key === 'U') && onOpenStickers) {
             e.preventDefault();
             onOpenStickers();
           }

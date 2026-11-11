@@ -583,7 +583,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                       </div>
                       <span>Imagens do Computador, Stickers, Emojis & GIFs</span>
                       <CommandShortcut>
-                        <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] font-bold">I</kbd>
+                        <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] font-bold">U</kbd>
                       </CommandShortcut>
                     </CommandItem>
                   )}

@@ -548,7 +548,7 @@ export const BoardContextMenu: React.FC<BoardContextMenuProps> = ({
                 <span className="font-medium">Imagens, Stickers & Emojis...</span>
               </div>
               <kbd className="px-1.5 py-0.5 text-[9px] font-mono bg-muted text-muted-foreground rounded border border-border/50">
-                I
+                U
               </kbd>
             </button>
           )}
