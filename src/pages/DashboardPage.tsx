@@ -76,6 +76,7 @@ import { isBoardOwner } from '@/utils/permissions';
 import { CommandPalette } from '@/components/command/CommandPalette';
 import { KeyboardShortcutsModal } from '@/components/whiteboard/KeyboardShortcutsModal';
 import { useTheme } from '@/context/ThemeContext';
+import { cn } from '@/lib/utils';
 
 export const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
@@ -481,26 +482,42 @@ export const DashboardPage: React.FC = () => {
 
             <div className="flex items-center justify-between sm:justify-end gap-2">
               {/* Alternador de Visualização Grid / Tabela com Persistência Imediata */}
-              <div className="flex items-center border border-border rounded-md p-0.5 bg-muted/30">
+              <div 
+                role="group" 
+                aria-label="Modo de visualização dos quadros"
+                className="flex items-center border border-border/80 rounded-lg p-0.5 bg-muted/40 shadow-2xs backdrop-blur-xs shrink-0 select-none h-10 sm:h-9"
+              >
                 <Button
                   variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
                   size="icon-sm"
                   onClick={() => handleToggleViewMode('grid')}
-                  className="h-8 sm:h-7 px-2.5 sm:px-0 sm:w-7 gap-1.5 rounded-sm active:scale-[0.97] transition-transform duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] cursor-pointer"
+                  aria-pressed={viewMode === 'grid'}
+                  className={cn(
+                    "h-8.5 sm:h-7.5 w-auto sm:w-7.5 px-3 sm:px-0 gap-1.5 rounded-md active:scale-[0.97] transition-[background-color,color,box-shadow,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] cursor-pointer select-none",
+                    viewMode === 'grid'
+                      ? "bg-background text-foreground shadow-xs font-semibold dark:border dark:border-border/60"
+                      : "text-muted-foreground hover:text-foreground hover:bg-background/40"
+                  )}
                   title="Visualização em Grade"
                 >
-                  <LayoutGrid className="size-3.5" />
-                  <span className="text-[11px] font-medium sm:hidden">Grade</span>
+                  <LayoutGrid className="size-3.5 shrink-0" />
+                  <span className="text-xs font-medium sm:hidden">Grade</span>
                 </Button>
                 <Button
                   variant={viewMode === 'table' ? 'secondary' : 'ghost'}
                   size="icon-sm"
                   onClick={() => handleToggleViewMode('table')}
-                  className="h-8 sm:h-7 px-2.5 sm:px-0 sm:w-7 gap-1.5 rounded-sm active:scale-[0.97] transition-transform duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] cursor-pointer"
+                  aria-pressed={viewMode === 'table'}
+                  className={cn(
+                    "h-8.5 sm:h-7.5 w-auto sm:w-7.5 px-3 sm:px-0 gap-1.5 rounded-md active:scale-[0.97] transition-[background-color,color,box-shadow,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] cursor-pointer select-none",
+                    viewMode === 'table'
+                      ? "bg-background text-foreground shadow-xs font-semibold dark:border dark:border-border/60"
+                      : "text-muted-foreground hover:text-foreground hover:bg-background/40"
+                  )}
                   title="Visualização em Lista"
                 >
-                  <List className="size-3.5" />
-                  <span className="text-[11px] font-medium sm:hidden">Lista</span>
+                  <List className="size-3.5 shrink-0" />
+                  <span className="text-xs font-medium sm:hidden">Lista</span>
                 </Button>
               </div>
 
@@ -511,8 +528,8 @@ export const DashboardPage: React.FC = () => {
                 onClick={handleCreateBlankBoard}
                 className="gap-1.5 h-10 sm:h-9 px-3.5 text-xs font-medium shrink-0 shadow-xs active:scale-[0.97] transition-transform duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] flex-1 sm:flex-initial cursor-pointer"
               >
-                <Plus className="size-4" />
-                <span>{creatingTemplateId === 'blank' ? 'Criando...' : 'Novo Quadro'}</span>
+                <Plus className="size-4 shrink-0" />
+                <span className="truncate">{creatingTemplateId === 'blank' ? 'Criando...' : 'Novo Quadro'}</span>
               </Button>
             </div>
           </div>
@@ -796,7 +813,7 @@ export const DashboardPage: React.FC = () => {
         ) : (
           /* Visualização em Tabela shadcn */
           <div className="rounded-md border border-border bg-card overflow-hidden">
-            <Table>
+            <Table className="min-w-[540px] sm:min-w-full">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
                   <TableHead className="w-[45%] text-xs font-medium">Nome do Quadro</TableHead>

@@ -101,7 +101,7 @@ export const AdaptiveBoardSkeleton: React.FC<AdaptiveBoardSkeletonProps> = ({
         className="rounded-md border border-border bg-card overflow-hidden animate-in fade-in duration-200"
         aria-label="Carregando quadros em tabela..."
       >
-        <Table>
+        <Table className="min-w-[540px] sm:min-w-full">
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               <TableHead className="w-[45%] text-xs font-medium">Nome do Quadro</TableHead>

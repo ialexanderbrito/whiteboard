@@ -40,6 +40,8 @@ test('DashboardPage: renders AdaptiveBoardSkeleton during loading without layout
   assert.ok(content.includes('isLoading'), 'DashboardPage must track isLoading state');
   assert.ok(content.includes('handleToggleViewMode'), 'DashboardPage must persist view mode changes');
   assert.ok(content.includes('saveAdaptiveSnapshot'), 'DashboardPage must save snapshot on interactions');
+  assert.ok(content.includes('w-auto'), 'Layout mode toggle buttons must use w-auto on mobile to avoid label collision');
+  assert.ok(content.includes('min-w-[540px]'), 'Table must have responsive horizontal scroll floor on mobile');
 });
 
 test('BoardCardPreview: renders live SVG mini-map and curated architectural compositions instead of generic dot-and-minus placeholder', () => {
