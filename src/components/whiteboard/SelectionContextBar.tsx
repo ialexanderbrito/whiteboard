@@ -2991,9 +2991,9 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
         {/* Link para qualquer elemento */}
         {renderLinkPopover()}
 
-        {/* Controles de Votação (Sessão Ativa Estilo Miro) */}
+        {/* Controles de Votação (Sessão Ativa) */}
         {isSessionActive && isElementEligible && primaryElement && (
-          <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs">
+          <div className="flex items-center gap-0.5 px-1 py-0.5 rounded-lg bg-amber-500/10 border border-amber-500/30">
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -3001,16 +3001,16 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
                   size="icon-sm"
                   disabled={(userElementVotes || 0) <= 0}
                   onClick={() => onRemoveVote?.(primaryElement.id)}
-                  className="size-6 text-foreground hover:bg-card rounded"
+                  className="size-6 text-foreground hover:bg-card rounded-md p-0"
                 >
-                  -
+                  <Minus className="size-3.5" strokeWidth={2} />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="top">Remover 1 voto deste item</TooltipContent>
             </Tooltip>
 
-            <span className="text-[11px] font-mono font-bold px-1 text-amber-700 dark:text-amber-300">
-              {userElementVotes || 0} {userElementVotes === 1 ? 'voto' : 'votos'}
+            <span className="text-[11px] font-mono font-bold px-1 text-amber-700 dark:text-amber-300 tabular-nums leading-none">
+              {userElementVotes || 0}
             </span>
 
             <Tooltip>
@@ -3020,9 +3020,9 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
                   size="icon-sm"
                   disabled={(userRemainingVotes || 0) <= 0}
                   onClick={() => onAddVote?.(primaryElement.id)}
-                  className="size-6 text-foreground hover:bg-card rounded font-bold"
+                  className="size-6 text-foreground hover:bg-card rounded-md p-0"
                 >
-                  +
+                  <Plus className="size-3.5" strokeWidth={2} />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="top">

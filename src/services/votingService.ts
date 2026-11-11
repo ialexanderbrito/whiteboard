@@ -1,5 +1,5 @@
-import { ref, set, onValue } from 'firebase/database';
-import { doc, setDoc, onSnapshot } from 'firebase/firestore';
+import { ref, set, update as rtdbUpdate, onValue } from 'firebase/database';
+import { doc, setDoc, updateDoc, deleteField, onSnapshot } from 'firebase/firestore';
 import { db, rtdb, isFirebaseConfigured } from '../config/firebase';
 import type { CurrentUser } from '../types/board';
 import type { CanvasElement } from '../types/element';
@@ -45,6 +45,28 @@ export interface BoardVotingData {
   previousSessions?: VotingSession[];
   // Compatibilidade legada
   votesByUser?: Record<string, UserVote>;
+}
+
+/**
+ * Define quem pode encerrar manualmente uma sessão de votação.
+ * Regra: apenas quem criou. Como convidados anônimos recebem um novo uid
+ * a cada login, o nome de exibição também é aceito como identidade do
+ * criador (risco de colisão é aceitável frente a sessões presas).
+ * Sessões legadas sem createdByUid permitem qualquer editor.
+ */
+export function canEndVotingSession(
+  session: VotingSession | null | undefined,
+  user: CurrentUser | null | undefined,
+  isReadOnly = false
+): boolean {
+  if (!session || session.status !== 'active') return false;
+  if (!user) return false;
+  if (!session.createdByUid) return !isReadOnly;
+  if (session.createdByUid === user.uid) return true;
+  if (user.isAnonymous && Boolean(session.createdByName) && session.createdByName === user.displayName) {
+    return true;
+  }
+  return false;
 }
 
 const DEFAULT_VOTING: BoardVotingData = {
@@ -109,6 +131,22 @@ function notifySubscribers(rawBoardId: string, data: BoardVotingData) {
         console.error('Erro no listener de votação:', err);
       }
     });
+  }
+}
+
+/**
+ * Aplica o estado localmente (cache + listeners + broadcast entre abas).
+ * Usado por toda escrita para dar feedback otimista instantâneo.
+ */
+function applyLocalVoting(boardId: string, data: BoardVotingData) {
+  saveLocalVoting(boardId, data);
+  notifySubscribers(boardId, data);
+  try {
+    const channel = new BroadcastChannel(`mirio_votes_${boardId}`);
+    channel.postMessage(data);
+    channel.close();
+  } catch {
+    // BroadcastChannel não suportado em ambientes antigos
   }
 }
 
@@ -238,23 +276,13 @@ export const votingService = {
       votesByUser: data.votesByUser || {},
     };
 
-    // 1. Atualização Otimista Imediata (zero latência no cliente atual)
-    saveLocalVoting(boardId, safeData);
-    notifySubscribers(boardId, safeData);
-
-    // 2. Broadcast local entre abas
-    try {
-      const channel = new BroadcastChannel(`mirio_votes_${boardId}`);
-      channel.postMessage(safeData);
-      channel.close();
-    } catch {
-      // ignora
-    }
+    // 1. Atualização Otimista Imediata + broadcast entre abas
+    applyLocalVoting(boardId, safeData);
 
     // Garante que não haja nenhum undefined nos dados para o Firestore
     const firestoreData = cleanForFirestore(safeData);
 
-    // 3. Sincronização Primária via Firestore (100% garantida entre todos os usuários remotos)
+    // 2. Sincronização Primária via Firestore (100% garantida entre todos os usuários remotos)
     if (isFirebaseConfigured && db) {
       const payload = {
         title: 'Quadro de Ideias',
@@ -270,7 +298,7 @@ export const votingService = {
       }
     }
 
-    // 4. Sincronização Secundária via Firebase RTDB (se disponível)
+    // 3. Sincronização Secundária via Firebase RTDB (se disponível)
     if (isFirebaseConfigured && rtdb) {
       try {
         const votingRef = ref(rtdb, `board_voting/${boardId}`);
@@ -282,7 +310,7 @@ export const votingService = {
   },
 
   /**
-   * Inicia uma nova sessão estruturada de votação (Estilo Miro)
+   * Inicia uma nova sessão estruturada de votação
    */
   async startSession(
     rawBoardId: string,
@@ -329,17 +357,45 @@ export const votingService = {
   },
 
   /**
-   * Encerra a sessão ativa de votação para todos os usuários
+   * Encerra a sessão ativa de votação para todos os usuários.
+   * Apenas o criador da sessão pode encerrá-la (validado via canEndVotingSession).
    */
-  async endSession(rawBoardId: string): Promise<void> {
+  async endSession(rawBoardId: string, user?: CurrentUser | null, isReadOnly = false): Promise<void> {
     const boardId = cleanBoardId(rawBoardId);
     const current = getLocalVoting(boardId);
     if (!current.session || current.session.status !== 'active') return;
+
+    // Somente o criador pode encerrar manualmente
+    if (!canEndVotingSession(current.session, user, isReadOnly)) return;
 
     const endedSession: VotingSession = {
       ...current.session,
       status: 'ended',
       endsAt: Date.now(),
+    };
+
+    await this.updateVoting(boardId, {
+      ...current,
+      session: endedSession,
+    });
+  },
+
+  /**
+   * Encerra a sessão apenas se o cronômetro já expirou (ação do sistema,
+   * não do criador). Qualquer cliente pode disparar — evita sessões presas
+   * em 'active' quando o criador está ausente. Idempotente.
+   */
+  async autoEndExpiredSession(rawBoardId: string): Promise<void> {
+    const boardId = cleanBoardId(rawBoardId);
+    const current = getLocalVoting(boardId);
+    const session = current.session;
+    if (!session || session.status !== 'active') return;
+    if (!session.endsAt || session.endsAt > Date.now()) return;
+
+    const endedSession: VotingSession = {
+      ...session,
+      status: 'ended',
+      endsAt: session.endsAt,
     };
 
     await this.updateVoting(boardId, {
@@ -358,6 +414,51 @@ export const votingService = {
       previousSessions: [],
       votesByUser: {},
     });
+  },
+
+  /**
+   * Persiste o mapa de votos de UM usuário de forma atômica (escrita por campo).
+   * Cada usuário sobrescreve apenas o seu próprio mapa em `voting.session.votes.<uid>`,
+   * impedindo que escritas concorrentes de clientes diferentes (last-write-wins de
+   * documento inteiro) apaguem ou ressuscitem votos de outros participantes.
+   * Retorna false quando a escrita atômica falhou (documento ausente etc.).
+   */
+  async updateUserVotes(
+    rawBoardId: string,
+    uid: string,
+    userMap: Record<string, number>,
+    userName?: string
+  ): Promise<boolean> {
+    const boardId = cleanBoardId(rawBoardId);
+    const hasVotes = Object.keys(userMap).length > 0;
+    const cleanUserMap = hasVotes ? JSON.parse(JSON.stringify(userMap)) : null;
+    let ok = true;
+
+    if (isFirebaseConfigured && db) {
+      try {
+        await updateDoc(doc(db, 'boards', boardId), {
+          [`voting.session.votes.${uid}`]: hasVotes ? cleanUserMap : deleteField(),
+          ...(userName ? { [`voting.session.userNames.${uid}`]: userName } : {}),
+          updatedAt: Date.now(),
+        });
+      } catch (e) {
+        ok = false;
+        console.warn('Escrita atômica de votos falhou (usando fallback completo):', e);
+      }
+    }
+
+    if (isFirebaseConfigured && rtdb) {
+      try {
+        await rtdbUpdate(ref(rtdb, `board_voting/${boardId}`), {
+          [`session/votes/${uid}`]: cleanUserMap,
+          ...(userName ? { [`session/userNames/${uid}`]: userName } : {}),
+        });
+      } catch (err) {
+        console.warn('Erro ao persistir votos no RTDB:', err);
+      }
+    }
+
+    return ok;
   },
 
   /**
@@ -389,14 +490,21 @@ export const votingService = {
     userMap[elementId] = (userMap[elementId] || 0) + 1;
     votes[user.uid] = userMap;
 
-    await this.updateVoting(boardId, {
+    // 1. Feedback otimista local
+    applyLocalVoting(boardId, {
       ...current,
-      session: {
-        ...session,
-        votes,
-        userNames,
-      },
+      session: { ...session, votes, userNames },
     });
+
+    // 2. Persistência atômica: só o mapa deste usuário é sobrescrito
+    const ok = await this.updateUserVotes(boardId, user.uid, userMap, userNames[user.uid]);
+    if (!ok) {
+      // Fallback: escrita completa (documento pode não existir ainda)
+      await this.updateVoting(boardId, {
+        ...getLocalVoting(boardId),
+        session: { ...(getLocalVoting(boardId).session || session), votes, userNames },
+      });
+    }
 
     return true;
   },
@@ -428,13 +536,20 @@ export const votingService = {
 
     votes[user.uid] = userMap;
 
-    await this.updateVoting(boardId, {
+    // 1. Feedback otimista local
+    applyLocalVoting(boardId, {
       ...current,
-      session: {
-        ...session,
-        votes,
-      },
+      session: { ...session, votes },
     });
+
+    // 2. Persistência atômica (remove o campo do usuário quando o mapa fica vazio)
+    const ok = await this.updateUserVotes(boardId, user.uid, userMap);
+    if (!ok) {
+      await this.updateVoting(boardId, {
+        ...getLocalVoting(boardId),
+        session: { ...(getLocalVoting(boardId).session || session), votes },
+      });
+    }
 
     return true;
   },
@@ -460,13 +575,41 @@ export const votingService = {
       delete completedUsers[user.uid];
     }
 
-    await this.updateVoting(boardId, {
+    // 1. Feedback otimista local
+    applyLocalVoting(boardId, {
       ...current,
-      session: {
-        ...session,
-        completedUsers,
-      },
+      session: { ...session, completedUsers },
     });
+
+    // 2. Persistência atômica por usuário (não sobrescreve votos alheios)
+    let ok = true;
+    if (isFirebaseConfigured && db) {
+      try {
+        await updateDoc(doc(db, 'boards', boardId), {
+          [`voting.session.completedUsers.${user.uid}`]: isNowDone ? true : deleteField(),
+          updatedAt: Date.now(),
+        });
+      } catch (e) {
+        ok = false;
+        console.warn('Escrita atômica de "concluído" falhou (usando fallback completo):', e);
+      }
+    }
+    if (isFirebaseConfigured && rtdb) {
+      try {
+        await rtdbUpdate(ref(rtdb, `board_voting/${boardId}`), {
+          [`session/completedUsers/${user.uid}`]: isNowDone ? true : null,
+        });
+      } catch (err) {
+        console.warn('Erro ao persistir "concluído" no RTDB:', err);
+      }
+    }
+    if (!ok) {
+      await this.updateVoting(boardId, {
+        ...getLocalVoting(boardId),
+        session: { ...(getLocalVoting(boardId).session || session), completedUsers },
+      });
+    }
+
 
     return isNowDone;
   },

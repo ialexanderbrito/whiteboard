@@ -77,6 +77,7 @@ import { ReactionBadgeTooltip } from './ReactionBadgeTooltip';
 import { StickyQuickAdd } from './StickyQuickAdd';
 import { getAdjacentStickyRect, type StickyDirection } from '../../utils/stickyPlacement';
 import { isMirioReaction, MIRIO_REACTION } from '../../utils/mirioReaction';
+import { Vote, Crown, Check, Minus, Plus } from '@/components/ui/icons';
 
 if (typeof window !== 'undefined' && isCoarseOrMobileViewport()) {
   Konva.pixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
@@ -4393,7 +4394,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       {(() => {
         const session = votingData?.session;
 
-        // 1. Sessão Ativa: participantes distribuem votos de forma privada com botões (+ / -)
+        // 1. Sessão Ativa: participantes distribuem votos com botões (- / +)
         if (session && session.status === 'active') {
           const userRemaining = votingService.getUserRemainingVotes(session, currentUser.uid);
 
@@ -4423,20 +4424,20 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
                     }}
                   >
                     {userVotes > 0 ? (
-                      <div className="flex items-center gap-1 bg-amber-500 text-white rounded-full p-0.5 px-1.5 shadow-lg ring-2 ring-amber-400/40 animate-in zoom-in-95 duration-150">
+                      <div className="flex items-center gap-0.5 bg-amber-500 text-white rounded-full p-1 shadow-lg ring-2 ring-amber-400/40 animate-in zoom-in-95 duration-150">
                         <button
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
                             onRemoveVote?.(elem.id);
                           }}
-                          className="size-5 rounded-full flex items-center justify-center bg-amber-700/60 hover:bg-amber-800 text-white text-xs font-black transition active:scale-90 cursor-pointer"
+                          className="size-5 rounded-full flex items-center justify-center bg-amber-600/70 hover:bg-amber-700 transition active:scale-90 cursor-pointer"
                           title="Remover 1 voto deste item"
                         >
-                          -
+                          <Minus className="size-3" strokeWidth={2.5} />
                         </button>
-                        <span className="font-mono text-xs font-black px-1">
-                          {userVotes} {userVotes === 1 ? 'voto' : 'votos'}
+                        <span className="font-mono text-xs font-bold px-1.5 leading-none tabular-nums text-center min-w-[1.25rem]">
+                          {userVotes}
                         </span>
                         <button
                           type="button"
@@ -4445,14 +4446,14 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
                             e.stopPropagation();
                             if (userRemaining > 0) onAddVote?.(elem.id);
                           }}
-                          className={`size-5 rounded-full flex items-center justify-center text-xs font-black transition active:scale-90 cursor-pointer ${
+                          className={`size-5 rounded-full flex items-center justify-center transition active:scale-90 ${
                             userRemaining > 0
-                              ? 'bg-amber-700/60 hover:bg-amber-800 text-white'
-                              : 'bg-amber-600/40 opacity-50 cursor-not-allowed text-white/70'
+                              ? 'bg-amber-600/70 hover:bg-amber-700 cursor-pointer'
+                              : 'bg-amber-600/40 opacity-50 cursor-not-allowed'
                           }`}
                           title={userRemaining > 0 ? `Adicionar mais 1 voto (${userRemaining} restantes)` : 'Votos esgotados'}
                         >
-                          +
+                          <Plus className="size-3" strokeWidth={2.5} />
                         </button>
                       </div>
                     ) : (
@@ -4463,16 +4464,15 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
                           e.stopPropagation();
                           if (userRemaining > 0) onAddVote?.(elem.id);
                         }}
-                        className={`flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full shadow-lg border backdrop-blur-md transition-all duration-150 active:scale-95 cursor-pointer ${
+                        className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full shadow-lg border transition-all duration-150 active:scale-95 cursor-pointer ${
                           userRemaining > 0
                             ? 'bg-amber-500 hover:bg-amber-600 text-white border-amber-600 ring-2 ring-amber-400/50 hover:scale-105'
                             : 'opacity-40 cursor-not-allowed bg-muted text-muted-foreground border-border'
                         }`}
                         title={userRemaining > 0 ? `Clique para votar neste item (${userRemaining} votos disponíveis)` : 'Você usou todos os seus votos'}
                       >
-                        <span>🗳️</span>
+                        <Vote className="size-3.5" />
                         <span>Votar</span>
-                        <span className="text-xs font-black">+</span>
                       </button>
                     )}
                   </div>
@@ -4510,7 +4510,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
                     }}
                   >
                     <div className="flex items-center gap-1.5 text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-500 text-white border border-amber-600 shadow-md ring-2 ring-amber-400/20">
-                      <span>👑</span>
+                      <Crown className="size-3" strokeWidth={2} />
                       <span className="font-mono">{totalVotes}</span>
                       <span className="text-[10px] font-normal">{totalVotes === 1 ? 'voto' : 'votos'}</span>
                     </div>
@@ -4563,9 +4563,13 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
                       }`}
                       title={userVoted ? 'Você votou neste item!' : 'Clique para votar'}
                     >
-                      <span>🗳️</span>
+                      <Vote className="size-3.5" />
                       <span className="font-mono">{count}</span>
-                      <span className="text-[10px] font-black">{userVoted ? '✓' : '+'}</span>
+                      {userVoted ? (
+                        <Check className="size-3" strokeWidth={2.5} />
+                      ) : (
+                        <Plus className="size-3" strokeWidth={2.5} />
+                      )}
                     </button>
                   </div>
                 );

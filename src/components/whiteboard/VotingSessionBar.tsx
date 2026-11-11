@@ -15,6 +15,7 @@ import { votingService } from '@/services/votingService';
 import type { CurrentUser } from '@/types/board';
 
 interface VotingSessionBarProps {
+  boardId: string;
   session: VotingSession;
   currentUser: CurrentUser;
   canManageSession: boolean;
@@ -23,6 +24,7 @@ interface VotingSessionBarProps {
 }
 
 export const VotingSessionBar: React.FC<VotingSessionBarProps> = ({
+  boardId,
   session,
   currentUser,
   canManageSession,
@@ -43,16 +45,17 @@ export const VotingSessionBar: React.FC<VotingSessionBarProps> = ({
       const left = Math.max(0, Math.ceil((session.endsAt - now) / 1000));
       setSecondsRemaining(left);
 
-      // Auto-encerra quando o tempo expira
-      if (left <= 0 && session.status === 'active' && canManageSession) {
-        onEndSession();
+      // Fim do cronômetro: ação do sistema — qualquer cliente encerra
+      // para evitar sessão presa caso o criador esteja ausente
+      if (left <= 0 && session.status === 'active') {
+        votingService.autoEndExpiredSession(boardId);
       }
     };
 
     updateCountdown();
     const interval = setInterval(updateCountdown, 1000);
     return () => clearInterval(interval);
-  }, [session.endsAt, session.status, canManageSession, onEndSession]);
+  }, [session.endsAt, session.status, boardId]);
 
   const allocatedVotes = votingService.getUserAllocatedVotes(session, currentUser.uid);
   const remainingVotes = Math.max(0, session.votesPerPerson - allocatedVotes);
@@ -99,7 +102,10 @@ export const VotingSessionBar: React.FC<VotingSessionBarProps> = ({
           </div>
           <div className="flex flex-col min-w-0">
             <div className="flex items-center gap-1">
-              <span className="text-xs font-bold truncate max-w-[70px] xs:max-w-[100px] sm:max-w-[150px] md:max-w-[200px]" title={session.title || 'Votação'}>
+              <span
+                className="text-xs font-bold truncate max-w-[70px] xs:max-w-[100px] sm:max-w-[150px] md:max-w-[200px]"
+                title={session.createdByName ? `${session.title || 'Votação'} • criada por ${session.createdByName}` : session.title || 'Votação'}
+              >
                 {session.title || 'Votação'}
               </span>
               <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />

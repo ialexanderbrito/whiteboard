@@ -39,6 +39,7 @@ import {
   Compass01Icon,
   Copy01Icon,
   Copy02Icon,
+  CrownIcon,
   Target01Icon,
   DiamondIcon,
   Download01Icon,
@@ -78,6 +79,7 @@ import {
   Logout01Icon,
   Magnet01Icon,
   MapIcon,
+  Medal02Icon,
   Location01Icon,
   ArrowExpand01Icon,
   Comment01Icon,
@@ -224,6 +226,7 @@ export const Clock = createHugeIcon(Clock01Icon, 'Clock');
 export const Coffee = createHugeIcon(Coffee01Icon, 'Coffee');
 export const Compass = createHugeIcon(Compass01Icon, 'Compass');
 export const Copy = createHugeIcon(Copy01Icon, 'Copy');
+export const Crown = createHugeIcon(CrownIcon, 'Crown');
 export const CopyPlus = createHugeIcon(Copy02Icon, 'CopyPlus');
 export const Crosshair = createHugeIcon(Target01Icon, 'Crosshair');
 
@@ -336,6 +339,7 @@ export const Sun = createHugeIcon(Sun01Icon, 'Sun');
 
 export const Target = createHugeIcon(Target01Icon, 'Target');
 export const Timer = createHugeIcon(Timer01Icon, 'Timer');
+export const Medal = createHugeIcon(Medal02Icon, 'Medal');
 export const Trash2 = createHugeIcon(Delete02Icon, 'Trash2');
 export const Triangle = createHugeIcon(TriangleIcon, 'Triangle');
 export const Trophy = createHugeIcon(TrophyIcon, 'Trophy');

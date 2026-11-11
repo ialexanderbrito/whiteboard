@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { 
   Vote, 
   Clock, 
-  Sparkles, 
   CheckCircle2, 
   Layers, 
   StickyNote, 
@@ -20,7 +19,6 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import type { CurrentUser } from '@/types/board';
 import type { VotingScope, VotingSessionConfig, VotingSession } from '@/services/votingService';
 
@@ -83,14 +81,11 @@ export const VotingSetupModal: React.FC<VotingSetupModalProps> = ({
                 <Vote className="size-5" />
               </div>
               <div>
-                <DialogTitle className="text-lg font-bold flex items-center gap-2">
+                <DialogTitle className="text-base font-bold">
                   <span>Sessão de Votação</span>
-                  <Badge variant="secondary" className="text-[10px] font-semibold uppercase tracking-wider">
-                    Estilo Miro
-                  </Badge>
                 </DialogTitle>
                 <DialogDescription className="text-xs text-muted-foreground">
-                  Colete votos dos participantes com tempo cronometrado e pódio final
+                  Distribua votos entre os participantes em tempo cronometrado
                 </DialogDescription>
               </div>
             </div>
@@ -115,9 +110,8 @@ export const VotingSetupModal: React.FC<VotingSetupModalProps> = ({
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* 1. Título do Tópico */}
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+            <label className="text-xs font-semibold text-foreground">
               <span>Tópico da Votação</span>
-              <Sparkles className="size-3 text-amber-500" />
             </label>
             <Input
               value={title}

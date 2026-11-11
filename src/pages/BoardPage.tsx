@@ -22,7 +22,7 @@ import { VotingSessionBar } from '../components/whiteboard/VotingSessionBar';
 import { GlobalReactionsOverlay } from '../components/whiteboard/GlobalReactionsOverlay';
 import { PresentationControlBar } from '../components/whiteboard/PresentationControlBar';
 import { BoardPasswordLockModal } from '../components/whiteboard/BoardPasswordLockModal';
-import { votingService, type BoardVotingData, type VotingSessionConfig } from '../services/votingService';
+import { votingService, canEndVotingSession, type BoardVotingData, type VotingSessionConfig } from '../services/votingService';
 import { playChimeSound } from '../utils/audioChime';
 import { STICKY_COLORS } from '../utils/colors';
 import { alignElements, type AlignmentType } from '../utils/alignment';
@@ -31,7 +31,7 @@ import { verifyBoardPassword } from '../utils/security';
 import { WaitingRoomScreen } from '../components/whiteboard/WaitingRoomScreen';
 import { HostJoinRequestBanner } from '../components/whiteboard/HostJoinRequestBanner';
 import { Button } from '@/components/ui/button';
-import { Lock } from '@/components/ui/icons';
+import { Lock, Vote } from '@/components/ui/icons';
 import { CommandPalette } from '../components/command/CommandPalette';
 import { useTheme } from '../context/ThemeContext';
 import { SprintTemplatesModal } from '../components/whiteboard/SprintTemplatesModal';
@@ -470,7 +470,7 @@ export const BoardPage: React.FC = () => {
     }
   };
 
-  // Votação Colaborativa Estruturada (Estilo Miro)
+  // Votação Colaborativa Estruturada
   const [votingData, setVotingData] = useState<BoardVotingData | null>(null);
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
   const [isVotingSetupOpen, setIsVotingSetupOpen] = useState(false);
@@ -518,8 +518,8 @@ export const BoardPage: React.FC = () => {
   };
 
   const handleEndVotingSession = async () => {
-    if (!boardId) return;
-    await votingService.endSession(boardId);
+    if (!boardId || !currentUser) return;
+    await votingService.endSession(boardId, currentUser, isReadOnly);
   };
 
   const handleAddVote = useCallback(async (elementId: string) => {
@@ -542,7 +542,8 @@ export const BoardPage: React.FC = () => {
       setIsLeaderboardOpen(true);
     } else if (votingData?.session?.status === 'active') {
       setIsLeaderboardOpen(true);
-    } else {
+    } else if (!isReadOnly && !isCommentOnly) {
+      // Somente quem pode editar inicia uma nova sessão de votação
       setIsVotingSetupOpen(true);
     }
   };
@@ -1646,12 +1647,14 @@ export const BoardPage: React.FC = () => {
           onClose={() => setIsTimerOpen(false)}
         />
 
-        {/* Barra Flutuante de Votação Ativa (Estilo Miro) */}
+        {/* Barra Flutuante de Votação Ativa */}
         {votingData?.session && votingData.session.status === 'active' && (
           <VotingSessionBar
+            boardId={boardId || ''}
             session={votingData.session}
             currentUser={currentUser}
-            canManageSession={!isReadOnly}
+            // Apenas quem criou a sessão pode encerrá-la manualmente
+            canManageSession={canEndVotingSession(votingData.session, currentUser, isReadOnly)}
             onEndSession={handleEndVotingSession}
             onToggleComplete={handleToggleVotingComplete}
           />
@@ -1665,7 +1668,7 @@ export const BoardPage: React.FC = () => {
       {!isMobile && showVotingToast && votingData?.session && votingData.session.status === 'active' && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-top-4 duration-300 pointer-events-auto">
           <div className="flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-amber-500 text-white shadow-2xl border border-amber-600 font-medium text-xs select-none">
-            <span className="text-lg">🗳️</span>
+            <Vote className="size-5 shrink-0" />
             <div>
               <p className="font-bold">Sessão de Votação Iniciada: {votingData.session.title}</p>
               <p className="text-[11px] text-amber-100">
@@ -1683,7 +1686,7 @@ export const BoardPage: React.FC = () => {
         </div>
       )}
 
-      {/* Modal de Configuração de Nova Votação (Estilo Miro) */}
+      {/* Modal de Configuração de Nova Votação */}
       {!isMobile && isVotingSetupOpen && (
         <Suspense fallback={null}>
           <VotingSetupModal
@@ -1709,7 +1712,13 @@ export const BoardPage: React.FC = () => {
             onOpenChange={setIsLeaderboardOpen}
             onFocusElement={handleFocusElement}
             onStartNewSession={() => setIsVotingSetupOpen(true)}
-            canManage={!isReadOnly}
+            // Durante sessão ativa, ações administrativas apenas para o criador;
+            // com a sessão encerrada, qualquer editor pode gerenciar
+            canManage={
+              votingData?.session?.status === 'active'
+                ? canEndVotingSession(votingData.session, currentUser, isReadOnly)
+                : !isReadOnly
+            }
           />
         </Suspense>
       )}

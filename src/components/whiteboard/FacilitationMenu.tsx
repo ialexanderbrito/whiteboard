@@ -219,13 +219,17 @@ export const FacilitationMenu: React.FC<FacilitationMenuProps> = ({
           <button
             type="button"
             onClick={() => {
+              if (cannotManageVoting && !isVotingActive) return;
               onOpenLeaderboard();
               setOpen(false);
             }}
-            className={`w-full flex items-center justify-between p-2.5 rounded-xl border transition-[transform,background-color,border-color] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.98] cursor-pointer text-left ${
-              isVotingActive
-                ? 'bg-amber-500/10 border-amber-500/30 text-foreground'
-                : 'bg-muted/30 border-border/60 hover:bg-muted/70 text-foreground'
+            disabled={cannotManageVoting && !isVotingActive}
+            className={`w-full flex items-center justify-between p-2.5 rounded-xl border transition-[transform,background-color,border-color] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.98] text-left ${
+              cannotManageVoting && !isVotingActive
+                ? 'border-border/40 bg-muted/20 text-muted-foreground/60 cursor-not-allowed'
+                : isVotingActive
+                  ? 'bg-amber-500/10 border-amber-500/30 text-foreground cursor-pointer'
+                  : 'bg-muted/30 border-border/60 hover:bg-muted/70 text-foreground cursor-pointer'
             }`}
           >
             <div className="flex items-center gap-2.5">
