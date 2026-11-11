@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useRef } from 'react';
 import { Group, Rect, Text, Line } from 'react-konva';
 import type Konva from 'konva';
 import type { CanvasElement, ChecklistItem as IChecklistItem } from '../../types/element';
@@ -40,6 +40,8 @@ export const ChecklistItem: React.FC<ChecklistItemComponentProps> = React.memo((
   onStartEditingItem,
   onCelebration,
 }) => {
+  const groupRef = useRef<Konva.Group>(null);
+  const isDraggingRef = useRef(false);
   const [hoveredItemId, setHoveredItemId] = useState<string | null>(null);
   const [isAddHovered, setIsAddHovered] = useState(false);
 
@@ -68,7 +70,7 @@ export const ChecklistItem: React.FC<ChecklistItemComponentProps> = React.memo((
   const handleToggleItem = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>, itemId: string) => {
       e.cancelBubble = true;
-      if (!canEdit) return;
+      if (!canEdit || isDraggingRef.current) return;
 
       const previousCompleted = items.filter((i) => i.completed).length;
       const updated = items.map((item) =>
@@ -100,7 +102,7 @@ export const ChecklistItem: React.FC<ChecklistItemComponentProps> = React.memo((
   const handleDeleteItem = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>, itemId: string) => {
       e.cancelBubble = true;
-      if (!canEdit) return;
+      if (!canEdit || isDraggingRef.current) return;
 
       const updated = items.filter((item) => item.id !== itemId);
       const newItems = updated.length > 0 ? updated : createDefaultChecklistItems();
@@ -120,7 +122,7 @@ export const ChecklistItem: React.FC<ChecklistItemComponentProps> = React.memo((
   const handleAddItem = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
       e.cancelBubble = true;
-      if (!canEdit) return;
+      if (!canEdit || isDraggingRef.current) return;
 
       const newItem: IChecklistItem = {
         id: 'chk_' + Math.random().toString(36).substring(2, 9),
@@ -147,6 +149,7 @@ export const ChecklistItem: React.FC<ChecklistItemComponentProps> = React.memo((
 
   return (
     <Group
+      ref={groupRef}
       id={element.id}
       x={element.x}
       y={element.y}
@@ -157,14 +160,40 @@ export const ChecklistItem: React.FC<ChecklistItemComponentProps> = React.memo((
       onDblClick={(e) => {
         e.cancelBubble = true;
         if (!canEdit || !onStartEditingItem) return;
-        const pointer = e.target.getStage()?.getPointerPosition();
-        if (!pointer) return;
         onStartEditingItem(element.id, 'title', title, 16);
       }}
       onDblTap={(e) => {
         e.cancelBubble = true;
         if (!canEdit || !onStartEditingItem) return;
         onStartEditingItem(element.id, 'title', title, 16);
+      }}
+      onDragStart={() => {
+        isDraggingRef.current = true;
+      }}
+      onDragEnd={(e) => {
+        setTimeout(() => {
+          isDraggingRef.current = false;
+        }, 80);
+        onChange({
+          x: Math.round(e.target.x()),
+          y: Math.round(e.target.y()),
+        });
+      }}
+      onTransformEnd={() => {
+        const node = groupRef.current;
+        if (!node) return;
+        const scaleX = node.scaleX();
+        const scaleY = node.scaleY();
+        node.scaleX(1);
+        node.scaleY(1);
+
+        onChange({
+          x: Math.round(node.x()),
+          y: Math.round(node.y()),
+          width: Math.max(220, Math.round(width * scaleX)),
+          height: Math.max(requiredHeight, Math.round(height * scaleY)),
+          rotation: Math.round(node.rotation()),
+        });
       }}
     >
       {/* Sombra e Corpo do Card */}

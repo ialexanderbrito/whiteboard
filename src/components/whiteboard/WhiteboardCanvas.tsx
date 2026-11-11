@@ -417,6 +417,8 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     text: string;
     itemY: number;
   } | null>(null);
+  const activeChecklistEditorRef = useRef(activeChecklistEditor);
+  activeChecklistEditorRef.current = activeChecklistEditor;
   const [isTransforming, setIsTransforming] = useState(false);
   const rotationHudRef = useRef<HTMLDivElement>(null);
   const rotationHudValueRef = useRef<HTMLSpanElement>(null);
@@ -804,6 +806,28 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     const viewport = { x: pos.x, y: pos.y, scale: currentScale };
     publishViewport(viewport);
     worldOverlayRefs.current.forEach((ref) => applyWorldTransform(ref.current, viewport));
+
+    if (activeChecklistEditorRef.current) {
+      const editor = activeChecklistEditorRef.current;
+      const checklistInput = document.getElementById(`checklist-editor-input-${editor.elementId}`);
+      if (checklistInput) {
+        const elem = elementsRef.current.find((e) => e.id === editor.elementId);
+        if (elem) {
+          const isTitle = editor.target === 'title';
+          const offsetX = isTitle ? 38 : 40;
+          const currentItems = elem.checklistItems || [];
+          const targetIdx = isTitle ? -1 : currentItems.findIndex((i) => i.id === editor.target);
+          const itemY = isTitle ? 16 : (targetIdx >= 0 ? 56 + targetIdx * 34 : editor.itemY);
+          const inputWidth = Math.max(120, (elem.width || 260) - (isTitle ? 116 : 74));
+
+          checklistInput.style.left = `${(elem.x + offsetX) * currentScale + pos.x}px`;
+          checklistInput.style.top = `${(elem.y + itemY + 4) * currentScale + pos.y}px`;
+          checklistInput.style.width = `${inputWidth * currentScale}px`;
+          checklistInput.style.height = `${24 * currentScale}px`;
+          checklistInput.style.fontSize = `${(isTitle ? 14 : 13) * currentScale}px`;
+        }
+      }
+    }
   };
 
   const commitViewportToReact = (pos: { x: number; y: number }, currentScale: number, immediate = false) => {
@@ -2368,6 +2392,37 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
 
     if (inlineEditing) {
       handleFinishEditing();
+    }
+
+    if (activeChecklistEditorRef.current) {
+      const editor = activeChecklistEditorRef.current;
+      const clickedOnChecklist =
+        !isClickedOnStage &&
+        (e.target.id() === editor.elementId ||
+          Boolean(e.target.findAncestor?.((node: Konva.Node) => node.id() === editor.elementId)));
+
+      if (!clickedOnChecklist) {
+        const elem = elementsRef.current.find((el) => el.id === editor.elementId);
+        if (elem) {
+          const isTitle = editor.target === 'title';
+          if (isTitle) {
+            onUpdateElement(elem.id, {
+              checklistTitle: editor.text.trim() || 'Lista de Tarefas',
+              updatedAt: Date.now(),
+            });
+          } else {
+            const currentItems = elem.checklistItems || [];
+            const updated = currentItems.map((item) =>
+              item.id === editor.target ? { ...item, text: editor.text } : item
+            );
+            onUpdateElement(elem.id, {
+              checklistItems: updated,
+              updatedAt: Date.now(),
+            });
+          }
+        }
+        setActiveChecklistEditor(null);
+      }
     }
 
     if (currentTool === 'pan' || isSpacePressed) {
@@ -4652,6 +4707,26 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
             }
           }
 
+          const updateChecklistEditorInputPos = (id: string, worldX: number, worldY: number) => {
+            if (activeChecklistEditorRef.current?.elementId === id) {
+              const checklistInput = document.getElementById(`checklist-editor-input-${id}`);
+              if (checklistInput) {
+                const editor = activeChecklistEditorRef.current;
+                const isTitle = editor.target === 'title';
+                const offsetX = isTitle ? 38 : 40;
+                const elem = elementsRef.current.find((e) => e.id === id);
+                const currentItems = elem?.checklistItems || [];
+                const targetIdx = isTitle ? -1 : currentItems.findIndex((i) => i.id === editor.target);
+                const itemY = isTitle ? 16 : (targetIdx >= 0 ? 56 + targetIdx * 34 : editor.itemY);
+                const curScale = scaleRef.current;
+                const curStagePos = stagePosRef.current;
+
+                checklistInput.style.left = `${(worldX + offsetX) * curScale + curStagePos.x}px`;
+                checklistInput.style.top = `${(worldY + itemY + 4) * curScale + curStagePos.y}px`;
+              }
+            }
+          };
+
           if (targetId) {
             const targetGif = document.getElementById(`gif-overlay-${targetId}`);
             if (targetGif) {
@@ -4663,6 +4738,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
               targetReactions.style.left = `${e.target.x()}px`;
               targetReactions.style.top = `${e.target.y()}px`;
             }
+            updateChecklistEditorInputPos(targetId, e.target.x(), e.target.y());
           }
           if (targetId && selectedIds.length > 1 && selectedIds.includes(targetId)) {
             const initialSelf = dragStartPositions.current.get(targetId);
@@ -4692,6 +4768,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
                       itemReactions.style.left = `${newX}px`;
                       itemReactions.style.top = `${newY}px`;
                     }
+                    updateChecklistEditorInputPos(id, newX, newY);
                   }
                 }
               });
@@ -5211,6 +5288,16 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         const offsetX = isTitle ? 38 : 40;
         const inputWidth = Math.max(120, (elem.width || 260) - (isTitle ? 116 : 74));
 
+        const currentItems = elem.checklistItems || [];
+        const targetIdx = isTitle
+          ? -1
+          : currentItems.findIndex((i) => i.id === activeChecklistEditor.target);
+        const resolvedItemY = isTitle
+          ? 16
+          : targetIdx >= 0
+          ? 56 + targetIdx * 34
+          : activeChecklistEditor.itemY;
+
         const handleCommitChecklistEdit = (textToSave: string, actionNext?: 'next_item' | 'close') => {
           if (isTitle) {
             onUpdateElement(elem.id, {
@@ -5221,16 +5308,16 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
             return;
           }
 
-          const currentItems = elem.checklistItems || [];
-          const updated = currentItems.map((item) =>
+          const currentList = elem.checklistItems || [];
+          const updated = currentList.map((item) =>
             item.id === activeChecklistEditor.target ? { ...item, text: textToSave } : item
           );
 
           if (actionNext === 'next_item') {
             const newItemId = 'chk_' + Math.random().toString(36).substring(2, 9);
-            const targetIdx = currentItems.findIndex((i) => i.id === activeChecklistEditor.target);
+            const currentIdx = currentList.findIndex((i) => i.id === activeChecklistEditor.target);
             const inserted = [...updated];
-            const insertIdx = targetIdx >= 0 ? targetIdx + 1 : inserted.length;
+            const insertIdx = currentIdx >= 0 ? currentIdx + 1 : inserted.length;
             inserted.splice(insertIdx, 0, {
               id: newItemId,
               text: '',
@@ -5263,6 +5350,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
 
         return (
           <input
+            id={`checklist-editor-input-${elem.id}`}
             autoFocus
             type="text"
             value={activeChecklistEditor.text}
@@ -5306,7 +5394,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
             }`}
             style={{
               left: `${(elem.x + offsetX) * scale + stagePos.x}px`,
-              top: `${(elem.y + activeChecklistEditor.itemY + 4) * scale + stagePos.y}px`,
+              top: `${(elem.y + resolvedItemY + 4) * scale + stagePos.y}px`,
               width: `${inputWidth * scale}px`,
               height: `${24 * scale}px`,
               backgroundColor: isDark ? '#1e293b' : '#ffffff',

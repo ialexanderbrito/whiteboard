@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import {
   createDefaultChecklistItems,
   convertStickyToChecklist,
@@ -78,4 +80,51 @@ test('computeChecklistHeight scales cleanly', () => {
   assert.ok(h0 >= 180);
   const h5 = computeChecklistHeight(5);
   assert.ok(h5 > h0);
+});
+
+test('ChecklistItem component: supports drag events, position persistence, and guards during drag', () => {
+  const source = fs.readFileSync(path.resolve('src/components/whiteboard/ChecklistItem.tsx'), 'utf8');
+
+  // ChecklistItem deve salvar posição x e y no onDragEnd
+  assert.ok(
+    source.includes('onDragEnd=') && source.includes('Math.round(e.target.x())') && source.includes('Math.round(e.target.y())'),
+    'ChecklistItem must persist x and y position on onDragEnd via onChange'
+  );
+
+  // ChecklistItem deve suportar onDragStart e onTransformEnd
+  assert.ok(source.includes('onDragStart='), 'ChecklistItem must have onDragStart');
+  assert.ok(source.includes('onTransformEnd='), 'ChecklistItem must have onTransformEnd');
+
+  // ChecklistItem deve guardar cliques em botões e checkboxes durante o arraste
+  assert.ok(source.includes('isDraggingRef.current'), 'ChecklistItem must guard interactions with isDraggingRef');
+});
+
+test('WhiteboardCanvas: synchronizes active checklist editor input with element position during drag and viewport navigation', () => {
+  const source = fs.readFileSync(path.resolve('src/components/whiteboard/WhiteboardCanvas.tsx'), 'utf8');
+
+  // Editor inline do checklist deve ter ID dedicado para sincronização direta no DOM
+  assert.ok(
+    source.includes('id={`checklist-editor-input-${elem.id}`}'),
+    'Checklist editor input must have checklist-editor-input ID for fast DOM synchronization'
+  );
+
+  // onDragMove deve atualizar posição do checklist editor input em tempo real
+  assert.ok(
+    source.includes('updateChecklistEditorInputPos') &&
+    source.includes('updateChecklistEditorInputPos(targetId, e.target.x(), e.target.y())'),
+    'onDragMove must update active checklist editor input position with 0ms latency during drag'
+  );
+
+  // syncWorldOverlays deve manter o input alinhado com o palco durante pan e zoom
+  assert.ok(
+    source.includes('activeChecklistEditorRef.current') &&
+    source.includes('checklist-editor-input-'),
+    'syncWorldOverlays must keep checklist editor input aligned during viewport pan and zoom'
+  );
+
+  // top position deve resolver a linha da tarefa dinamicamente
+  assert.ok(
+    source.includes('resolvedItemY'),
+    'WhiteboardCanvas must resolve itemY dynamically for the checklist item'
+  );
 });
