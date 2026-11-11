@@ -17,8 +17,5 @@
     "lib": "@/lib",
     "hooks": "@/hooks"
   },
-  "iconLibrary": "none",
-  "registries": {
-    "@shadcn": "https://ui.shadcn.com/r"
-  }
+  "iconLibrary": "none"
 }
