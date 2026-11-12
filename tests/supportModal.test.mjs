@@ -48,7 +48,8 @@ test('BuyMeACoffeeModal: conforms with project Dialog architecture and controlle
   assert.match(src, /onOpenChange\?:\s*\(open:\s*boolean\)\s*=>\s*void/);
   assert.match(src, /hideTrigger\?:\s*boolean/);
 
-  // Dialog Radix consistente com todos os outros modais do Mirio
-  assert.match(src, /<Dialog\s+open=\{open\}\s+onOpenChange=\{setOpen\}>/);
-  assert.match(src, /<DialogContent/);
+  // Shell responsivo consistente com todos os outros modais do Mirio
+  // (Dialog do Radix no desktop, bottom sheet com vaul no mobile)
+  assert.match(src, /<ResponsiveModalRoot\s+open=\{open\}\s+onOpenChange=\{setOpen\}>/);
+  assert.match(src, /<ResponsiveModalContent/);
 });

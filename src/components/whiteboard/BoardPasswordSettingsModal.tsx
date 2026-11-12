@@ -11,13 +11,15 @@ import {
   ShieldCheck
 } from '@/components/ui/icons';
 import {
-  Dialog,
-  DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
+import {
+  ResponsiveModalRoot,
+  ResponsiveModalContent,
+} from '@/components/ui/responsive-modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -171,8 +173,8 @@ export const BoardPasswordSettingsModal: React.FC<BoardPasswordSettingsModalProp
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md border-border bg-card p-6 shadow-2xl animate-in zoom-in-95 duration-200">
+    <ResponsiveModalRoot open={open} onOpenChange={onOpenChange}>
+      <ResponsiveModalContent className="sm:max-w-md border-border bg-card p-6 shadow-2xl animate-in zoom-in-95 duration-200">
         <PasswordModalErrorBoundary onClose={() => onOpenChange(false)}>
           <DialogHeader className="space-y-2 text-left">
             <div className="flex items-center gap-3">
@@ -363,7 +365,7 @@ export const BoardPasswordSettingsModal: React.FC<BoardPasswordSettingsModalProp
             </div>
           </DialogFooter>
         </PasswordModalErrorBoundary>
-      </DialogContent>
-    </Dialog>
+      </ResponsiveModalContent>
+    </ResponsiveModalRoot>
   );
 };

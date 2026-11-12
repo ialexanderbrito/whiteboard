@@ -3330,8 +3330,14 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
               userSelectionColor={userSelectionColor}
               remoteSelector={remoteSelector}
               draggable={canDragItem}
+              currentUserId={currentUser.uid}
+              mirioReactionUnlocked={mirioReactionUnlocked}
               onSelect={handlers.onSelect}
               onChange={handlers.onChange}
+              onToggleReaction={handleToggleReactionInternal}
+              onOpenReactionPicker={(elementId, anchor, mode) => {
+                setReactionPickerTarget({ elementId, anchor, mode });
+              }}
             />
           );
         }
@@ -3369,6 +3375,8 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
               remoteSelector={remoteSelector}
               draggable={canDragItem}
               canEdit={canEditItem}
+              currentUserId={currentUser.uid}
+              mirioReactionUnlocked={mirioReactionUnlocked}
               onSelect={handlers.onSelect}
               onChange={handlers.onChange}
               onStartEditingItem={(elementId, target, initialText, itemY) => {
@@ -3381,6 +3389,10 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
               }}
               onCelebration={(cx, cy) => {
                 triggerCanvasConfetti(cx, cy);
+              }}
+              onToggleReaction={handleToggleReactionInternal}
+              onOpenReactionPicker={(elementId, anchor, mode) => {
+                setReactionPickerTarget({ elementId, anchor, mode });
               }}
             />
           );
@@ -3396,9 +3408,15 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
               remoteSelector={remoteSelector}
               draggable={canDragItem}
               canEdit={canEditItem}
+              currentUserId={currentUser.uid}
+              mirioReactionUnlocked={mirioReactionUnlocked}
               onSelect={handlers.onSelect}
               onChange={handlers.onChange}
               onStartEditing={handlers.onStartEditing}
+              onToggleReaction={handleToggleReactionInternal}
+              onOpenReactionPicker={(elementId, anchor, mode) => {
+                setReactionPickerTarget({ elementId, anchor, mode });
+              }}
             />
           );
         }
@@ -3444,9 +3462,15 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
               remoteSelector={remoteSelector}
               draggable={canDragItem}
               canEdit={canEditItem}
+              currentUserId={currentUser.uid}
+              mirioReactionUnlocked={mirioReactionUnlocked}
               onSelect={handlers.onSelect}
               onChange={handlers.onChange}
               onStartEditing={handlers.onStartEditing}
+              onToggleReaction={handleToggleReactionInternal}
+              onOpenReactionPicker={(elementId, anchor, mode) => {
+                setReactionPickerTarget({ elementId, anchor, mode });
+              }}
             />
           );
         }
@@ -3485,6 +3509,29 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       return 'Participante';
     },
     [currentUser.uid, remoteUsers, boardMembers, boardOwner]
+  );
+
+  // Resolve a foto do participante pelo ID (presença ao vivo, membros ou dono do quadro)
+  const resolveUserPhoto = useCallback(
+    (userId: string): string | null => {
+      if (userId === currentUser.uid) return currentUser.photoURL || null;
+      const remote = remoteUsers.find((u) => u.userId === userId);
+      if (remote?.photoURL) return remote.photoURL;
+      if (boardMembers?.[userId]?.photoURL) return boardMembers[userId].photoURL || null;
+      return null;
+    },
+    [currentUser.uid, currentUser.photoURL, remoteUsers, boardMembers, boardOwner]
+  );
+
+  // Resolve a cor do cursor do participante pelo ID (a mesma das tags de seleção/cursor)
+  const resolveUserColor = useCallback(
+    (userId: string): string | null => {
+      if (userId === currentUser.uid) return currentUser.color || null;
+      const remote = remoteUsers.find((u) => u.userId === userId);
+      if (remote?.color) return remote.color;
+      return null;
+    },
+    [currentUser.uid, currentUser.color, remoteUsers]
   );
 
   // Post-it alvo do seletor flutuante de reações ancorado ao botão '+' interno
@@ -4343,6 +4390,8 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         elements={elements}
         currentUserId={currentUser.uid}
         resolveUserName={resolveUserName}
+        resolveUserPhoto={resolveUserPhoto}
+        resolveUserColor={resolveUserColor}
       />
 
       {/* GIFs Animados a 60fps Nativo em Overlay HTML 100% Sincronizado no Pan e Zoom */}

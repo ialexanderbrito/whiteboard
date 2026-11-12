@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
 import { Check, User, Sparkles, Pipette } from '@/components/ui/icons';
 import {
-  Dialog,
-  DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
+import {
+  ResponsiveModalRoot,
+  ResponsiveModalContent,
+} from '@/components/ui/responsive-modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -75,8 +77,8 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
   );
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[440px] p-6 rounded-2xl shadow-xl border-border bg-card">
+    <ResponsiveModalRoot open={open} onOpenChange={onOpenChange}>
+      <ResponsiveModalContent className="sm:max-w-[440px] p-6 rounded-2xl shadow-xl border-border bg-card">
         <DialogHeader className="space-y-1.5 text-left">
           <div className="flex items-center gap-2">
             <div className="flex size-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -298,8 +300,8 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
             </Button>
           </DialogFooter>
         </form>
-      </DialogContent>
-    </Dialog>
+      </ResponsiveModalContent>
+    </ResponsiveModalRoot>
   );
 };
 

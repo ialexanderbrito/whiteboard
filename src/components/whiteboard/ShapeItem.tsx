@@ -1,10 +1,11 @@
-import React, { useRef, useMemo } from 'react';
+import React, { useRef, useMemo, useState } from 'react';
 import { Group, Rect, Circle, Line, Star, Text } from 'react-konva';
 import type Konva from 'konva';
 import type { CanvasElement } from '../../types/element';
 import { getContrastTextColor } from '../../utils/colors';
 import { extractAllLinks, stripMarkdownLinks, layoutFormattedWords, normalizeUrl } from '../../utils/textLinks';
 import { isCoarseOrMobileViewport } from '../../utils/viewport';
+import { ElementReactionBadges } from './ElementReactionBadges';
 
 interface ShapeItemProps {
   element: CanvasElement;
@@ -13,9 +14,17 @@ interface ShapeItemProps {
   remoteSelector?: { name: string; color: string };
   draggable?: boolean;
   canEdit?: boolean;
+  currentUserId?: string;
+  mirioReactionUnlocked?: boolean;
   onSelect: (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => void;
   onChange: (updates: Partial<CanvasElement>) => void;
   onStartEditing?: (id: string, x: number, y: number, width: number, height: number, text: string) => void;
+  onToggleReaction?: (elementId: string, emoji: string) => void;
+  onOpenReactionPicker?: (
+    elementId: string,
+    anchor: { x: number; y: number },
+    mode?: 'picker' | 'overflow'
+  ) => void;
 }
 
 export const ShapeItem: React.FC<ShapeItemProps> = React.memo(({
@@ -25,9 +34,13 @@ export const ShapeItem: React.FC<ShapeItemProps> = React.memo(({
   remoteSelector,
   draggable,
   canEdit = true,
+  currentUserId,
+  mirioReactionUnlocked = false,
   onSelect,
   onChange,
   onStartEditing,
+  onToggleReaction,
+  onOpenReactionPicker,
 }) => {
   const shapeRef = useRef<Konva.Group>(null);
   const width = element.width || 160;
@@ -78,6 +91,12 @@ export const ShapeItem: React.FC<ShapeItemProps> = React.memo(({
   }, [cleanText, hasLinks, textWidth, fontSize, fontStyleStr, textAlign, element.links, element.linkUrl]);
 
   const isItemDraggable = draggable !== undefined ? draggable && !element.locked : !element.locked;
+
+  const [isHoveredLocal, setIsHoveredLocal] = useState(false);
+  const isCircleShape = type === 'circle';
+  const reactionLeftX = isCircleShape ? -radius : 0;
+  const reactionBottomY = isCircleShape ? radius : height;
+  const reactionAvailableWidth = isCircleShape ? radius * 2 : width;
 
   const clickTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isDraggingRef = useRef(false);
@@ -227,6 +246,8 @@ export const ShapeItem: React.FC<ShapeItemProps> = React.memo(({
       onTap={onSelect}
       onDblClick={handleDblClick}
       onDblTap={handleDblClick}
+      onMouseEnter={() => setIsHoveredLocal(true)}
+      onMouseLeave={() => setIsHoveredLocal(false)}
       onDragStart={() => {
         isDraggingRef.current = true;
       }}
@@ -337,6 +358,20 @@ export const ShapeItem: React.FC<ShapeItemProps> = React.memo(({
           />
         )
       ) : null}
+
+      {/* Badges de reações estilo Miro ancorados na borda inferior */}
+      <ElementReactionBadges
+        element={element}
+        localLeftX={reactionLeftX}
+        localBottomY={reactionBottomY}
+        availableWidth={reactionAvailableWidth}
+        currentUserId={currentUserId}
+        canEdit={canEdit}
+        mirioReactionUnlocked={mirioReactionUnlocked}
+        isHovered={isHoveredLocal}
+        onToggleReaction={onToggleReaction}
+        onOpenReactionPicker={onOpenReactionPicker}
+      />
 
       {/* Tag do colega que está com a forma selecionada */}
       {remoteSelector && (

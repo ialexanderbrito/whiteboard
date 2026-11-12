@@ -7,13 +7,15 @@ import {
   X
 } from '@/components/ui/icons';
 import {
-  Dialog,
-  DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import {
+  ResponsiveModalRoot,
+  ResponsiveModalContent,
+} from '@/components/ui/responsive-modal';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -69,7 +71,7 @@ export const SprintTemplatesModal: React.FC<SprintTemplatesModalProps> = ({
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <ResponsiveModalRoot open={open} onOpenChange={setOpen}>
       {(!isControlled || trigger) && (
         <Tooltip>
           <TooltipTrigger asChild>
@@ -94,7 +96,7 @@ export const SprintTemplatesModal: React.FC<SprintTemplatesModalProps> = ({
         </Tooltip>
       )}
 
-      <DialogContent className="max-w-3xl p-5 sm:p-6 gap-3.5 max-h-[88vh] flex flex-col overflow-hidden">
+      <ResponsiveModalContent className="max-w-3xl p-5 sm:p-6 gap-3.5 max-h-[88vh] flex flex-col overflow-hidden">
         <DialogHeader className="space-y-1 shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="flex size-8 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-primary shadow-2xs">
@@ -288,7 +290,7 @@ export const SprintTemplatesModal: React.FC<SprintTemplatesModalProps> = ({
             </Button>
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+      </ResponsiveModalContent>
+    </ResponsiveModalRoot>
   );
 };

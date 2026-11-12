@@ -9,8 +9,9 @@ export interface MirioClipboardPayload {
 }
 
 /**
- * Copia uma lista de elementos do canvas para o clipboard local (localStorage)
- * e tenta também gravar na área de transferência do sistema como JSON.
+ * Copia uma lista de elementos do canvas para o clipboard interno do Mirio (localStorage).
+ * A cópia NÃO vai para a área de transferência do sistema operacional: assim o usuário
+ * nunca acaba colando um JSON cru do Mirio em apps externos (WhatsApp, e-mail etc.).
  */
 export async function copyCanvasElements(elements: CanvasElement[]): Promise<void> {
   if (!elements || elements.length === 0) return;
@@ -29,37 +30,12 @@ export async function copyCanvasElements(elements: CanvasElement[]): Promise<voi
   } catch (err) {
     console.warn('[Clipboard] Erro ao gravar no localStorage:', err);
   }
-
-  // Tenta gravar também no clipboard do sistema operacional
-  try {
-    if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
-      await navigator.clipboard.writeText(serialized);
-    }
-  } catch {
-    // Falha silenciosa caso o navegador restrinja permissões de clipboard no momento
-  }
 }
 
 /**
- * Recupera elementos copiados verificando o clipboard do sistema e localStorage.
+ * Recupera elementos copiados do clipboard interno do Mirio (localStorage).
  */
 export async function getCachedClipboardElements(): Promise<CanvasElement[] | null> {
-  // 1. Tenta ler primeiro do clipboard do sistema operacional (para suportar Ctrl+C de outra aba/janela)
-  try {
-    if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.readText) {
-      const text = await navigator.clipboard.readText();
-      if (text && text.trim().startsWith('{')) {
-        const parsed = JSON.parse(text);
-        if (parsed && parsed.type === 'mirio_elements' && Array.isArray(parsed.elements)) {
-          return parsed.elements;
-        }
-      }
-    }
-  } catch {
-    // Permissão de leitura pode ser negada ou o clipboard contém outro tipo de dado
-  }
-
-  // 2. Fallback robusto para o localStorage compartilhado do navegador
   try {
     const raw = localStorage.getItem(CLIPBOARD_STORAGE_KEY);
     if (raw) {

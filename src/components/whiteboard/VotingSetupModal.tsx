@@ -10,13 +10,15 @@ import {
   Play
 } from '@/components/ui/icons';
 import {
-  Dialog,
-  DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
+import {
+  ResponsiveModalRoot,
+  ResponsiveModalContent,
+} from '@/components/ui/responsive-modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { CurrentUser } from '@/types/board';
@@ -72,8 +74,8 @@ export const VotingSetupModal: React.FC<VotingSetupModalProps> = ({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px] p-6 gap-5 rounded-2xl shadow-2xl">
+    <ResponsiveModalRoot open={open} onOpenChange={onOpenChange}>
+      <ResponsiveModalContent className="sm:max-w-[500px] p-6 gap-5 rounded-2xl shadow-2xl">
         <DialogHeader className="space-y-1">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -277,7 +279,7 @@ export const VotingSetupModal: React.FC<VotingSetupModalProps> = ({
             </Button>
           </DialogFooter>
         </form>
-      </DialogContent>
-    </Dialog>
+      </ResponsiveModalContent>
+    </ResponsiveModalRoot>
   );
 };

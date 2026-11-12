@@ -11,7 +11,8 @@ test('BuyMeACoffeeModal supports controlled open and onOpenChange props', () => 
   assert.match(src, /open\?:\s*boolean/);
   assert.match(src, /onOpenChange\?:\s*\(open:\s*boolean\)\s*=>\s*void/);
   assert.match(src, /hideTrigger\?:\s*boolean/);
-  assert.match(src, /<Dialog\s+open=\{open\}\s+onOpenChange=\{setOpen\}>/);
+  // Modal responsivo: Dialog do Radix no desktop e bottom sheet (vaul) no mobile
+  assert.match(src, /<ResponsiveModalRoot\s+open=\{open\}\s+onOpenChange=\{setOpen\}>/);
 });
 
 test('CommandDialog removes closing exit animation to prevent Radix FocusScope overlap with target modals', () => {

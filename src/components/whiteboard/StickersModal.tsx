@@ -12,12 +12,14 @@ import {
 } from '@/components/ui/icons';
 import EmojiPicker, { EmojiStyle, Theme as EmojiTheme, type EmojiClickData } from 'emoji-picker-react';
 import {
-  Dialog,
-  DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
+import {
+  ResponsiveModalRoot,
+  ResponsiveModalContent,
+} from '@/components/ui/responsive-modal';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -139,17 +141,24 @@ interface KlipyRawItem {
   };
 }
 
-const parseKlipyResponse = (payload: unknown): GifItem[] => {
+interface KlipyParsedResult {
+  items: GifItem[];
+  hasNext: boolean;
+  page: number;
+}
+
+const parseKlipyResponse = (payload: unknown): KlipyParsedResult => {
   const root = payload as {
-    data?: { data?: KlipyRawItem[] } | KlipyRawItem[];
+    data?: { data?: KlipyRawItem[]; has_next?: boolean; current_page?: number } | KlipyRawItem[];
   };
+  const dataObj = root?.data && !Array.isArray(root.data) ? root.data : null;
   const rawList: KlipyRawItem[] = Array.isArray(root?.data)
     ? root.data
-    : Array.isArray(root?.data?.data)
-    ? root.data.data
+    : Array.isArray(dataObj?.data)
+    ? dataObj.data
     : [];
 
-  return rawList
+  const items = rawList
     .map((item): GifItem => {
       const fullUrl =
         item.file?.md?.gif?.url ||
@@ -176,6 +185,12 @@ const parseKlipyResponse = (payload: unknown): GifItem[] => {
       };
     })
     .filter((item) => Boolean(item.url));
+
+  return {
+    items,
+    hasNext: Boolean(dataObj?.has_next),
+    page: Number(dataObj?.current_page) || 0,
+  };
 };
 
 export interface MediaInsertItem {
@@ -211,8 +226,13 @@ export const StickersModal: React.FC<StickersModalProps> = ({
   const [gifSearch, setGifSearch] = useState('');
   const [customUrl, setCustomUrl] = useState('');
   const [trendingGifs, setTrendingGifs] = useState<GifItem[]>(CURATED_GIFS);
-  const [searchResults, setSearchResults] = useState<GifItem[]>(CURATED_GIFS);
+  const [searchResults, setSearchResults] = useState<GifItem[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [trendingPage, setTrendingPage] = useState(0);
+  const [trendingHasNext, setTrendingHasNext] = useState(false);
+  const [searchPage, setSearchPage] = useState(1);
+  const [searchHasNext, setSearchHasNext] = useState(false);
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const [isProcessingFiles, setIsProcessingFiles] = useState(false);
@@ -234,50 +254,67 @@ export const StickersModal: React.FC<StickersModalProps> = ({
   }, [open]);
 
   // Carrega GIFs em alta na Klipy ao abrir a aba de GIFs pela primeira vez
+  const fetchTrendingGifs = async (page = 1, append = false) => {
+    if (!klipyApiKey) {
+      setTrendingHasNext(false);
+      return;
+    }
+
+    if (page > 1) setIsLoadingMore(true);
+
+    try {
+      const res = await fetch(
+        `https://api.klipy.com/api/v1/${klipyApiKey}/gifs/trending?per_page=24&locale=pt&page=${page}`
+      );
+      if (!res.ok) {
+        if (page === 1) setTrendingHasNext(false);
+        return;
+      }
+      const parsed = parseKlipyResponse(await res.json());
+      if (parsed.items.length > 0) {
+        setTrendingGifs((prev) => {
+          if (!append) return parsed.items;
+          const seen = new Set(prev.map((g) => g.id));
+          return [...prev, ...parsed.items.filter((g) => !seen.has(g.id))];
+        });
+        setTrendingPage(parsed.page || page);
+        setTrendingHasNext(parsed.hasNext);
+      } else {
+        setTrendingHasNext(false);
+      }
+    } catch (err) {
+      console.warn('Falha ao carregar GIFs em alta no Klipy:', err);
+      setTrendingHasNext(false);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
+
   useEffect(() => {
     if (!open || activeTab !== 'gifs' || hasLoadedTrendingRef.current || !klipyApiKey) {
       return;
     }
     hasLoadedTrendingRef.current = true;
-
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch(
-          `https://api.klipy.com/api/v1/${klipyApiKey}/gifs/trending?per_page=24&locale=pt`
-        );
-        if (!res.ok) return;
-        const data = await res.json();
-        const parsed = parseKlipyResponse(data);
-        if (!cancelled && parsed.length > 0) {
-          setTrendingGifs(parsed);
-          setSearchResults((prev) => (prev === CURATED_GIFS ? parsed : prev));
-        }
-      } catch (err) {
-        console.warn('Falha ao carregar GIFs em alta no Klipy:', err);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
+    void fetchTrendingGifs(1, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, activeTab, klipyApiKey]);
 
   const fetchGifs = async (query: string) => {
     setIsSearching(true);
     try {
-      // 1. Provedor principal: Klipy API
+      // 1. Provedor principal: Klipy API (com suporte a paginação por página)
       if (klipyApiKey) {
         const res = await fetch(
           `https://api.klipy.com/api/v1/${klipyApiKey}/gifs/search?q=${encodeURIComponent(
             query
-          )}&per_page=24&locale=pt`
+          )}&per_page=24&locale=pt&page=1`
         );
         if (res.ok) {
-          const data = await res.json();
-          const formatted = parseKlipyResponse(data);
-          if (formatted.length > 0) {
-            setSearchResults(formatted);
+          const parsed = parseKlipyResponse(await res.json());
+          if (parsed.items.length > 0) {
+            setSearchResults(parsed.items);
+            setSearchPage(parsed.page || 1);
+            setSearchHasNext(parsed.hasNext);
             return;
           }
         }
@@ -319,6 +356,7 @@ export const StickersModal: React.FC<StickersModalProps> = ({
             .filter((item: GifItem) => Boolean(item.url));
 
           setSearchResults(formatted);
+          setSearchHasNext(false);
           return;
         }
       }
@@ -329,12 +367,54 @@ export const StickersModal: React.FC<StickersModalProps> = ({
         g.name.toLowerCase().includes(qLower)
       );
       setSearchResults(localMatches);
+      setSearchHasNext(false);
     } catch (err) {
       console.warn('Falha ao buscar GIFs:', err);
       setSearchResults(trendingGifs);
+      setSearchHasNext(false);
     } finally {
       setIsSearching(false);
     }
+  };
+
+  // Busca a próxima página dos resultados exibidos (destaques ou busca ativa)
+  const handleLoadMoreGifs = async () => {
+    const query = gifSearch.trim();
+
+    if (query) {
+      if (isLoadingMore || isSearching) return;
+      setIsLoadingMore(true);
+      try {
+        if (klipyApiKey) {
+          const res = await fetch(
+            `https://api.klipy.com/api/v1/${klipyApiKey}/gifs/search?q=${encodeURIComponent(
+              query
+            )}&per_page=24&locale=pt&page=${searchPage + 1}`
+          );
+          if (res.ok) {
+            const parsed = parseKlipyResponse(await res.json());
+            setSearchResults((prev) => {
+              const seen = new Set(prev.map((g) => g.id));
+              return [...prev, ...parsed.items.filter((g) => !seen.has(g.id))];
+            });
+            if (parsed.items.length > 0) {
+              setSearchPage(parsed.page || searchPage + 1);
+              setSearchHasNext(parsed.hasNext);
+            } else {
+              setSearchHasNext(false);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Falha ao carregar mais GIFs:', err);
+        setSearchHasNext(false);
+      } finally {
+        setIsLoadingMore(false);
+      }
+      return;
+    }
+
+    await fetchTrendingGifs(trendingPage + 1, true);
   };
 
   const handleSearchChange = (value: string) => {
@@ -346,7 +426,9 @@ export const StickersModal: React.FC<StickersModalProps> = ({
     }
 
     if (!value.trim()) {
-      setSearchResults(trendingGifs);
+      setSearchResults([]);
+      setSearchHasNext(false);
+      setSearchPage(1);
       setIsSearching(false);
       return;
     }
@@ -369,7 +451,9 @@ export const StickersModal: React.FC<StickersModalProps> = ({
     if (activeTag === tag) {
       setActiveTag(null);
       setGifSearch('');
-      setSearchResults(trendingGifs);
+      setSearchResults([]);
+      setSearchHasNext(false);
+      setSearchPage(1);
       return;
     }
     setActiveTag(tag);
@@ -468,8 +552,8 @@ export const StickersModal: React.FC<StickersModalProps> = ({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[calc(100vw-1.5rem)] max-w-2xl p-4 sm:p-5 overflow-hidden rounded-2xl">
+    <ResponsiveModalRoot open={open} onOpenChange={onOpenChange}>
+      <ResponsiveModalContent className="w-[calc(100vw-1.5rem)] max-w-2xl p-4 sm:p-5 overflow-hidden rounded-2xl">
         <DialogHeader className="space-y-1 text-left">
           <DialogTitle className="text-base font-semibold flex items-center gap-2">
             <div className="flex size-7 items-center justify-center rounded-lg bg-primary/10 text-primary shrink-0">
@@ -708,64 +792,111 @@ export const StickersModal: React.FC<StickersModalProps> = ({
               })}
             </div>
 
-            {/* Grid de GIFs Animados com Loading Skeleton */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-[300px] overflow-y-auto pr-1">
-              {isSearching ? (
-                Array.from({ length: 6 }).map((_, i) => (
-                  <Skeleton
-                    key={i}
-                    className="aspect-video w-full rounded-md bg-muted/60 border border-border/40"
-                  />
-                ))
-              ) : searchResults.length === 0 ? (
-                <div className="col-span-full py-10 flex flex-col items-center justify-center text-xs text-muted-foreground gap-1">
-                  <span>Nenhum GIF encontrado para &quot;{gifSearch}&quot;</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setGifSearch('');
-                      setActiveTag(null);
-                      setSearchResults(trendingGifs);
-                    }}
-                    className="text-primary hover:underline font-medium"
+            {/* Lista efetivamente exibida: resultados da busca ou destaques em alta */}
+            {(() => {
+              const query = gifSearch.trim();
+              const displayedGifs = query ? searchResults : trendingGifs;
+
+              return (
+                <>
+                  {/* Grid de GIFs Animados com Loading Skeleton */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-[300px] overflow-y-auto pr-1">
+                    {isSearching ? (
+                      Array.from({ length: 6 }).map((_, i) => (
+                        <Skeleton
+                          key={i}
+                          className="aspect-video w-full rounded-md bg-muted/60 border border-border/40"
+                        />
+                      ))
+                    ) : displayedGifs.length === 0 ? (
+                      <div className="col-span-full py-10 flex flex-col items-center justify-center text-xs text-muted-foreground gap-1">
+                        <span>
+                          {query
+                            ? `Nenhum GIF encontrado para "${query}"`
+                            : 'Nenhum GIF disponível no momento'}
+                        </span>
+                        {query && (
+                          <button
+                            type="button"
+                            onClick={() => handleSearchChange('')}
+                            className="text-primary hover:underline font-medium"
+                          >
+                            Ver destaques
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      displayedGifs.map((gif, idx) => (
+                        <button
+                          key={gif.id || idx}
+                          type="button"
+                          onClick={() => handleSelectGif(gif.url, gif.name)}
+                          className="group relative rounded-lg overflow-hidden border border-border bg-muted/30 aspect-video hover:border-primary transition-[transform,border-color] duration-150 active:scale-[0.98]"
+                          title={gif.name}
+                        >
+                          <img
+                            src={gif.previewUrl || gif.url}
+                            alt={gif.name}
+                            loading="lazy"
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                            onError={(e) => {
+                              const target = e.target as HTMLImageElement;
+                              if (!target.dataset.retried && gif.url && target.src !== gif.url) {
+                                target.dataset.retried = 'true';
+                                target.src = gif.url;
+                              }
+                            }}
+                          />
+                          <div className="absolute inset-x-0 bottom-0 p-1 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+                            <p className="text-[10px] text-white truncate text-left font-medium">
+                              {gif.name}
+                            </p>
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+
+                  {/* Paginação: carrega a próxima página de resultados */}
+                  {(query ? searchHasNext : trendingHasNext) && !isSearching && (
+                    <button
+                      type="button"
+                      onClick={handleLoadMoreGifs}
+                      disabled={isLoadingMore}
+                      className="flex items-center justify-center gap-1.5 w-full h-8 rounded-lg border border-border bg-muted/40 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/70 transition-colors disabled:opacity-60 active:scale-[0.98]"
+                    >
+                      {isLoadingMore ? (
+                        <>
+                          <Loader2 className="size-3.5 animate-spin" />
+                          Carregando...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="size-3.5" />
+                          Carregar mais GIFs
+                        </>
+                      )}
+                    </button>
+                  )}
+
+                  {/* Atribuição obrigatória do provedor de GIFs */}
+                  <a
+                    href="https://klipy.com"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block text-center text-[10px] text-muted-foreground/70 hover:text-muted-foreground transition-colors pt-0.5"
                   >
-                    Ver destaques
-                  </button>
-                </div>
-              ) : (
-                searchResults.map((gif, idx) => (
-                  <button
-                    key={gif.id || idx}
-                    type="button"
-                    onClick={() => handleSelectGif(gif.url, gif.name)}
-                    className="group relative rounded-lg overflow-hidden border border-border bg-muted/30 aspect-video hover:border-primary transition-[transform,border-color] duration-150 active:scale-[0.98]"
-                    title={gif.name}
-                  >
-                    <img
-                      src={gif.previewUrl || gif.url}
-                      alt={gif.name}
-                      loading="lazy"
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                      onError={(e) => {
-                        const target = e.target as HTMLImageElement;
-                        if (!target.dataset.retried && gif.url && target.src !== gif.url) {
-                          target.dataset.retried = 'true';
-                          target.src = gif.url;
-                        }
-                      }}
-                    />
-                    <div className="absolute inset-x-0 bottom-0 p-1 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
-                      <p className="text-[10px] text-white truncate text-left font-medium">
-                        {gif.name}
-                      </p>
-                    </div>
-                  </button>
-                ))
-              )}
-            </div>
+                    GIFs fornecidos por{' '}
+                    <span className="font-medium underline decoration-border underline-offset-2">
+                      klipy.com
+                    </span>
+                  </a>
+                </>
+              );
+            })()}
           </TabsContent>
         </Tabs>
-      </DialogContent>
-    </Dialog>
+      </ResponsiveModalContent>
+    </ResponsiveModalRoot>
   );
 };

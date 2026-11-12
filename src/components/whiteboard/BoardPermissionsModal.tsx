@@ -13,12 +13,14 @@ import {
   AlertCircle 
 } from '@/components/ui/icons';
 import {
-  Dialog,
-  DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
+import {
+  ResponsiveModalRoot,
+  ResponsiveModalContent,
+} from '@/components/ui/responsive-modal';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
@@ -354,8 +356,8 @@ export const BoardPermissionsModal: React.FC<BoardPermissionsModalProps> = ({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md border-border bg-card p-6 shadow-2xl animate-in zoom-in-95 duration-200">
+    <ResponsiveModalRoot open={open} onOpenChange={onOpenChange}>
+      <ResponsiveModalContent className="sm:max-w-md border-border bg-card p-6 shadow-2xl animate-in zoom-in-95 duration-200">
         <ModalErrorBoundary onClose={() => onOpenChange(false)}>
           <DialogHeader className="space-y-2 text-left">
             <div className="flex items-center gap-3">
@@ -554,7 +556,7 @@ export const BoardPermissionsModal: React.FC<BoardPermissionsModalProps> = ({
             </div>
           </div>
         </ModalErrorBoundary>
-      </DialogContent>
-    </Dialog>
+      </ResponsiveModalContent>
+    </ResponsiveModalRoot>
   );
 };

@@ -15,13 +15,15 @@ import {
   LayoutTemplate
 } from '@/components/ui/icons';
 import {
-  Dialog,
-  DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
+import {
+  ResponsiveModalRoot,
+  ResponsiveModalContent,
+} from '@/components/ui/responsive-modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -155,8 +157,8 @@ export const CreateBoardModal: React.FC<CreateBoardModalProps> = ({
   const SelectedPermIcon = selectedPermOption.icon;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[520px] p-0 overflow-hidden gap-0 border-border bg-card shadow-2xl">
+    <ResponsiveModalRoot open={open} onOpenChange={onOpenChange}>
+      <ResponsiveModalContent className="sm:max-w-[520px] p-0 overflow-hidden gap-0 border-border bg-card shadow-2xl">
         {/* Cabeçalho Visual de Alto Nível (Estilo Emil Kowalski / Linear) */}
         <div className="p-5 pb-4 border-b border-border bg-gradient-to-b from-muted/40 to-transparent">
           <DialogHeader className="space-y-1.5">
@@ -469,7 +471,7 @@ export const CreateBoardModal: React.FC<CreateBoardModalProps> = ({
             <ArrowRight className="size-3.5" />
           </Button>
         </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      </ResponsiveModalContent>
+    </ResponsiveModalRoot>
   );
 };

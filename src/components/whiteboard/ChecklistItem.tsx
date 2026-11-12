@@ -9,6 +9,7 @@ import {
 } from '../../utils/checklist';
 import { getContrastTextColor } from '../../utils/colors';
 import { playChimeSound, playReactionPopSound } from '../../utils/audioChime';
+import { ElementReactionBadges } from './ElementReactionBadges';
 
 interface ChecklistItemComponentProps {
   element: CanvasElement;
@@ -17,6 +18,8 @@ interface ChecklistItemComponentProps {
   remoteSelector?: { name: string; color: string };
   draggable?: boolean;
   canEdit?: boolean;
+  currentUserId?: string;
+  mirioReactionUnlocked?: boolean;
   onSelect: (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => void;
   onChange: (updates: Partial<CanvasElement>) => void;
   onStartEditingItem?: (
@@ -26,6 +29,12 @@ interface ChecklistItemComponentProps {
     itemY: number
   ) => void;
   onCelebration?: (x: number, y: number) => void;
+  onToggleReaction?: (elementId: string, emoji: string) => void;
+  onOpenReactionPicker?: (
+    elementId: string,
+    anchor: { x: number; y: number },
+    mode?: 'picker' | 'overflow'
+  ) => void;
 }
 
 export const ChecklistItem: React.FC<ChecklistItemComponentProps> = React.memo(({
@@ -35,15 +44,20 @@ export const ChecklistItem: React.FC<ChecklistItemComponentProps> = React.memo((
   remoteSelector,
   draggable = true,
   canEdit = true,
+  currentUserId,
+  mirioReactionUnlocked = false,
   onSelect,
   onChange,
   onStartEditingItem,
   onCelebration,
+  onToggleReaction,
+  onOpenReactionPicker,
 }) => {
   const groupRef = useRef<Konva.Group>(null);
   const isDraggingRef = useRef(false);
   const [hoveredItemId, setHoveredItemId] = useState<string | null>(null);
   const [isAddHovered, setIsAddHovered] = useState(false);
+  const [isHoveredLocal, setIsHoveredLocal] = useState(false);
 
   const items = useMemo<IChecklistItem[]>(() => {
     if (element.checklistItems && element.checklistItems.length > 0) {
@@ -167,6 +181,8 @@ export const ChecklistItem: React.FC<ChecklistItemComponentProps> = React.memo((
         if (!canEdit || !onStartEditingItem) return;
         onStartEditingItem(element.id, 'title', title, 16);
       }}
+      onMouseEnter={() => setIsHoveredLocal(true)}
+      onMouseLeave={() => setIsHoveredLocal(false)}
       onDragStart={() => {
         isDraggingRef.current = true;
       }}
@@ -489,6 +505,20 @@ export const ChecklistItem: React.FC<ChecklistItemComponentProps> = React.memo((
           />
         </Group>
       )}
+
+      {/* Badges de reações estilo Miro ancorados na borda inferior */}
+      <ElementReactionBadges
+        element={element}
+        localLeftX={0}
+        localBottomY={height}
+        availableWidth={width}
+        currentUserId={currentUserId}
+        canEdit={canEdit}
+        mirioReactionUnlocked={mirioReactionUnlocked}
+        isHovered={isHoveredLocal}
+        onToggleReaction={onToggleReaction}
+        onOpenReactionPicker={onOpenReactionPicker}
+      />
     </Group>
   );
 });

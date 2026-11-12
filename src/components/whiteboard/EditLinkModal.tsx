@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
 import { Globe, Link2, Trash2 } from '@/components/ui/icons';
 import {
-  Dialog,
-  DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
+import {
+  ResponsiveModalRoot,
+  ResponsiveModalContent,
+} from '@/components/ui/responsive-modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { normalizeUrl } from '../../utils/textLinks';
@@ -61,8 +63,8 @@ export const EditLinkModal: React.FC<EditLinkModalProps> = ({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md p-6 gap-5 bg-card border-border shadow-2xl">
+    <ResponsiveModalRoot open={open} onOpenChange={onOpenChange}>
+      <ResponsiveModalContent className="sm:max-w-md p-6 gap-5 bg-card border-border shadow-2xl">
         <DialogHeader className="flex flex-row items-center gap-3 space-y-0 text-left">
           <div className="flex size-10 items-center justify-center rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 shrink-0 ring-4 ring-blue-500/5">
             <Link2 className="size-5" />
@@ -148,7 +150,7 @@ export const EditLinkModal: React.FC<EditLinkModalProps> = ({
             </div>
           </DialogFooter>
         </form>
-      </DialogContent>
-    </Dialog>
+      </ResponsiveModalContent>
+    </ResponsiveModalRoot>
   );
 };

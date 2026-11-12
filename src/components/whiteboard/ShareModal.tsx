@@ -14,12 +14,14 @@ import {
   X
 } from '@/components/ui/icons';
 import {
-  Dialog,
-  DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
+import {
+  ResponsiveModalRoot,
+  ResponsiveModalContent,
+} from '@/components/ui/responsive-modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -507,8 +509,8 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   }, [board, currentUser, remoteUsers, isOwner, defaultPermission, removedIds]);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[490px] p-5 gap-4">
+    <ResponsiveModalRoot open={open} onOpenChange={onOpenChange}>
+      <ResponsiveModalContent className="sm:max-w-[490px] p-5 gap-4">
         <DialogHeader className="space-y-1">
           <div className="flex items-center gap-2 text-foreground font-semibold">
             <div className="flex size-7 items-center justify-center rounded-md bg-primary/10 text-primary">
@@ -889,7 +891,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
             <span>{copiedLink ? 'Link Copiado!' : 'Copiar Link'}</span>
           </Button>
         </div>
-      </DialogContent>
-    </Dialog>
+      </ResponsiveModalContent>
+    </ResponsiveModalRoot>
   );
 };

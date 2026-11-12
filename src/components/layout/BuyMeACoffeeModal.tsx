@@ -2,13 +2,15 @@ import React, { useState, useEffect, useCallback } from 'react';
 import QRCode from 'qrcode';
 import { Coffee, Copy, Check, QrCode } from '@/components/ui/icons';
 import {
-  Dialog,
-  DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import {
+  ResponsiveModalRoot,
+  ResponsiveModalContent,
+} from '@/components/ui/responsive-modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -122,7 +124,7 @@ export const BuyMeACoffeeModal: React.FC<BuyMeACoffeeModalProps> = ({
   );
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <ResponsiveModalRoot open={open} onOpenChange={setOpen}>
       {!hideTrigger && (
         <Tooltip>
           <TooltipTrigger asChild>
@@ -134,7 +136,7 @@ export const BuyMeACoffeeModal: React.FC<BuyMeACoffeeModalProps> = ({
         </Tooltip>
       )}
 
-      <DialogContent className="max-w-[320px] p-5 gap-3.5">
+      <ResponsiveModalContent className="max-w-[320px] p-5 gap-3.5">
         <DialogHeader className="text-center sm:text-center items-center space-y-1">
           <div className="flex size-8 items-center justify-center rounded-lg border border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400 mb-0.5 shadow-2xs">
             <Coffee className="size-4" />
@@ -227,7 +229,7 @@ export const BuyMeACoffeeModal: React.FC<BuyMeACoffeeModalProps> = ({
             )}
           </Button>
         </div>
-      </DialogContent>
-    </Dialog>
+      </ResponsiveModalContent>
+    </ResponsiveModalRoot>
   );
 };

@@ -5,11 +5,13 @@ import {
   X
 } from '@/components/ui/icons';
 import {
-  Dialog,
-  DialogContent,
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
+import {
+  ResponsiveModalRoot,
+  ResponsiveModalContent,
+} from '@/components/ui/responsive-modal';
 import { Input } from '@/components/ui/input';
 
 interface KeyboardShortcutsModalProps {
@@ -127,8 +129,8 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
   }, [filteredShortcuts]);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[620px] max-h-[85vh] overflow-hidden flex flex-col p-0 rounded-2xl shadow-2xl border-border bg-card">
+    <ResponsiveModalRoot open={open} onOpenChange={onOpenChange}>
+      <ResponsiveModalContent className="sm:max-w-[620px] max-h-[85vh] overflow-hidden flex flex-col p-0 rounded-2xl shadow-2xl border-border bg-card">
         {/* Cabeçalho */}
         <div className="p-5 pb-3 border-b border-border space-y-3">
           <div className="flex items-center gap-3 pr-8">
@@ -216,7 +218,7 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
           <span>Pressione <kbd className="px-1 py-0.5 rounded bg-muted border border-border font-mono text-[10px] font-bold">?</kbd> em qualquer lugar do quadro para abrir</span>
           <span className="font-mono text-[10px]">Mirio Whiteboard</span>
         </div>
-      </DialogContent>
-    </Dialog>
+      </ResponsiveModalContent>
+    </ResponsiveModalRoot>
   );
 };

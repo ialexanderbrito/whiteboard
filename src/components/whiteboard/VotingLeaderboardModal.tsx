@@ -9,12 +9,14 @@ import {
 } from '@/components/ui/icons';
 import confetti from 'canvas-confetti';
 import {
-  Dialog,
-  DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
+import {
+  ResponsiveModalRoot,
+  ResponsiveModalContent,
+} from '@/components/ui/responsive-modal';
 import { Button } from '@/components/ui/button';
 import type { CanvasElement } from '@/types/element';
 import type { BoardVotingData } from '@/services/votingService';
@@ -185,8 +187,8 @@ export const VotingLeaderboardModal: React.FC<VotingLeaderboardModalProps> = ({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[460px] p-0 gap-0 rounded-2xl shadow-2xl border-border bg-card overflow-hidden">
+    <ResponsiveModalRoot open={open} onOpenChange={onOpenChange}>
+      <ResponsiveModalContent className="sm:max-w-[460px] p-0 gap-0 rounded-2xl shadow-2xl border-border bg-card overflow-hidden">
         {/* Cabeçalho compacto */}
         <DialogHeader className="flex-row items-center gap-3 p-5 pb-4 pr-12 border-b border-border/60 space-y-0">
           <div className="flex size-9 items-center justify-center rounded-xl bg-amber-500/15 text-amber-500 shrink-0">
@@ -367,7 +369,7 @@ export const VotingLeaderboardModal: React.FC<VotingLeaderboardModalProps> = ({
             </div>
           </div>
         )}
-      </DialogContent>
-    </Dialog>
+      </ResponsiveModalContent>
+    </ResponsiveModalRoot>
   );
 };

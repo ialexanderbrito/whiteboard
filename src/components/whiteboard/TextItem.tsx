@@ -1,8 +1,9 @@
-import React, { useRef, useMemo } from 'react';
+import React, { useRef, useMemo, useState } from 'react';
 import { Group, Text, Rect } from 'react-konva';
 import type Konva from 'konva';
 import type { CanvasElement } from '../../types/element';
 import { normalizeUrl } from '../../utils/textLinks';
+import { ElementReactionBadges } from './ElementReactionBadges';
 import {
   RICH_TEXT_FONT_FAMILY,
   getElementBaseStyle,
@@ -17,6 +18,8 @@ interface TextItemProps {
   remoteSelector?: { name: string; color: string };
   draggable?: boolean;
   canEdit?: boolean;
+  currentUserId?: string;
+  mirioReactionUnlocked?: boolean;
   onSelect: (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => void;
   onChange: (updates: Partial<CanvasElement>) => void;
   onStartEditing: (
@@ -30,6 +33,12 @@ interface TextItemProps {
     fontSize?: number,
     textColor?: string
   ) => void;
+  onToggleReaction?: (elementId: string, emoji: string) => void;
+  onOpenReactionPicker?: (
+    elementId: string,
+    anchor: { x: number; y: number },
+    mode?: 'picker' | 'overflow'
+  ) => void;
 }
 
 export const TextItem: React.FC<TextItemProps> = React.memo(({
@@ -40,9 +49,13 @@ export const TextItem: React.FC<TextItemProps> = React.memo(({
   remoteSelector,
   draggable,
   canEdit = true,
+  currentUserId,
+  mirioReactionUnlocked = false,
   onSelect,
   onChange,
   onStartEditing,
+  onToggleReaction,
+  onOpenReactionPicker,
 }) => {
   const groupRef = useRef<Konva.Group>(null);
   const text = element.text || '';
@@ -91,6 +104,8 @@ export const TextItem: React.FC<TextItemProps> = React.memo(({
   );
 
   const textHeight = layout.height;
+
+  const [isHoveredLocal, setIsHoveredLocal] = useState(false);
 
   const handleDblClick = () => {
     if (!canEdit) return;
@@ -159,6 +174,8 @@ export const TextItem: React.FC<TextItemProps> = React.memo(({
       onTap={onSelect}
       onDblClick={handleDblClick}
       onDblTap={handleDblClick}
+      onMouseEnter={() => setIsHoveredLocal(true)}
+      onMouseLeave={() => setIsHoveredLocal(false)}
       onDragStart={() => {
         isDraggingRef.current = true;
       }}
@@ -278,6 +295,20 @@ export const TextItem: React.FC<TextItemProps> = React.memo(({
           );
         })}
       </Group>
+
+      {/* Badges de reações estilo Miro ancorados na borda inferior */}
+      <ElementReactionBadges
+        element={element}
+        localLeftX={0}
+        localBottomY={textHeight}
+        availableWidth={width}
+        currentUserId={currentUserId}
+        canEdit={canEdit}
+        mirioReactionUnlocked={mirioReactionUnlocked}
+        isHovered={isHoveredLocal}
+        onToggleReaction={onToggleReaction}
+        onOpenReactionPicker={onOpenReactionPicker}
+      />
 
       {/* Tag do colega que está com o texto selecionado */}
       {remoteSelector && (

@@ -4,6 +4,7 @@ import type Konva from 'konva';
 import type { CanvasElement } from '../../types/element';
 import { getAppleEmojiUrl } from '../../utils/appleEmoji';
 import { isCoarseOrMobileViewport } from '../../utils/viewport';
+import { ElementReactionBadges } from './ElementReactionBadges';
 
 interface StickerItemProps {
   element: CanvasElement;
@@ -11,8 +12,16 @@ interface StickerItemProps {
   userSelectionColor?: string;
   remoteSelector?: { name: string; color: string };
   draggable?: boolean;
+  currentUserId?: string;
+  mirioReactionUnlocked?: boolean;
   onSelect: (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => void;
   onChange: (updates: Partial<CanvasElement>) => void;
+  onToggleReaction?: (elementId: string, emoji: string) => void;
+  onOpenReactionPicker?: (
+    elementId: string,
+    anchor: { x: number; y: number },
+    mode?: 'picker' | 'overflow'
+  ) => void;
 }
 
 // Cache global de imagens e emojis da Apple para carregamento e renderização instantânea
@@ -24,8 +33,12 @@ export const StickerItem: React.FC<StickerItemProps> = React.memo(({
   userSelectionColor = '#0284c7',
   remoteSelector,
   draggable,
+  currentUserId,
+  mirioReactionUnlocked = false,
   onSelect,
   onChange,
+  onToggleReaction,
+  onOpenReactionPicker,
 }) => {
   const groupRef = useRef<Konva.Group>(null);
 
@@ -33,6 +46,8 @@ export const StickerItem: React.FC<StickerItemProps> = React.memo(({
   const height = element.height || 120;
   const isGif = element.type === 'gif';
   const isItemDraggable = draggable !== undefined ? draggable && !element.locked : !element.locked;
+
+  const [isHoveredLocal, setIsHoveredLocal] = useState(false);
 
   // Se o sticker for um emoji puro ou não tiver src explícito, resolve a URL da Apple
   const resolvedSrc = element.src || (element.text ? getAppleEmojiUrl(element.text) : '');
@@ -97,12 +112,14 @@ export const StickerItem: React.FC<StickerItemProps> = React.memo(({
         onSelect(e);
       }}
       onMouseEnter={(e) => {
+        setIsHoveredLocal(true);
         if (element.linkUrl) {
           const stage = e.target.getStage();
           if (stage) stage.container().style.cursor = 'pointer';
         }
       }}
       onMouseLeave={(e) => {
+        setIsHoveredLocal(false);
         if (element.linkUrl) {
           const stage = e.target.getStage();
           if (stage) stage.container().style.cursor = 'default';
@@ -229,6 +246,20 @@ export const StickerItem: React.FC<StickerItemProps> = React.memo(({
           />
         </Group>
       )}
+
+      {/* Badges de reações estilo Miro ancorados na borda inferior */}
+      <ElementReactionBadges
+        element={element}
+        localLeftX={0}
+        localBottomY={height}
+        availableWidth={width}
+        currentUserId={currentUserId}
+        canEdit
+        mirioReactionUnlocked={mirioReactionUnlocked}
+        isHovered={isHoveredLocal}
+        onToggleReaction={onToggleReaction}
+        onOpenReactionPicker={onOpenReactionPicker}
+      />
 
       {/* Badge Flutuante de Link Estilo Miro em Stickers */}
       {element.linkUrl && (

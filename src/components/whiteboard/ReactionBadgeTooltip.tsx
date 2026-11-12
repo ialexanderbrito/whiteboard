@@ -1,17 +1,19 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { CanvasElement } from '../../types/element';
+import { getContrastTextColor } from '../../utils/colors';
 import {
   formatReactionVotersText,
   subscribeReactionTooltip,
   type ReactionBadgeHoverData,
 } from '../../utils/reactionTooltip';
-import { getReactionImageUrl } from '../../utils/mirioReaction';
 import { getViewport, subscribeViewport, type ViewportState } from '../../utils/viewport';
 
 interface ReactionBadgeTooltipProps {
   elements: CanvasElement[];
   currentUserId?: string;
   resolveUserName: (userId: string) => string;
+  resolveUserPhoto?: (userId: string) => string | null;
+  resolveUserColor?: (userId: string) => string | null;
 }
 
 // Janela de tempo (ms) para abrir instantaneamente ao passar de um badge para o próximo
@@ -24,6 +26,8 @@ export const ReactionBadgeTooltip: React.FC<ReactionBadgeTooltipProps> = React.m
   elements,
   currentUserId,
   resolveUserName,
+  resolveUserPhoto,
+  resolveUserColor,
 }) => {
   const [target, setTarget] = useState<ReactionBadgeHoverData | null>(null);
   const [isVisible, setIsVisible] = useState(false);
@@ -115,8 +119,9 @@ export const ReactionBadgeTooltip: React.FC<ReactionBadgeTooltipProps> = React.m
       const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1200;
       const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 900;
 
-      // Estimativa da altura do tooltip (linha simples ou dupla)
-      const estimatedHeight = 36;
+      // Estimativa da altura do tooltip: nomes empilhados, um por linha
+      const usersCount = Math.max(1, activeTargetRef.current.users.length);
+      const estimatedHeight = 26 + usersCount * 17;
       // Usuário escolheu: abaixo por padrão; se não couber na viewport, abre acima
       const hasSpaceBelow = screenBottomY + estimatedHeight + 14 <= viewportHeight;
       const placeAbove = !hasSpaceBelow;
@@ -146,15 +151,14 @@ export const ReactionBadgeTooltip: React.FC<ReactionBadgeTooltipProps> = React.m
     return null;
   }
 
-  const { names, verb, emoji, isMirio, appleEmojiUrl } = formattedVoters;
-  const imageUrl = isMirio ? getReactionImageUrl(emoji) || appleEmojiUrl : appleEmojiUrl;
+  const { names } = formattedVoters;
 
   return (
     <div
       ref={tooltipRef}
       role="tooltip"
-      aria-label={`${names.join(', ')} ${verb} ${emoji}`}
-      className={`fixed z-50 pointer-events-none select-none max-w-[280px] sm:max-w-[340px] px-2.5 py-1.5 rounded-lg text-xs leading-snug border shadow-xl backdrop-blur-md bg-slate-900/95 text-slate-100 border-slate-700/60 dark:bg-card/95 dark:text-foreground dark:border-border/80 transition-[opacity,transform] duration-150 ${
+      aria-label={names.join(', ')}
+      className={`fixed z-50 pointer-events-none select-none max-w-[280px] sm:max-w-[340px] min-w-[64px] px-3 py-2 rounded-xl text-xs leading-snug border shadow-xl backdrop-blur-md bg-card/95 text-foreground border-border/80 transition-[opacity,transform] duration-150 ${
         placement === 'above' ? 'origin-bottom' : 'origin-top'
       } ${
         isVisible
@@ -167,46 +171,48 @@ export const ReactionBadgeTooltip: React.FC<ReactionBadgeTooltipProps> = React.m
         transitionTimingFunction: 'cubic-bezier(0.23, 1, 0.32, 1)',
       }}
     >
-      <div className="flex items-center justify-center flex-wrap gap-x-1 text-center font-normal">
-        {/* Lista fluida de nomes destacados em negrito com separadores elegantes */}
-        {names.map((name, index) => {
-          const isLast = index === names.length - 1;
-          const isSecondToLast = index === names.length - 2;
+      {/* Lista vertical de participantes: foto + nome por linha, alinhado à esquerda, sem verbo nem emoji */}
+      <div className="flex flex-col items-start gap-1 text-left">
+        {activeUsers.map((userId, index) => {
+          const photo = resolveUserPhoto?.(userId) || null;
+          const color = resolveUserColor?.(userId) || null;
+          const name = resolveUserName(userId);
+          const initialsColor = color ? getContrastTextColor(color, '#0f172a', '#ffffff') : null;
 
           return (
-            <React.Fragment key={`${name}-${index}`}>
-              <strong className="font-semibold text-white dark:text-foreground">
-                {name}
-              </strong>
-              {!isLast && (
-                <span className="text-slate-400 dark:text-muted-foreground">
-                  {isSecondToLast ? ' e' : ','}
+            <div
+              key={`${userId}-${index}`}
+              className="flex items-center gap-1.5 min-w-0"
+            >
+              {photo ? (
+                <img
+                  src={photo}
+                  alt=""
+                  className="size-4 shrink-0 rounded-full object-cover"
+                  style={color ? { boxShadow: `0 0 0 1.5px ${color}` } : undefined}
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                  }}
+                />
+              ) : (
+                <span
+                  aria-hidden="true"
+                  className="flex size-4 shrink-0 items-center justify-center rounded-full text-[8px] font-bold uppercase leading-none"
+                  style={
+                    color
+                      ? { backgroundColor: color, color: initialsColor || '#ffffff' }
+                      : undefined
+                  }
+                >
+                  {name.charAt(0)}
                 </span>
               )}
-            </React.Fragment>
+              <strong className="font-semibold text-foreground leading-tight truncate">
+                {name}
+              </strong>
+            </div>
           );
         })}
-
-        {/* Verbo concordando (reagiu com / reagiram com) */}
-        <span className="text-slate-300 dark:text-muted-foreground ml-0.5">
-          {verb}
-        </span>
-
-        {/* Emoji visual estilizado (Apple Emoji ou Mirio) */}
-        <span className="inline-flex items-center align-middle ml-1">
-          <img
-            src={imageUrl}
-            alt={isMirio ? 'Mirio' : emoji}
-            className="size-4 object-contain drop-shadow-xs"
-            onError={(e) => {
-              // Fallback para o caractere de emoji nativo se a imagem falhar
-              e.currentTarget.style.display = 'none';
-              const fallbackSpan = e.currentTarget.nextElementSibling as HTMLElement | null;
-              if (fallbackSpan) fallbackSpan.style.display = 'inline';
-            }}
-          />
-          <span className="hidden text-xs">{emoji}</span>
-        </span>
       </div>
     </div>
   );
