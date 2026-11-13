@@ -5,6 +5,7 @@ import type { CanvasElement } from '../../types/element';
 import { extractAllLinks, stripMarkdownLinks, layoutFormattedWords, normalizeUrl } from '../../utils/textLinks';
 import { getContrastTextColor } from '../../utils/colors';
 import { isCoarseOrMobileViewport } from '../../utils/viewport';
+import { useTheme } from '../../context/ThemeContext';
 import {
   isMirioReaction,
   loadMirioReactionImage,
@@ -79,6 +80,8 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
   const textColor = element.textColor || defaultTextColor;
   const isDarkFill = defaultTextColor === '#ffffff';
   const linkColor = isDarkFill ? '#60a5fa' : '#1d4ed8';
+  // Badges de reação seguem o tema do app (padronizado em todos os elementos)
+  const { isDark: isDarkTheme } = useTheme();
 
   // Formatação tipográfica
   const isBold = element.fontWeight === 'bold';
@@ -156,19 +159,31 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
 
   const handleMouseLeave = (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
     const stage = e.target.getStage();
-    const pointer = stage?.getPointerPosition();
-    if (!pointer || !groupRef.current) {
+    if (!stage || !groupRef.current) {
       setIsHoveredLocal(false);
       onHover?.(false);
       return;
     }
-    const transform = groupRef.current.getAbsoluteTransform().copy().invert();
-    const local = transform.point(pointer);
-    // Inclui a extensão das pílulas na base (que avançam até height + 14)
-    if (local.x < 0 || local.x > width || local.y < 0 || local.y > height + 14) {
+    const pointer = stage.getPointerPosition();
+    if (!pointer) {
       setIsHoveredLocal(false);
       onHover?.(false);
+      return;
     }
+    // Mantém o hover apenas se o ponteiro ainda estiver sobre um filho deste
+    // grupo (ex.: as pílulas de reação, que avançam além da borda). Sem essa
+    // checagem o hover "pisca" ao passar sobre shapes com listening=false.
+    // A checagem por delimitação geométrica (0..width) foi substituída porque
+    // ela mantinha o hover "preso" quando outro elemento sobreposto (sticker/
+    // GIF) cobria o post-it, renderizando dois botões '+' ao mesmo tempo.
+    const intersection = stage.getIntersection(pointer);
+    let node: Konva.Node | null = intersection ? intersection.getParent() : null;
+    while (node) {
+      if (node === groupRef.current) return;
+      node = node.getParent();
+    }
+    setIsHoveredLocal(false);
+    onHover?.(false);
   };
 
   // Processa reações ativas no post-it
@@ -489,26 +504,26 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
             const isLocked = isMirio && !mirioReactionUnlocked;
 
             const badgeFill = hasUserReacted
-              ? isDarkFill
+              ? isDarkTheme
                 ? 'rgba(22, 101, 52, 0.85)'
                 : '#ecfdf5'
-              : isDarkFill
+              : isDarkTheme
               ? 'rgba(30, 41, 59, 0.95)'
               : '#ffffff';
 
             const badgeStroke = hasUserReacted
-              ? isDarkFill
+              ? isDarkTheme
                 ? '#4ade80'
                 : '#10b981'
-              : isDarkFill
+              : isDarkTheme
               ? 'rgba(255, 255, 255, 0.20)'
               : 'rgba(0, 0, 0, 0.12)';
 
             const countColor = hasUserReacted
-              ? isDarkFill
+              ? isDarkTheme
                 ? '#86efac'
                 : '#065f46'
-              : isDarkFill
+              : isDarkTheme
               ? '#f8fafc'
               : '#334155';
 
@@ -655,8 +670,8 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
               <Rect
                 width={26}
                 height={footerBadgesLayout.height}
-                fill={isDarkFill ? 'rgba(30, 41, 59, 0.95)' : '#ffffff'}
-                stroke={isDarkFill ? 'rgba(255, 255, 255, 0.20)' : 'rgba(0, 0, 0, 0.12)'}
+                fill={isDarkTheme ? 'rgba(30, 41, 59, 0.95)' : '#ffffff'}
+                stroke={isDarkTheme ? 'rgba(255, 255, 255, 0.20)' : 'rgba(0, 0, 0, 0.12)'}
                 strokeWidth={1}
                 cornerRadius={11}
                 shadowEnabled={shadowsEnabled}
@@ -674,7 +689,7 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
                 align="center"
                 fontSize={10}
                 fontStyle="bold"
-                fill={isDarkFill ? '#f8fafc' : '#475569'}
+                fill={isDarkTheme ? '#f8fafc' : '#475569'}
                 fontFamily="system-ui, -apple-system, sans-serif"
                 listening={false}
               />
@@ -719,8 +734,8 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
               <Rect
                 width={22}
                 height={footerBadgesLayout.height}
-                fill={isDarkFill ? 'rgba(30, 41, 59, 0.95)' : '#ffffff'}
-                stroke={isDarkFill ? 'rgba(255, 255, 255, 0.20)' : 'rgba(0, 0, 0, 0.12)'}
+                fill={isDarkTheme ? 'rgba(30, 41, 59, 0.95)' : '#ffffff'}
+                stroke={isDarkTheme ? 'rgba(255, 255, 255, 0.20)' : 'rgba(0, 0, 0, 0.12)'}
                 strokeWidth={1}
                 cornerRadius={11}
                 shadowEnabled={shadowsEnabled}
@@ -738,7 +753,7 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
                 align="center"
                 fontSize={13}
                 fontStyle="bold"
-                fill={isDarkFill ? '#94a3b8' : '#64748b'}
+                fill={isDarkTheme ? '#94a3b8' : '#64748b'}
                 fontFamily="system-ui, -apple-system, sans-serif"
                 listening={false}
               />
@@ -786,8 +801,8 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
           <Rect
             width={24}
             height={22}
-            fill={isDarkFill ? 'rgba(30, 41, 59, 0.92)' : 'rgba(255, 255, 255, 0.96)'}
-            stroke={isDarkFill ? 'rgba(255, 255, 255, 0.22)' : 'rgba(0, 0, 0, 0.14)'}
+            fill={isDarkTheme ? 'rgba(30, 41, 59, 0.92)' : 'rgba(255, 255, 255, 0.96)'}
+            stroke={isDarkTheme ? 'rgba(255, 255, 255, 0.22)' : 'rgba(0, 0, 0, 0.14)'}
             strokeWidth={1}
             cornerRadius={11}
             shadowEnabled={shadowsEnabled}
@@ -805,7 +820,7 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
             align="center"
             fontSize={13}
             fontStyle="bold"
-            fill={isDarkFill ? '#94a3b8' : '#64748b'}
+            fill={isDarkTheme ? '#94a3b8' : '#64748b'}
             fontFamily="system-ui, -apple-system, sans-serif"
             listening={false}
           />

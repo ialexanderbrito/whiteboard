@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Group, Rect, Text, Image as KonvaImage } from 'react-konva';
 import type { CanvasElement } from '../../types/element';
-import { getContrastTextColor } from '../../utils/colors';
 import { isCoarseOrMobileViewport } from '../../utils/viewport';
+import { useTheme } from '../../context/ThemeContext';
 import {
   isMirioReaction,
   loadMirioReactionImage,
@@ -108,9 +108,9 @@ export const ElementReactionBadges: React.FC<ElementReactionBadgesProps> = React
 
   const shadowsEnabled = !isCoarseOrMobileViewport();
 
-  // Paleta com base no preenchimento do elemento (post-it usa a mesma lógica)
-  const defaultTextColor = getContrastTextColor(element.fill || '#ffffff', '#0f172a', '#ffffff');
-  const isDarkFill = defaultTextColor === '#ffffff';
+  // Paleta padronizada: sempre segue o tema do app (claro = pílula branca,
+  // escuro = pílula slate), independente da cor de fundo do elemento.
+  const { isDark: isDarkFill } = useTheme();
 
   // Layout das pílulas ancoradas na borda inferior externa estilo Miro
   const badgesLayout = useMemo(() => {
@@ -163,7 +163,9 @@ export const ElementReactionBadges: React.FC<ElementReactionBadgesProps> = React
       curX += OVERFLOW_WIDTH + GAP;
     }
 
-    const plusButtonX = canEdit ? curX : null;
+    // O '+' da fileira só aparece quando há reações (o hover '+' cobre o estado vazio,
+    // evitando dois botões sobrepostos quando o elemento está em hover sem reações)
+    const plusButtonX = canEdit && hasReactions ? curX : null;
 
     return {
       badges: positioned,
@@ -172,7 +174,7 @@ export const ElementReactionBadges: React.FC<ElementReactionBadgesProps> = React
       plusButtonX,
       y: Math.round(localBottomY - BADGE_HEIGHT / 2),
     };
-  }, [activeReactions, availableWidth, localBottomY, localLeftX, canEdit]);
+  }, [activeReactions, availableWidth, localBottomY, localLeftX, canEdit, hasReactions]);
 
   if (!hasReactions && !isHovered) return null;
 
