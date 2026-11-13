@@ -1480,10 +1480,10 @@ export const BoardPage: React.FC = () => {
     return <NotFoundPage requestedBoardId={boardId} />;
   }
 
-  // Se o usuário acessou o link do quadro sem estar logado, redireciona para a tela global única de login
+  // Se o usuário acessou o link do quadro sem estar logado, mostra a tela de CONVITE
+  // (experiência própria de ingresso, distinta da tela de login comum)
   if (!currentUser) {
-    const returnUrl = `/b/${cleanBoardId(boardId || '')}`;
-    return <Navigate to={`/login?redirect=${encodeURIComponent(returnUrl)}`} replace />;
+    return <Navigate to={`/invite/${cleanBoardId(boardId || '')}`} replace />;
   }
 
   // Se o quadro ainda está carregando do Firestore ou banco local

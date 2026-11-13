@@ -95,6 +95,6 @@ test('Single Global Login: LoginPage is minimal and BoardPage redirects unauthen
 
   const boardPath = path.resolve('src/pages/BoardPage.tsx');
   const boardContent = fs.readFileSync(boardPath, 'utf-8');
-  assert.ok(boardContent.includes('<Navigate to={`/login?redirect='), 'BoardPage must redirect unauthenticated users to global login');
+  assert.ok(boardContent.includes('<Navigate to={`/invite/'), 'BoardPage must redirect unauthenticated users to the dedicated invite screen');
   assert.ok(!boardContent.includes('<AuthCard'), 'BoardPage must not render a duplicate inline AuthCard');
 });

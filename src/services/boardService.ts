@@ -34,6 +34,16 @@ export interface CreateBoardOptions {
 const LOCAL_BOARDS_KEY = 'mirio_local_boards';
 const BOARDS_CHANNEL_NAME = 'mirio_boards_channel';
 const VISITED_BOARDS_PREFIX = 'mirio_visited_boards_';
+const INVITES_COLLECTION = 'invites';
+
+/** Snapshot público e seguro do convite: só dados não sensíveis (nunca senha, membros ou permissões) */
+export interface BoardInviteSnapshot {
+  boardId: string;
+  title: string;
+  ownerName: string;
+  ownerId: string;
+  updatedAt: number;
+}
 
 // Callbacks locais para sincronização de abas
 const localSubscribers = new Set<() => void>();
@@ -134,6 +144,63 @@ export const boardService = {
   recordVisitedBoard,
   removeVisitedBoard,
 
+  /**
+   * Sobe (ou atualiza) o snapshot público do convite em /invites/{boardId}:
+   * contém APENAS título e nome do proprietário — dados suficientes para a
+   * tela de convite pré-login, sem expor senha (hash), membros ou permissões.
+   */
+  async syncInviteSnapshot(
+    board: Pick<Board, 'id' | 'title' | 'ownerId' | 'ownerName'>
+  ): Promise<void> {
+    const boardId = cleanBoardId(board.id);
+    if (!boardId) return;
+
+    const snapshot: BoardInviteSnapshot = {
+      boardId,
+      title: board.title || 'Quadro sem título',
+      ownerName: board.ownerName || 'Usuário',
+      ownerId: board.ownerId,
+      updatedAt: Date.now(),
+    };
+
+    if (!isFirebaseConfigured || !db) {
+      localStorage.setItem(`mirio_invite_snapshot_${boardId}`, JSON.stringify(snapshot));
+      return;
+    }
+
+    try {
+      await setDoc(doc(db, INVITES_COLLECTION, boardId), snapshot);
+    } catch {
+      // Best-effort: a falha de escrita do snapshot não deve quebrar o fluxo principal
+    }
+  },
+
+  /** Lê o snapshot público do convite (permitido sem autenticação pelas regras do Firestore) */
+  async getInviteSnapshot(rawBoardId: string): Promise<BoardInviteSnapshot | null> {
+    const boardId = cleanBoardId(rawBoardId);
+    if (!boardId) return null;
+
+    if (!isFirebaseConfigured || !db) {
+      try {
+        const raw = localStorage.getItem(`mirio_invite_snapshot_${boardId}`);
+        return raw ? (JSON.parse(raw) as BoardInviteSnapshot) : null;
+      } catch {
+        return null;
+      }
+    }
+
+    try {
+      const snap = await getDoc(doc(db, INVITES_COLLECTION, boardId));
+      if (!snap.exists()) return null;
+      const data = snap.data() as BoardInviteSnapshot;
+      // Defesa extra: nunca retorna snapshot de outro quadro
+      if (data?.boardId !== boardId) return null;
+      return data;
+    } catch {
+      return null;
+    }
+  },
+
   async createBoard(titleOrOptions: string | CreateBoardOptions, user: CurrentUser): Promise<string> {
     const isOptions = typeof titleOrOptions !== 'string';
     const options: CreateBoardOptions = isOptions ? titleOrOptions : { title: titleOrOptions };
@@ -174,11 +241,14 @@ export const boardService = {
       local.unshift(newBoard);
       localStorage.setItem(LOCAL_BOARDS_KEY, JSON.stringify(local));
       notifyLocalSubscribers();
+      await this.syncInviteSnapshot(newBoard);
       return boardId;
     }
 
     const boardRef = doc(db, 'boards', boardId);
     await setDoc(boardRef, newBoard);
+    // Snapshot público do convite (título + dono) para a tela de convite pré-login
+    await this.syncInviteSnapshot(newBoard);
     return boardId;
   },
 
@@ -624,6 +694,17 @@ export const boardService = {
       title,
       updatedAt: Date.now(),
     });
+
+    // Mantém o snapshot público do convite em sincronia com o título (best-effort:
+    // se quem renomeou não é o proprietário, a escrita falha silenciosamente)
+    try {
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        await this.syncInviteSnapshot(snap.data() as Board);
+      }
+    } catch {
+      // Snapshot do convite é opcional; a renomeação principal já foi concluída
+    }
   },
 
   async updateBoardSettings(

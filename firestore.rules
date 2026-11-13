@@ -68,5 +68,15 @@ service cloud.firestore {
         );
       }
     }
+    // Snapshot público do convite (/invites/{boardId}):
+    // contém APENAS título e nome do proprietário (nunca senha, membros ou permissões).
+    // Leitura pública alimenta a tela de convite de quem ainda não está autenticado.
+    match /invites/{boardId} {
+      allow read: if true;
+
+      // Escrita: apenas o próprio proprietário do quadro pode criar/atualizar/remover
+      allow create: if isAuthenticated() && request.resource.data.ownerId == request.auth.uid;
+      allow update, delete: if isAuthenticated() && resource.data.ownerId == request.auth.uid;
+    }
   }
 }

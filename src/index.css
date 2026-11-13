@@ -1089,6 +1089,32 @@ html, body {
   animation: notfound-dash-flow 1.4s linear infinite;
 }
 
+/* Convite: fluxo de dash "vaga reservada" no conector da vitrine de convite */
+@keyframes invite-dash-flow {
+  to {
+    stroke-dashoffset: -32;
+  }
+}
+.animate-invite-dash-flow {
+  animation: invite-dash-flow 1.4s linear infinite;
+}
+
+/* Convite: revelação escalonada da página (chip, título, palco, barra de entrada) */
+@keyframes invite-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-invite-reveal {
+  opacity: 0;
+  animation: invite-reveal 420ms cubic-bezier(0.23, 1, 0.32, 1) forwards;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-mirio-beam {
     animation: pulse-slow 2s ease-in-out infinite;
@@ -1126,8 +1152,16 @@ html, body {
   .animate-login-chat-camila,
   .animate-login-ripple-camila,
   .animate-local-reaction-pop,
-  .animate-notfound-dash-flow {
+  .animate-notfound-dash-flow,
+  .animate-invite-dash-flow {
     animation: none !important;
+  }
+
+  /* Reveals do convite: sem movimento, mas o conteúdo permanece visível */
+  .animate-invite-reveal {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
   }
 }
 
