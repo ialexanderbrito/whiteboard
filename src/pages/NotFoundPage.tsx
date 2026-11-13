@@ -5,6 +5,7 @@ import { boardService } from '../services/boardService';
 import { MirioLogo } from '@/components/layout/MirioLogo';
 import { ThemeToggle } from '@/components/layout/ThemeToggle';
 import { BuyMeACoffeeModal } from '@/components/layout/BuyMeACoffeeModal';
+import { NotFoundBoardShowcase } from '@/components/whiteboard/NotFoundBoardShowcase';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { 
@@ -13,12 +14,6 @@ import {
   Copy, 
   Check, 
   Compass, 
-  MousePointer, 
-  StickyNote, 
-  Shapes, 
-  PenTool, 
-  Search, 
-  Radio, 
   Layers, 
   ShieldCheck, 
   Sparkles,
@@ -156,114 +151,8 @@ export const NotFoundPage: React.FC<NotFoundPageProps> = ({
               </p>
             </div>
 
-            {/* Stage Visual Monocromático (Estilo Linear / Wireframe Arquitetural) */}
-            <div className="relative rounded-xl border border-border/80 bg-card/40 backdrop-blur-sm p-6 overflow-hidden min-h-[380px] flex items-center justify-center">
-              
-              {/* Barra de Ferramentas Minimalista no Topo */}
-              <div className="absolute top-3 left-1/2 -translate-x-1/2 flex items-center gap-1 rounded-lg border border-border bg-background/90 px-2 py-1 shadow-2xs backdrop-blur-md z-20">
-                <div className="flex size-6 items-center justify-center rounded bg-foreground text-background">
-                  <MousePointer className="size-3" />
-                </div>
-                <div className="flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted">
-                  <StickyNote className="size-3" />
-                </div>
-                <div className="flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted">
-                  <Shapes className="size-3" />
-                </div>
-                <div className="flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted">
-                  <PenTool className="size-3" />
-                </div>
-                <div className="flex size-6 items-center justify-center rounded text-destructive hover:bg-destructive/10">
-                  <Search className="size-3" />
-                </div>
-              </div>
-
-              {/* CARD 1: Nota Adesiva Fantasma com Borda Tracejada (Wireframe Arquitetural) */}
-              <div 
-                className="absolute left-8 top-16 w-64 p-4 rounded-lg border-2 border-dashed border-border/80 bg-background/90 text-foreground shadow-xs select-none backdrop-blur-xs"
-              >
-                <div className="flex items-center justify-between pb-2 border-b border-border/60">
-                  <span className="text-[11px] font-mono font-semibold tracking-tight text-foreground flex items-center gap-1.5">
-                    <Radio className="size-3 text-destructive animate-pulse" />
-                    <span>00 // GHOST_CANVAS</span>
-                  </span>
-                  <span className="text-[9px] font-mono px-1.5 py-0.5 rounded border border-destructive/30 bg-destructive/10 text-destructive font-medium">
-                    ERR_404
-                  </span>
-                </div>
-                <div className="pt-2.5 flex flex-col gap-1.5 text-xs font-mono text-muted-foreground">
-                  <div className="flex items-center gap-1.5 text-foreground">
-                    <span className="text-destructive">[✕]</span>
-                    <span className="truncate max-w-[170px]">{requestedBoardId || 'rota_desconhecida'}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-muted-foreground">
-                    <span>[!]</span>
-                    <span>0 elementos Konva</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-foreground">
-                    <span className="text-emerald-500">[✓]</span>
-                    <span>Workspace seguro</span>
-                  </div>
-                </div>
-                <div className="pt-3 flex items-center justify-between text-[10px] font-mono text-muted-foreground border-t border-border/40 mt-2">
-                  <span>STATUS: OFF-GRID</span>
-                  <span className="text-foreground font-semibold">0 FPS</span>
-                </div>
-              </div>
-
-              {/* Conector Linha SVG Minimalista Tracejada */}
-              <svg className="absolute inset-0 pointer-events-none w-full h-full stroke-muted-foreground/30 stroke-1" fill="none">
-                <path d="M 290 150 C 350 150, 320 230, 380 230" strokeDasharray="3 3" />
-              </svg>
-
-              {/* CARD 2: Retículo do Radar de Diagnóstico */}
-              <div 
-                className="absolute right-8 bottom-12 w-60 p-3.5 rounded-lg border border-border bg-muted/40 text-foreground shadow-xs select-none backdrop-blur-xs"
-              >
-                <div className="flex items-center justify-between pb-1.5 border-b border-border/60">
-                  <span className="text-[11px] font-mono font-semibold tracking-tight flex items-center gap-1.5">
-                    <Compass className="size-3 text-foreground" />
-                    <span>01 // DIAGNOSTIC_SYS</span>
-                  </span>
-                  <span className="text-[9px] font-mono px-1.5 py-0.5 rounded border border-border bg-background text-muted-foreground">
-                    radar.core
-                  </span>
-                </div>
-                <p className="pt-2 text-xs font-mono text-muted-foreground leading-relaxed">
-                  Varredura completa em 360°. Nenhum documento ou membro associado a este ID.
-                </p>
-                <div className="pt-2 text-[9px] font-mono text-foreground flex items-center justify-between border-t border-border/40 mt-1">
-                  <span>COORDENADA: (Ø, Ø)</span>
-                  <span className="size-1.5 rounded-full bg-destructive" />
-                </div>
-              </div>
-
-              {/* CURSORES MINIMALISTAS PRETO E BRANCO PROCURANDO NO CANVAS */}
-              {/* Cursor 1: Alexander procurando */}
-              <div className="absolute left-64 top-10 z-20 pointer-events-none animate-float">
-                <div className="flex items-center gap-1.5">
-                  <svg className="size-3.5 text-foreground fill-current" viewBox="0 0 24 24">
-                    <path d="M4.5 3l15 15h-6.5l-3.5 6-2-1 3.5-6H4.5L4.5 3z" />
-                  </svg>
-                  <span className="rounded border border-border bg-foreground px-1.5 py-0.5 text-[9px] font-mono font-medium text-background">
-                    alexander: "onde foi parar?"
-                  </span>
-                </div>
-              </div>
-
-              {/* Cursor 2: Radar Bot */}
-              <div className="absolute right-36 top-36 z-20 pointer-events-none animate-float-delayed">
-                <div className="flex items-center gap-1.5">
-                  <svg className="size-3.5 text-muted-foreground fill-current" viewBox="0 0 24 24">
-                    <path d="M4.5 3l15 15h-6.5l-3.5 6-2-1 3.5-6H4.5L4.5 3z" />
-                  </svg>
-                  <span className="rounded border border-border bg-background px-1.5 py-0.5 text-[9px] font-mono font-medium text-foreground">
-                    radar_bot: "canvas vazio"
-                  </span>
-                </div>
-              </div>
-
-            </div>
+            {/* Vitrine Interativa: o Time Procurando o Quadro Perdido (mesma linguagem do login) */}
+            <NotFoundBoardShowcase requestedBoardId={requestedBoardId} />
 
             {/* Métricas Minimalistas de Infraestrutura (Desktop) */}
             <div className="grid grid-cols-3 gap-2.5 pt-1">

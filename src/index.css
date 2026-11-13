@@ -1079,6 +1079,16 @@ html, body {
   will-change: transform, opacity;
 }
 
+/* 404: fluxo de dash "procurando" no conector da vitrine do quadro perdido */
+@keyframes notfound-dash-flow {
+  to {
+    stroke-dashoffset: -32;
+  }
+}
+.animate-notfound-dash-flow {
+  animation: notfound-dash-flow 1.4s linear infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-mirio-beam {
     animation: pulse-slow 2s ease-in-out infinite;
@@ -1115,7 +1125,8 @@ html, body {
   .animate-login-cursor-camila,
   .animate-login-chat-camila,
   .animate-login-ripple-camila,
-  .animate-local-reaction-pop {
+  .animate-local-reaction-pop,
+  .animate-notfound-dash-flow {
     animation: none !important;
   }
 }
