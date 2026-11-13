@@ -3076,10 +3076,12 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
                 <DropdownMenuItem onClick={() => onReorderLayer('bringToFront')} className="gap-2 text-xs cursor-pointer">
                   <BringToFront className="size-3.5" />
                   Trazer para frente
+                  <kbd className="ml-auto text-[10px] text-muted-foreground font-mono">]</kbd>
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => onReorderLayer('sendToBack')} className="gap-2 text-xs cursor-pointer">
                   <SendToBack className="size-3.5" />
                   Enviar para trás
+                  <kbd className="ml-auto text-[10px] text-muted-foreground font-mono">[</kbd>
                 </DropdownMenuItem>
               </>
             )}
