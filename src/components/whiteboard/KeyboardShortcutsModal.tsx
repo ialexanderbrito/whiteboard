@@ -51,6 +51,8 @@ const SHORTCUTS: ShortcutItem[] = [
   { keys: ['Del'], description: 'Excluir elementos selecionados', category: 'edit' },
   { keys: ['Ctrl', 'A'], description: 'Selecionar todos os elementos', category: 'edit' },
   { keys: ['Ctrl', 'Shift', 'L'], description: 'Bloquear / Desbloquear seleção', category: 'edit' },
+  { keys: [']'], description: 'Trazer para o extremo da frente', category: 'edit' },
+  { keys: ['['], description: 'Enviar para o fundo da pilha', category: 'edit' },
   { keys: ['Alt', 'A'], description: 'Alinhar seleção à esquerda', category: 'edit' },
   { keys: ['Alt', 'H'], description: 'Centralizar seleção horizontalmente', category: 'edit' },
   { keys: ['Alt', 'D'], description: 'Alinhar seleção à direita', category: 'edit' },

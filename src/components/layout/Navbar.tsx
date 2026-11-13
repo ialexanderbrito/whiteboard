@@ -7,7 +7,8 @@ import {
   MessageSquare,
   Search,
   Edit2,
-  UserPen
+  UserPen,
+  Layers
 } from '@/components/ui/icons';
 import type { Board, CurrentUser, UserPresence } from '../../types/board';
 import { Button } from '@/components/ui/button';
@@ -63,6 +64,8 @@ interface NavbarProps {
   onShareModalOpenChange?: (open: boolean) => void;
   isCoffeeModalOpen?: boolean;
   onCoffeeModalOpenChange?: (open: boolean) => void;
+  isLayersPanelOpen?: boolean;
+  onToggleLayersPanel?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = React.memo(({
@@ -105,6 +108,8 @@ export const Navbar: React.FC<NavbarProps> = React.memo(({
   onShareModalOpenChange: setControlledShareOpen,
   isCoffeeModalOpen: controlledCoffeeOpen,
   onCoffeeModalOpenChange: setControlledCoffeeOpen,
+  isLayersPanelOpen = false,
+  onToggleLayersPanel,
 }) => {
   const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -349,6 +354,27 @@ export const Navbar: React.FC<NavbarProps> = React.memo(({
             </div>
           )}
         </div>
+
+        {/* Painel de Camadas (toggle) */}
+        {onToggleLayersPanel && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Painel de Camadas"
+                onClick={onToggleLayersPanel}
+                className={`size-8 rounded-lg border border-border bg-background/80 dark:bg-card/80 backdrop-blur-md shadow-xs transition-[transform,background-color,border-color,color] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.97] text-muted-foreground hover:text-foreground hover:bg-muted/80 cursor-pointer ${
+                  isLayersPanelOpen ? 'bg-muted/90 border-foreground/30 text-foreground ring-1 ring-border' : ''
+                }`}
+              >
+                <Layers className="size-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Camadas</TooltipContent>
+          </Tooltip>
+        )}
 
         {/* Ferramentas de Colaboração & Facilitação (Timer, Votação, Apresentação, Reações) */}
         <FacilitationMenu

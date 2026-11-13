@@ -9,6 +9,7 @@ import type { CanvasElement, ToolType } from '../types/element';
 import type { SprintTemplate } from '../utils/sprintTemplates';
 import { generateTemplateElements } from '../utils/sprintTemplates';
 import { WhiteboardCanvas } from '../components/whiteboard/WhiteboardCanvas';
+import { LayersPanel } from '../components/whiteboard/LayersPanel';
 import { type GridType, type GridSize, DEFAULT_GRID_OPACITY } from '../components/whiteboard/CanvasGrid';
 import { Toolbar } from '../components/whiteboard/Toolbar';
 import { RemoteCursors } from '../components/whiteboard/RemoteCursors';
@@ -26,6 +27,7 @@ import { votingService, canEndVotingSession, type BoardVotingData, type VotingSe
 import { playChimeSound } from '../utils/audioChime';
 import { STICKY_COLORS } from '../utils/colors';
 import { alignElements, type AlignmentType } from '../utils/alignment';
+import { getNextZIndex } from '../utils/layerOrder';
 import { getUserBoardPermission, isBoardOwner, shouldShowWaitingRoom } from '../utils/permissions';
 import { verifyBoardPassword } from '../utils/security';
 import { WaitingRoomScreen } from '../components/whiteboard/WaitingRoomScreen';
@@ -218,6 +220,8 @@ export const BoardPage: React.FC = () => {
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   // Modal de Apoiar (PIX) disparado via Navbar ou Command K
   const [isCoffeeModalOpen, setIsCoffeeModalOpen] = useState(false);
+  // Painel de Camadas (desktop)
+  const [isLayersPanelOpen, setIsLayersPanelOpen] = useState(false);
 
   const { isDark, toggleTheme } = useTheme();
 
@@ -1213,7 +1217,7 @@ export const BoardPage: React.FC = () => {
         id: 'elem_' + Math.random().toString(36).substring(2, 11) + idx,
         x: elem.x + 30,
         y: elem.y + 30,
-        zIndex: elementsRef.current.length + idx + 1,
+        zIndex: getNextZIndex(elementsRef.current) + idx,
         updatedBy: currentUser.uid,
         updatedByName: currentUser.displayName,
         updatedAt: now,
@@ -1330,7 +1334,7 @@ export const BoardPage: React.FC = () => {
       template,
       { x: centerWorldX, y: centerWorldY },
       { uid: currentUser.uid, displayName: currentUser.displayName },
-      elements.length + 1
+      getNextZIndex(elements)
     );
 
     const now = Date.now();
@@ -1376,7 +1380,7 @@ export const BoardPage: React.FC = () => {
       y: centerWorldY,
       width: w,
       height: h,
-      zIndex: elements.length + 1,
+      zIndex: getNextZIndex(elements),
       updatedBy: currentUser.uid,
       updatedByName: currentUser.displayName,
       updatedAt: Date.now(),
@@ -1414,7 +1418,7 @@ export const BoardPage: React.FC = () => {
       y: positions[idx]?.y ?? centerWorld.y,
       width: normalizedDims[idx].width,
       height: normalizedDims[idx].height,
-      zIndex: elements.length + idx + 1,
+      zIndex: getNextZIndex(elements) + idx,
       updatedBy: currentUser.uid,
       updatedByName: currentUser.displayName,
       updatedAt: now,
@@ -1610,6 +1614,8 @@ export const BoardPage: React.FC = () => {
           onShareModalOpenChange={setIsShareModalOpen}
           isCoffeeModalOpen={isCoffeeModalOpen}
           onCoffeeModalOpenChange={setIsCoffeeModalOpen}
+          isLayersPanelOpen={isLayersPanelOpen}
+          onToggleLayersPanel={() => setIsLayersPanelOpen((open) => !open)}
         />
       )}
 
@@ -2011,6 +2017,19 @@ export const BoardPage: React.FC = () => {
         boardMembers={board?.members}
         boardOwner={{ id: board?.ownerId, name: board?.ownerName }}
       />
+
+      {/* Painel de Camadas (somente desktop) */}
+      {!isMobile && isLayersPanelOpen && (
+        <LayersPanel
+          elements={elements}
+          selectedIds={selectedElementIds}
+          onSelectionChange={handleSelectionChange}
+          onReorder={handleBatchUpdateElements}
+          onClose={() => setIsLayersPanelOpen(false)}
+          isReadOnly={isReadOnly}
+          isCommentOnly={isCommentOnly}
+        />
+      )}
     </div>
   );
 };

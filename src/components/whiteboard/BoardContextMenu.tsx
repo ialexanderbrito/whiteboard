@@ -19,8 +19,6 @@ import {
   Unlock,
   BringToFront,
   SendToBack,
-  ArrowUp,
-  ArrowDown,
   Layers,
   LayoutTemplate,
   Smile,
@@ -40,6 +38,7 @@ import {
 import type { CanvasElement } from '../../types/element';
 import type { AlignmentType } from '../../utils/alignment';
 import { STICKY_COLORS } from '../../utils/colors';
+import { selectionSupportsLayerReorder } from '../../utils/layerOrder';
 
 export interface BoardContextMenuProps {
   isOpen: boolean;
@@ -106,6 +105,8 @@ export const BoardContextMenu: React.FC<BoardContextMenuProps> = ({
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
   const [activeSubmenu, setActiveSubmenu] = useState<SubmenuType>(null);
+  // Imagens (sticker) e GIFs não participam da pilha de camadas — sem opção de ordenar
+  const canReorderLayers = selectionSupportsLayerReorder(targetElements);
   const [adjustedPos, setAdjustedPos] = useState<{ x: number; y: number; origin: string }>({
     x: position.x,
     y: position.y,
@@ -733,8 +734,8 @@ export const BoardContextMenu: React.FC<BoardContextMenuProps> = ({
             </button>
           )}
 
-          {/* Submenu de Camadas */}
-          {!readOnly && !canCommentOnly && (
+          {/* Submenu de Camadas (oculto para imagens/GIFs, que não participam da pilha) */}
+          {!readOnly && !canCommentOnly && canReorderLayers && (
             <div
               className="relative"
               onMouseEnter={() => setActiveSubmenu('layers')}
@@ -775,41 +776,7 @@ export const BoardContextMenu: React.FC<BoardContextMenuProps> = ({
                         <span className="font-medium text-[11px]">Trazer para Frente</span>
                       </div>
                       <kbd className="px-1 py-0.5 text-[9px] font-mono bg-muted text-muted-foreground rounded border border-border/50">
-                        Ctrl+]
-                      </kbd>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onReorderLayer('bringForward');
-                        onClose();
-                      }}
-                      className="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer text-left"
-                    >
-                      <div className="flex items-center gap-2">
-                        <ArrowUp className="size-3.5 text-muted-foreground" />
-                        <span className="font-medium text-[11px]">Avançar uma Camada</span>
-                      </div>
-                      <kbd className="px-1 py-0.5 text-[9px] font-mono bg-muted text-muted-foreground rounded border border-border/50">
                         ]
-                      </kbd>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onReorderLayer('sendBackward');
-                        onClose();
-                      }}
-                      className="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer text-left"
-                    >
-                      <div className="flex items-center gap-2">
-                        <ArrowDown className="size-3.5 text-muted-foreground" />
-                        <span className="font-medium text-[11px]">Recuar uma Camada</span>
-                      </div>
-                      <kbd className="px-1 py-0.5 text-[9px] font-mono bg-muted text-muted-foreground rounded border border-border/50">
-                        [
                       </kbd>
                     </button>
 
@@ -826,7 +793,7 @@ export const BoardContextMenu: React.FC<BoardContextMenuProps> = ({
                         <span className="font-medium text-[11px]">Enviar para Trás</span>
                       </div>
                       <kbd className="px-1 py-0.5 text-[9px] font-mono bg-muted text-muted-foreground rounded border border-border/50">
-                        Ctrl+[
+                        [
                       </kbd>
                     </button>
                   </div>

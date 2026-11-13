@@ -22,6 +22,7 @@ import { SelectionContextBar } from './SelectionContextBar';
 import { BoardContextMenu } from './BoardContextMenu';
 import { alignElements, type AlignmentType } from '../../utils/alignment';
 import { cleanGifUrl } from '../../utils/gif';
+import { sortElementsByLayer, computeLayerReorderUpdates, getNextZIndex, selectionSupportsLayerReorder, resolveLayerShortcut } from '../../utils/layerOrder';
 import { recognizeSmartShape } from '../../utils/smartDrawing';
 import { eraseStrokePartially } from '../../utils/partialEraser';
 import { getCustomCanvasCursor } from '../../utils/canvasCursors';
@@ -351,6 +352,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     candidateElements: CanvasElement[];
     draggedIds: Set<string>;
   } | null>(null);
+
   const gifOverlayRef = useRef<HTMLDivElement>(null);
   const votingOverlayRef = useRef<HTMLDivElement>(null);
   const worldOverlayRefs = useRef<Array<React.RefObject<HTMLDivElement | null>>>([]);
@@ -1093,7 +1095,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         ...rest,
         x: elem.x + 30,
         y: elem.y + 30,
-        zIndex: elements.length + 1,
+        zIndex: getNextZIndex(elements),
         updatedBy: currentUser.uid,
         updatedByName: currentUser.displayName,
       });
@@ -1206,7 +1208,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
                   y: positions[idx]?.y ?? Math.round(targetY - img.height / 2),
                   width: img.width,
                   height: img.height,
-                  zIndex: elements.length + idx + 1,
+                  zIndex: getNextZIndex(elements) + idx,
                   updatedBy: currentUser.uid,
                   updatedByName: currentUser.displayName,
                   updatedAt: now,
@@ -1283,7 +1285,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
               y: Math.round(targetY - 90),
               width: 180,
               height: 180,
-              zIndex: elements.length + 1,
+              zIndex: getNextZIndex(elements),
               updatedBy: currentUser.uid,
               updatedByName: currentUser.displayName,
               updatedAt: Date.now(),
@@ -1339,7 +1341,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           id: 'elem_' + Math.random().toString(36).substring(2, 11) + idx,
           x: Math.round(elem.x + dx),
           y: Math.round(elem.y + dy),
-          zIndex: elements.length + idx + 1,
+          zIndex: getNextZIndex(elements) + idx,
           updatedBy: currentUser.uid,
           updatedByName: currentUser.displayName,
           updatedAt: now,
@@ -1367,6 +1369,26 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       onSelectionChange,
       showCanvasToast,
     ]
+  );
+
+  // Organizar ordem de camadas (Z-Index) — swap real + renormalização densa (1..n)
+  // Definido antes do efeito de atalhos de teclado (o array de deps avalia na renderização)
+  const handleReorderLayer = useCallback(
+    (action: 'bringToFront' | 'sendToBack' | 'bringForward' | 'sendBackward') => {
+      if (readOnly || canCommentOnly || !selectionSupportsLayerReorder(selectedElements)) return;
+      const updates = computeLayerReorderUpdates(
+        elements,
+        selectedElements.map((el) => el.id),
+        action
+      );
+      if (updates.length === 0) return;
+      if (onBatchUpdateElements) {
+        onBatchUpdateElements(updates);
+      } else {
+        updates.forEach((u) => onUpdateElement(u.id, u.updates));
+      }
+    },
+    [readOnly, canCommentOnly, selectedElements, elements, onBatchUpdateElements, onUpdateElement]
   );
 
   // Atalhos de teclado
@@ -1468,6 +1490,18 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       if ((e.key === '?' || (e.shiftKey && e.key === '/')) && onOpenShortcuts) {
         e.preventDefault();
         onOpenShortcuts();
+        return;
+      }
+
+      // Camadas (mesma lógica do menu): ] traz para o extremo da frente, [ envia
+      // para o fundo da pilha. Detecção robusta a layouts (US/ABNT/ABNT2) —
+      // e.key primeiro, e.code como fallback (ver resolveLayerShortcut).
+      // Imagens (sticker) e GIFs não participam da pilha — atalho ignorado para eles.
+      const layerShortcutAction = resolveLayerShortcut(e);
+      if (layerShortcutAction) {
+        if (readOnly || canCommentOnly || !selectionSupportsLayerReorder(selectedElements)) return;
+        e.preventDefault();
+        handleReorderLayer(layerShortcutAction);
         return;
       }
 
@@ -1651,6 +1685,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     handleCopy,
     handleCut,
     handlePaste,
+    handleReorderLayer,
     onToggleGrid,
     onToggleSmartGuides,
   ]);
@@ -2214,10 +2249,12 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
                   ...el,
                   id: `${el.id}_s${idx + 1}`,
                   points: extra,
-                  zIndex: (el.zIndex || 1) + 1,
+                  // Mantém a camada do traço original (renormalização cuida dos empates)
+                  zIndex: el.zIndex || 1,
                   updatedBy: currentUser.uid,
                   updatedByName: currentUser.displayName,
-                  updatedAt: Date.now(),
+                  // Desempate determinístico: garante a ordem dos pedaços entre si
+                  updatedAt: Date.now() + idx,
                 });
               });
             }
@@ -2496,7 +2533,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         stroke: strokeColorVal,
         strokeWidth: strokeWidthVal,
         opacity: opacityVal,
-        zIndex: elements.length + 1,
+        zIndex: getNextZIndex(elements),
         updatedBy: currentUser.uid,
         updatedByName: currentUser.displayName,
         updatedAt: 0,
@@ -2516,7 +2553,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         points: [0, 0, 0, 0],
         stroke: selectedColor || '#2563eb',
         strokeWidth: 3,
-        zIndex: elements.length + 1,
+        zIndex: getNextZIndex(elements),
         updatedBy: currentUser.uid,
         updatedByName: currentUser.displayName,
         updatedAt: 0,
@@ -2574,7 +2611,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           height: 180,
           fill: selectedColor || '#fff9b1',
           text: '',
-          zIndex: elements.length + 1,
+          zIndex: getNextZIndex(elements),
           updatedBy: currentUser.uid,
           updatedByName: currentUser.displayName,
         });
@@ -2593,7 +2630,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           fill: selectedColor || '#ffffff',
           checklistTitle: 'Lista de Tarefas',
           checklistItems: defaultItems,
-          zIndex: elements.length + 1,
+          zIndex: getNextZIndex(elements),
           updatedBy: currentUser.uid,
           updatedByName: currentUser.displayName,
         });
@@ -2610,7 +2647,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           fill: 'rgba(241, 245, 249, 0.45)',
           stroke: '#94a3b8',
           strokeWidth: 2,
-          zIndex: 1,
+          zIndex: getNextZIndex(elements),
           updatedBy: currentUser.uid,
           updatedByName: currentUser.displayName,
         });
@@ -2627,7 +2664,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           text: '',
           fontSize: 20,
           fill: '#0f172a',
-          zIndex: elements.length + 1,
+          zIndex: getNextZIndex(elements),
           updatedBy: currentUser.uid,
           updatedByName: currentUser.displayName,
         });
@@ -2793,7 +2830,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
             fill: shapeFill,
             stroke: '#334155',
             strokeWidth: 2,
-            zIndex: elements.length + 1,
+            zIndex: getNextZIndex(elements),
             updatedBy: currentUser.uid,
             updatedByName: currentUser.displayName,
             updatedAt: 0,
@@ -2903,7 +2940,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
               fill: 'transparent',
               stroke: finishedDrawing.stroke,
               strokeWidth: finishedDrawing.strokeWidth,
-              zIndex: elements.length + 1,
+              zIndex: getNextZIndex(elements),
               updatedBy: currentUser.uid,
               updatedByName: currentUser.displayName,
             });
@@ -2917,7 +2954,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
               fill: 'transparent',
               stroke: finishedDrawing.stroke,
               strokeWidth: finishedDrawing.strokeWidth,
-              zIndex: elements.length + 1,
+              zIndex: getNextZIndex(elements),
               updatedBy: currentUser.uid,
               updatedByName: currentUser.displayName,
             });
@@ -2931,7 +2968,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
               fill: 'transparent',
               stroke: finishedDrawing.stroke,
               strokeWidth: finishedDrawing.strokeWidth,
-              zIndex: elements.length + 1,
+              zIndex: getNextZIndex(elements),
               updatedBy: currentUser.uid,
               updatedByName: currentUser.displayName,
             });
@@ -2948,7 +2985,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
               ],
               stroke: finishedDrawing.stroke,
               strokeWidth: finishedDrawing.strokeWidth,
-              zIndex: elements.length + 1,
+              zIndex: getNextZIndex(elements),
               updatedBy: currentUser.uid,
               updatedByName: currentUser.displayName,
             });
@@ -2962,7 +2999,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
               stroke: finishedDrawing.stroke,
               strokeWidth: finishedDrawing.strokeWidth,
               opacity: finishedDrawing.opacity,
-              zIndex: elements.length + 1,
+              zIndex: getNextZIndex(elements),
               updatedBy: currentUser.uid,
               updatedByName: currentUser.displayName,
             });
@@ -2976,7 +3013,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
             stroke: finishedDrawing.stroke,
             strokeWidth: finishedDrawing.strokeWidth,
             opacity: finishedDrawing.opacity,
-            zIndex: elements.length + 1,
+            zIndex: getNextZIndex(elements),
             updatedBy: currentUser.uid,
             updatedByName: currentUser.displayName,
           });
@@ -2990,7 +3027,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           points: finishedDrawing.points.map((p) => Math.round(p)),
           stroke: finishedDrawing.stroke,
           strokeWidth: finishedDrawing.strokeWidth,
-          zIndex: elements.length + 1,
+          zIndex: getNextZIndex(elements),
           updatedBy: currentUser.uid,
           updatedByName: currentUser.displayName,
         });
@@ -3028,7 +3065,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           fill: shapeFill,
           stroke: shapeStroke,
           strokeWidth: shapeStrokeWidth,
-          zIndex: elements.length + 1,
+          zIndex: getNextZIndex(elements),
           updatedBy: currentUser.uid,
           updatedByName: currentUser.displayName,
         } as any);
@@ -3255,11 +3292,11 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     return handlers;
   }, [openInlineEditor]);
 
-  // A ordem visual é controlada pelo zIndex persistido, inclusive para molduras.
-  const sortedElements = React.useMemo(() => {
-    const listToRender = liveErasedElements || elements;
-    return [...listToRender].sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0));
-  }, [liveErasedElements, elements]);
+  // A ordem visual é controlada pelo zIndex persistido (com desempate determinístico), inclusive para molduras.
+  const sortedElements = React.useMemo(
+    () => sortElementsByLayer(liveErasedElements || elements),
+    [liveErasedElements, elements]
+  );
 
   // Keep the element subtree stable while only the camera moves. This lets Konva
   // update the stage transform without recreating every React-Konva child.
@@ -3542,7 +3579,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         fontSize: selectedQuickAddElement.fontSize,
         textAlign: selectedQuickAddElement.textAlign,
         textColor: selectedQuickAddElement.textColor,
-        zIndex: elements.length + 1,
+        zIndex: getNextZIndex(elements),
         updatedBy: currentUser.uid,
         updatedByName: currentUser.displayName,
       });
@@ -3591,7 +3628,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       textAlign: selectedQuickAddElement.textAlign,
       textColor: selectedQuickAddElement.textColor,
       rotation: selectedQuickAddElement.rotation,
-      zIndex: elements.length + 1,
+      zIndex: getNextZIndex(elements),
       updatedBy: currentUser.uid,
       updatedByName: currentUser.displayName,
     });
@@ -3714,7 +3751,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       height: 180,
       fill: stickyColor,
       text: '',
-      zIndex: elements.length + 1,
+      zIndex: getNextZIndex(elements),
       updatedBy: currentUser.uid,
       updatedByName: currentUser.displayName,
     });
@@ -3735,7 +3772,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       fill: shapeFill,
       stroke: '#334155',
       strokeWidth: 2,
-      zIndex: elements.length + 1,
+      zIndex: getNextZIndex(elements),
       updatedBy: currentUser.uid,
       updatedByName: currentUser.displayName,
     } as any);
@@ -3756,7 +3793,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       text: '',
       fontSize: 20,
       fill: '#0f172a',
-      zIndex: elements.length + 1,
+      zIndex: getNextZIndex(elements),
       updatedBy: currentUser.uid,
       updatedByName: currentUser.displayName,
     });
@@ -3787,7 +3824,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       points: [0, 0, 160, 0],
       stroke: '#2563eb',
       strokeWidth: 2,
-      zIndex: elements.length + 1,
+      zIndex: getNextZIndex(elements),
       updatedBy: currentUser.uid,
       updatedByName: currentUser.displayName,
     });
@@ -3810,7 +3847,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       fill: 'rgba(241, 245, 249, 0.45)',
       stroke: '#94a3b8',
       strokeWidth: 2,
-      zIndex: 1,
+      zIndex: getNextZIndex(elements),
       updatedBy: currentUser.uid,
       updatedByName: currentUser.displayName,
     });
@@ -3822,74 +3859,6 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
   const handleContextMenuPaste = async () => {
     if (readOnly || canCommentOnly) return;
     await handlePaste(undefined, contextMenuState.worldPos);
-  };
-
-  // Organizar ordem de camadas (Z-Index)
-  const handleReorderLayer = (action: 'bringToFront' | 'sendToBack' | 'bringForward' | 'sendBackward') => {
-    if (readOnly || canCommentOnly || selectedElements.length === 0) return;
-    const selectedIdsSet = new Set(selectedElements.map((e) => e.id));
-
-    if (action === 'bringToFront') {
-      const maxZ = Math.max(...elements.map((e) => e.zIndex || 0), 0);
-      const updates = selectedElements.map((el, i) => ({
-        id: el.id,
-        updates: { zIndex: maxZ + i + 1 },
-      }));
-      if (onBatchUpdateElements) {
-        onBatchUpdateElements(updates);
-      } else {
-        updates.forEach((u) => onUpdateElement(u.id, u.updates));
-      }
-    } else if (action === 'sendToBack') {
-      const minZ = Math.min(...elements.map((e) => e.zIndex || 0), 1);
-      const updates = selectedElements.map((el, i) => ({
-        id: el.id,
-        updates: { zIndex: Math.max(1, minZ - selectedElements.length + i) },
-      }));
-      if (onBatchUpdateElements) {
-        onBatchUpdateElements(updates);
-      } else {
-        updates.forEach((u) => onUpdateElement(u.id, u.updates));
-      }
-    } else if (action === 'bringForward') {
-      const sorted = [...elements].sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0));
-      const updates: { id: string; updates: { zIndex: number } }[] = [];
-      for (const sel of selectedElements) {
-        const idx = sorted.findIndex((e) => e.id === sel.id);
-        if (idx !== -1 && idx < sorted.length - 1) {
-          const nextElem = sorted[idx + 1];
-          if (!selectedIdsSet.has(nextElem.id)) {
-            updates.push({ id: sel.id, updates: { zIndex: (nextElem.zIndex || 0) + 1 } });
-          }
-        }
-      }
-      if (updates.length > 0) {
-        if (onBatchUpdateElements) {
-          onBatchUpdateElements(updates);
-        } else {
-          updates.forEach((u) => onUpdateElement(u.id, u.updates));
-        }
-      }
-    } else if (action === 'sendBackward') {
-      const sorted = [...elements].sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0));
-      const updates: { id: string; updates: { zIndex: number } }[] = [];
-      for (const sel of selectedElements) {
-        const idx = sorted.findIndex((e) => e.id === sel.id);
-        if (idx > 0) {
-          const prevElem = sorted[idx - 1];
-          if (!selectedIdsSet.has(prevElem.id)) {
-            updates.push({ id: sel.id, updates: { zIndex: Math.max(1, (prevElem.zIndex || 0) - 1) } });
-          }
-        }
-      }
-      if (updates.length > 0) {
-        if (onBatchUpdateElements) {
-          onBatchUpdateElements(updates);
-        } else {
-          updates.forEach((u) => onUpdateElement(u.id, u.updates));
-        }
-      }
-    }
   };
 
   // Bloquear ou Desbloquear elementos selecionados
@@ -4073,7 +4042,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         y: positions[idx]?.y ?? Math.round(dropWorldY - img.height / 2),
         width: img.width,
         height: img.height,
-        zIndex: elementsRef.current.length + idx + 1,
+        zIndex: getNextZIndex(elementsRef.current) + idx,
         updatedBy: currentUser.uid,
         updatedByName: currentUser.displayName,
         updatedAt: now,
@@ -4410,7 +4379,6 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
             );
           })}
       </div>
-
 
       {(() => {
         const session = votingData?.session;
