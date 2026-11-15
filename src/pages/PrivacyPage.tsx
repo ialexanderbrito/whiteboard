@@ -54,7 +54,7 @@ export const PrivacyPage: React.FC = () => (
       <main className="grid gap-10 py-14 md:grid-cols-[200px_minmax(0,720px)] md:justify-center md:gap-16 md:py-20">
         <nav aria-label="Índice da política" className="order-2 md:order-1 md:sticky md:top-7 md:h-fit">
           <p className="mb-3 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Nesta página</p>
-          <div className="flex gap-2 overflow-x-auto pb-2 md:block md:overflow-visible">
+          <div className="flex gap-2 overflow-x-auto pb-2 md:block md:overflow-visible custom-scrollbar-thin">
             {sections.map(([number, title, id]) => (
               <a
                 key={id}

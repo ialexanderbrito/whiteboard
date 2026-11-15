@@ -83,7 +83,7 @@ export const ResponsiveModalContent: React.FC<ResponsiveModalContentProps> = ({
           <Drawer.Handle className="mx-auto mt-2 h-1.5 w-10 shrink-0 rounded-full bg-muted-foreground/25" />
           <div
             className={cn(
-              'flex max-h-[calc(92dvh-1.25rem)] flex-col gap-4 overflow-y-auto overscroll-contain px-4 pb-[max(1.25rem,calc(env(safe-area-inset-bottom)+0.75rem))] pt-2',
+              'flex max-h-[calc(92dvh-1.25rem)] flex-col gap-4 overflow-y-auto overscroll-contain px-4 pb-[max(1.25rem,calc(env(safe-area-inset-bottom)+0.75rem))] pt-2 custom-scrollbar',
               className
             )}
           >

@@ -94,6 +94,16 @@
   }
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
 html, body {
   min-height: 100%;
   width: 100%;
@@ -113,6 +123,7 @@ html, body {
   outline: none !important;
   user-select: none !important;
   -webkit-user-select: none !important;
+  overscroll-behavior: none !important;
 }
 
 #root {
@@ -126,23 +137,172 @@ html, body {
   flex-direction: column;
 }
 
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+/* ==========================================================================
+   Design System: Barra de Rolagem Fluida Mirio (Linear & Vercel Craft Aesthetic)
+   ========================================================================== */
+
+/* Suporte moderno padrão W3C (Chrome 121+, Firefox 64+, Edge 121+, Safari 17.2+) */
+html,
+body,
+* {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted-foreground) / 0.28) transparent;
 }
 
-::-webkit-scrollbar-track {
+.dark html,
+.dark body,
+.dark * {
+  scrollbar-color: hsl(var(--muted-foreground) / 0.35) transparent;
+}
+
+/* Suporte universal WebKit / Chromium (Chrome, Edge, Safari, Electron, WebViews) */
+::-webkit-scrollbar,
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track,
+*::-webkit-scrollbar-track {
   background: transparent;
 }
 
-::-webkit-scrollbar-thumb {
-  background: rgba(161, 161, 170, 0.25);
+::-webkit-scrollbar-thumb,
+*::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--muted-foreground) / 0.28);
   border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  transition: background-color 0.15s cubic-bezier(0.23, 1, 0.32, 1);
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(161, 161, 170, 0.45);
+.dark ::-webkit-scrollbar-thumb,
+.dark *::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--muted-foreground) / 0.35);
+}
+
+::-webkit-scrollbar-thumb:hover,
+*::-webkit-scrollbar-thumb:hover {
+  background-color: hsl(var(--muted-foreground) / 0.52);
+}
+
+.dark ::-webkit-scrollbar-thumb:hover,
+.dark *::-webkit-scrollbar-thumb:hover {
+  background-color: hsl(var(--muted-foreground) / 0.6);
+}
+
+::-webkit-scrollbar-thumb:active,
+*::-webkit-scrollbar-thumb:active {
+  background-color: hsl(var(--foreground) / 0.65);
+}
+
+.dark ::-webkit-scrollbar-thumb:active,
+.dark *::-webkit-scrollbar-thumb:active {
+  background-color: hsl(var(--foreground) / 0.75);
+}
+
+::-webkit-scrollbar-corner,
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Utilitário para ocultar barra de rolagem (mantendo o scroll habilitado via touch/trackpad/mouse) */
+.no-scrollbar::-webkit-scrollbar,
+.scrollbar-none::-webkit-scrollbar,
+* [class*="no-scrollbar"]::-webkit-scrollbar,
+* [class*="scrollbar-none"]::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.no-scrollbar,
+.scrollbar-none,
+[class*="no-scrollbar"],
+[class*="scrollbar-none"] {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
+}
+
+/* Scrollbar Refinada 6px para modais, dropdowns e tabelas */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted-foreground) / 0.28) transparent;
+}
+
+.dark .custom-scrollbar {
+  scrollbar-color: hsl(var(--muted-foreground) / 0.35) transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--muted-foreground) / 0.28);
+  border-radius: 9999px;
+  border: 1.5px solid transparent;
+  background-clip: padding-box;
+  transition: background-color 0.15s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--muted-foreground) / 0.35);
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: hsl(var(--muted-foreground) / 0.52);
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: hsl(var(--muted-foreground) / 0.6);
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:active {
+  background-color: hsl(var(--foreground) / 0.65);
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb:active {
+  background-color: hsl(var(--foreground) / 0.75);
+}
+
+/* Scrollbar Ultra-fina 4px para painéis compactos (Layers, Paleta, Reações, Tags) */
+.custom-scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted-foreground) / 0.25) transparent;
+}
+
+.dark .custom-scrollbar-thin {
+  scrollbar-color: hsl(var(--muted-foreground) / 0.3) transparent;
+}
+
+.custom-scrollbar-thin::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.custom-scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--muted-foreground) / 0.25);
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}
+
+.custom-scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background-color: hsl(var(--muted-foreground) / 0.5);
+}
+
+.dark .custom-scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background-color: hsl(var(--muted-foreground) / 0.58);
 }
 
 /* Animações e Efeitos de Alta Precisão para Cursores Fluidos */

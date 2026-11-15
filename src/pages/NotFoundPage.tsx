@@ -96,7 +96,7 @@ export const NotFoundPage: React.FC<NotFoundPageProps> = ({
   };
 
   return (
-    <div className="relative min-h-screen min-h-[100dvh] w-full flex flex-col bg-background text-foreground overflow-y-auto overflow-x-hidden selection:bg-foreground selection:text-background">
+    <div className="relative min-h-screen min-h-[100dvh] w-full flex flex-col bg-background text-foreground overflow-y-auto overflow-x-hidden selection:bg-foreground selection:text-background custom-scrollbar">
       {/* Padrão Arquitetural de Pontos do Canvas (Preto & Branco / Escala de Cinza) */}
       <div 
         className="pointer-events-none fixed inset-0 z-0 bg-[radial-gradient(#e4e4e7_1px,transparent_1px)] dark:bg-[radial-gradient(#27272a_1px,transparent_1px)] [background-size:20px_20px] opacity-70" 

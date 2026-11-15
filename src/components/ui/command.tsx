@@ -85,7 +85,7 @@ const CommandList = React.forwardRef<
   <CommandPrimitive.List
     ref={ref}
     className={cn(
-      "max-h-[360px] overflow-y-auto overflow-x-hidden p-2 scroll-py-2",
+      "max-h-[360px] overflow-y-auto overflow-x-hidden p-2 scroll-py-2 custom-scrollbar",
       className
     )}
     {...props}
