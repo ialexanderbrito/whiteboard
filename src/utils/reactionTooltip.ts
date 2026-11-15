@@ -43,11 +43,15 @@ export function subscribeReactionTooltip(listener: ReactionTooltipListener): () 
 export const isMirioReaction = (reaction: string): boolean =>
   reaction === 'mirio_original' || reaction === '__mirio_original__' || reaction === ':mirio_original:';
 
+export const isDitadorReaction = (reaction: string): boolean =>
+  reaction === 'ditador_original' || reaction === '__ditador_original__' || reaction === ':ditador_original:';
+
 export interface FormattedVotersResult {
   names: string[];
   verb: 'reagiu com' | 'reagiram com';
   emoji: string;
   isMirio: boolean;
+  isDitador: boolean;
   appleEmojiUrl: string;
 }
 
@@ -80,6 +84,7 @@ export function formatReactionVotersText(
 
   const verb = names.length === 1 ? 'reagiu com' : 'reagiram com';
   const isMirio = isMirioReaction(emoji);
+  const isDitador = isDitadorReaction(emoji);
   const appleEmojiUrl = getAppleEmojiUrl(emoji);
 
   return {
@@ -87,6 +92,7 @@ export function formatReactionVotersText(
     verb,
     emoji,
     isMirio,
+    isDitador,
     appleEmojiUrl,
   };
 }

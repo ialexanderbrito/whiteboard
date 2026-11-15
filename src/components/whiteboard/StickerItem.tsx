@@ -5,6 +5,7 @@ import type { CanvasElement } from '../../types/element';
 import { getAppleEmojiUrl } from '../../utils/appleEmoji';
 import { isCoarseOrMobileViewport } from '../../utils/viewport';
 import { ElementReactionBadges } from './ElementReactionBadges';
+import { LockBadge } from './LockBadge';
 
 interface StickerItemProps {
   element: CanvasElement;
@@ -14,6 +15,7 @@ interface StickerItemProps {
   draggable?: boolean;
   currentUserId?: string;
   mirioReactionUnlocked?: boolean;
+  ditadorReactionUnlocked?: boolean;
   onSelect: (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => void;
   onChange: (updates: Partial<CanvasElement>) => void;
   onToggleReaction?: (elementId: string, emoji: string) => void;
@@ -35,6 +37,7 @@ export const StickerItem: React.FC<StickerItemProps> = React.memo(({
   draggable,
   currentUserId,
   mirioReactionUnlocked = false,
+  ditadorReactionUnlocked = false,
   onSelect,
   onChange,
   onToggleReaction,
@@ -149,24 +152,7 @@ export const StickerItem: React.FC<StickerItemProps> = React.memo(({
       }}
     >
       {/* Indicador de Elemento Bloqueado */}
-      {element.locked && (
-        <Group x={width - 22} y={4} listening={false}>
-          <Rect
-            width={18}
-            height={18}
-            fill="rgba(0, 0, 0, 0.4)"
-            cornerRadius={3}
-            listening={false}
-          />
-          <Text
-            text="🔒"
-            fontSize={11}
-            x={2}
-            y={2}
-            listening={false}
-          />
-        </Group>
-      )}
+      {element.locked && <LockBadge x={width - 22} y={4} />}
 
       {/* 1. Imagem carregada (Apple Emoji ou Imagem personalizada) */}
       {image ? (
@@ -256,6 +242,7 @@ export const StickerItem: React.FC<StickerItemProps> = React.memo(({
         currentUserId={currentUserId}
         canEdit
         mirioReactionUnlocked={mirioReactionUnlocked}
+        ditadorReactionUnlocked={ditadorReactionUnlocked}
         isHovered={isHoveredLocal}
         onToggleReaction={onToggleReaction}
         onOpenReactionPicker={onOpenReactionPicker}

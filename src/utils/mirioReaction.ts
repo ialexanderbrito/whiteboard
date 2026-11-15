@@ -1,18 +1,35 @@
 import mirioOriginalUrl from '../assets/mirio_original.png';
+import ditadorOriginalUrl from '../assets/ditador_original.png';
 
 export const MIRIO_REACTION = 'mirio_original';
 export const MIRIO_REACTION_UNLOCK_KEY = 'mirio_original_reaction_unlocked';
 
+export const DITADOR_REACTION = 'ditador_original';
+export const DITADOR_REACTION_UNLOCK_KEY = 'ditador_original_reaction_unlocked';
+
 let cachedReactionImage: HTMLImageElement | null = null;
 let reactionImagePromise: Promise<HTMLImageElement | null> | null = null;
+
+let cachedDitadorReactionImage: HTMLImageElement | null = null;
+let ditadorReactionImagePromise: Promise<HTMLImageElement | null> | null = null;
 
 export const isMirioReaction = (reaction: string): boolean =>
   reaction === 'mirio_original' || reaction === '__mirio_original__' || reaction === ':mirio_original:';
 
-export const getReactionImageUrl = (reaction: string): string | null =>
-  isMirioReaction(reaction) ? mirioOriginalUrl : null;
+export const isDitadorReaction = (reaction: string): boolean =>
+  reaction === 'ditador_original' || reaction === '__ditador_original__' || reaction === ':ditador_original:';
+
+export const isCustomReaction = (reaction: string): boolean =>
+  isMirioReaction(reaction) || isDitadorReaction(reaction);
+
+export const getReactionImageUrl = (reaction: string): string | null => {
+  if (isMirioReaction(reaction)) return mirioOriginalUrl;
+  if (isDitadorReaction(reaction)) return ditadorOriginalUrl;
+  return null;
+};
 
 export const getCachedMirioReactionImage = (): HTMLImageElement | null => cachedReactionImage;
+export const getCachedDitadorReactionImage = (): HTMLImageElement | null => cachedDitadorReactionImage;
 
 export const loadMirioReactionImage = (): Promise<HTMLImageElement | null> => {
   if (cachedReactionImage) return Promise.resolve(cachedReactionImage);
@@ -36,9 +53,32 @@ export const loadMirioReactionImage = (): Promise<HTMLImageElement | null> => {
   return reactionImagePromise;
 };
 
-// Pré-carrega no navegador para que a imagem do Mirio esteja imediatamente em cache para canvas e overlays
+export const loadDitadorReactionImage = (): Promise<HTMLImageElement | null> => {
+  if (cachedDitadorReactionImage) return Promise.resolve(cachedDitadorReactionImage);
+  if (ditadorReactionImagePromise) return ditadorReactionImagePromise;
+
+  if (typeof window === 'undefined') return Promise.resolve(null);
+
+  ditadorReactionImagePromise = new Promise((resolve) => {
+    const image = new window.Image();
+    image.onload = () => {
+      cachedDitadorReactionImage = image;
+      resolve(image);
+    };
+    image.onerror = () => {
+      ditadorReactionImagePromise = null;
+      resolve(null);
+    };
+    image.src = ditadorOriginalUrl;
+  });
+
+  return ditadorReactionImagePromise;
+};
+
+// Pré-carrega no navegador para que as imagens especiais estejam imediatamente em cache para canvas e overlays
 if (typeof window !== 'undefined') {
   void loadMirioReactionImage();
+  void loadDitadorReactionImage();
 }
 
 export const isMirioReactionUnlocked = (): boolean =>
@@ -48,4 +88,13 @@ export const unlockMirioReaction = (): void => {
   if (typeof window === 'undefined') return;
   window.localStorage.setItem(MIRIO_REACTION_UNLOCK_KEY, 'true');
   window.dispatchEvent(new CustomEvent('mirio-reaction-unlocked'));
+};
+
+export const isDitadorReactionUnlocked = (): boolean =>
+  typeof window !== 'undefined' && window.localStorage.getItem(DITADOR_REACTION_UNLOCK_KEY) === 'true';
+
+export const unlockDitadorReaction = (): void => {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(DITADOR_REACTION_UNLOCK_KEY, 'true');
+  window.dispatchEvent(new CustomEvent('ditador-reaction-unlocked'));
 };

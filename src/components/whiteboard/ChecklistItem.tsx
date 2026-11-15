@@ -20,6 +20,7 @@ interface ChecklistItemComponentProps {
   canEdit?: boolean;
   currentUserId?: string;
   mirioReactionUnlocked?: boolean;
+  ditadorReactionUnlocked?: boolean;
   onSelect: (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => void;
   onChange: (updates: Partial<CanvasElement>) => void;
   onStartEditingItem?: (
@@ -46,6 +47,7 @@ export const ChecklistItem: React.FC<ChecklistItemComponentProps> = React.memo((
   canEdit = true,
   currentUserId,
   mirioReactionUnlocked = false,
+  ditadorReactionUnlocked = false,
   onSelect,
   onChange,
   onStartEditingItem,
@@ -515,6 +517,7 @@ export const ChecklistItem: React.FC<ChecklistItemComponentProps> = React.memo((
         currentUserId={currentUserId}
         canEdit={canEdit}
         mirioReactionUnlocked={mirioReactionUnlocked}
+        ditadorReactionUnlocked={ditadorReactionUnlocked}
         isHovered={isHoveredLocal}
         onToggleReaction={onToggleReaction}
         onOpenReactionPicker={onOpenReactionPicker}

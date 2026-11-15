@@ -7,6 +7,9 @@ import {
   isMirioReaction,
   loadMirioReactionImage,
   getCachedMirioReactionImage,
+  isDitadorReaction,
+  loadDitadorReactionImage,
+  getCachedDitadorReactionImage,
 } from '../../utils/mirioReaction';
 import {
   getCachedAppleEmojiImage,
@@ -34,6 +37,7 @@ interface ElementReactionBadgesProps {
   currentUserId?: string;
   canEdit?: boolean;
   mirioReactionUnlocked?: boolean;
+  ditadorReactionUnlocked?: boolean;
   /** Hover do elemento: exibe o botão '+' discreto quando ainda não há reações */
   isHovered?: boolean;
   onToggleReaction?: (elementId: string, emoji: string) => void;
@@ -57,6 +61,7 @@ export const ElementReactionBadges: React.FC<ElementReactionBadgesProps> = React
   currentUserId,
   canEdit = true,
   mirioReactionUnlocked = false,
+  ditadorReactionUnlocked = false,
   isHovered = false,
   onToggleReaction,
   onOpenReactionPicker,
@@ -68,7 +73,7 @@ export const ElementReactionBadges: React.FC<ElementReactionBadgesProps> = React
     const map = new Map<string, string[]>();
     for (const [key, users] of Object.entries(reactions)) {
       if (!users || users.length === 0) continue;
-      const canonicalKey = isMirioReaction(key) ? 'mirio_original' : key;
+      const canonicalKey = isMirioReaction(key) ? 'mirio_original' : isDitadorReaction(key) ? 'ditador_original' : key;
       const current = map.get(canonicalKey) || [];
       map.set(canonicalKey, [...new Set([...current, ...users])]);
     }
@@ -77,12 +82,18 @@ export const ElementReactionBadges: React.FC<ElementReactionBadgesProps> = React
 
   const hasReactions = activeReactions.length > 0;
 
-  // Carregador assíncrono de imagens Apple Emoji e Mirio
+  // Carregador assíncrono de imagens Apple Emoji e Mirio/Ditador
   useEffect(() => {
     activeReactions.forEach(([emoji]) => {
       if (isMirioReaction(emoji)) {
         if (!getCachedMirioReactionImage()) {
           void loadMirioReactionImage().then(() => {
+            setReactionRenderVersion((v) => v + 1);
+          });
+        }
+      } else if (isDitadorReaction(emoji)) {
+        if (!getCachedDitadorReactionImage()) {
+          void loadDitadorReactionImage().then(() => {
             setReactionRenderVersion((v) => v + 1);
           });
         }
@@ -234,9 +245,14 @@ export const ElementReactionBadges: React.FC<ElementReactionBadgesProps> = React
       {badgesLayout.badges.map(({ emoji, users, countStr, badgeWidth, x }) => {
         const hasUserReacted = currentUserId ? users.includes(currentUserId) : false;
         const isMirio = isMirioReaction(emoji);
-        const isLocked = isMirio && !mirioReactionUnlocked;
+        const isDitador = isDitadorReaction(emoji);
+        const isLocked = (isMirio && !mirioReactionUnlocked) || (isDitador && !ditadorReactionUnlocked);
         const palette = badgePalette(hasUserReacted);
-        const emojiImg = isMirio ? getCachedMirioReactionImage() : getCachedAppleEmojiImage(emoji);
+        const emojiImg = isMirio
+          ? getCachedMirioReactionImage()
+          : isDitador
+          ? getCachedDitadorReactionImage()
+          : getCachedAppleEmojiImage(emoji);
 
         return (
           <Group
@@ -289,7 +305,7 @@ export const ElementReactionBadges: React.FC<ElementReactionBadgesProps> = React
                 y={4}
                 width={14}
                 height={14}
-                cornerRadius={isMirio ? 2 : 0}
+                cornerRadius={isMirio || isDitador ? 2 : 0}
                 listening={false}
                 perfectDrawEnabled={false}
               />

@@ -6,10 +6,14 @@ import { extractAllLinks, stripMarkdownLinks, layoutFormattedWords, normalizeUrl
 import { getContrastTextColor } from '../../utils/colors';
 import { isCoarseOrMobileViewport } from '../../utils/viewport';
 import { useTheme } from '../../context/ThemeContext';
+import { LockBadge } from './LockBadge';
 import {
   isMirioReaction,
   loadMirioReactionImage,
   getCachedMirioReactionImage,
+  isDitadorReaction,
+  loadDitadorReactionImage,
+  getCachedDitadorReactionImage,
 } from '../../utils/mirioReaction';
 import {
   getCachedAppleEmojiImage,
@@ -30,6 +34,7 @@ interface StickyNoteItemProps {
   draggable?: boolean;
   canEdit?: boolean;
   mirioReactionUnlocked?: boolean;
+  ditadorReactionUnlocked?: boolean;
   onSelect: (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => void;
   onChange: (updates: Partial<CanvasElement>) => void;
   onToggleReaction?: (elementId: string, emoji: string) => void;
@@ -59,6 +64,7 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
   draggable,
   canEdit = true,
   mirioReactionUnlocked = false,
+  ditadorReactionUnlocked = false,
   onSelect,
   onChange,
   onToggleReaction,
@@ -192,7 +198,7 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
     const map = new Map<string, string[]>();
     for (const [key, users] of Object.entries(reactions)) {
       if (!users || users.length === 0) continue;
-      const canonicalKey = isMirioReaction(key) ? 'mirio_original' : key;
+      const canonicalKey = isMirioReaction(key) ? 'mirio_original' : isDitadorReaction(key) ? 'ditador_original' : key;
       const current = map.get(canonicalKey) || [];
       map.set(canonicalKey, [...new Set([...current, ...users])]);
     }
@@ -201,12 +207,19 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
 
   const hasReactions = activeReactions.length > 0;
 
-  // Carregador assíncrono de imagens Apple Emoji e Mirio
+  // Carregador assíncrono de imagens Apple Emoji e Mirio/Ditador
   useEffect(() => {
     activeReactions.forEach(([emoji]) => {
       if (isMirioReaction(emoji)) {
         if (!getCachedMirioReactionImage()) {
           void loadMirioReactionImage().then(() => {
+            setReactionRenderVersion((v) => v + 1);
+            groupRef.current?.getLayer()?.batchDraw();
+          });
+        }
+      } else if (isDitadorReaction(emoji)) {
+        if (!getCachedDitadorReactionImage()) {
+          void loadDitadorReactionImage().then(() => {
             setReactionRenderVersion((v) => v + 1);
             groupRef.current?.getLayer()?.batchDraw();
           });
@@ -244,12 +257,14 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
 
     const badgeItems = activeReactions.map(([emoji, users]) => {
       const isMirio = isMirioReaction(emoji);
+      const isDitador = isDitadorReaction(emoji);
       const countStr = users.length.toString();
       const badgeWidth = Math.max(38, Math.round(20 + countStr.length * 7.5 + 8));
       return {
         emoji,
         users,
         isMirio,
+        isDitador,
         countStr,
         badgeWidth,
       };
@@ -402,24 +417,7 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
       />
 
       {/* Indicador de Elemento Bloqueado */}
-      {element.locked && (
-        <Group x={width - 24} y={6} listening={false}>
-          <Rect
-            width={18}
-            height={18}
-            fill="rgba(0, 0, 0, 0.4)"
-            cornerRadius={3}
-            listening={false}
-          />
-          <Text
-            text="🔒"
-            fontSize={11}
-            x={2}
-            y={2}
-            listening={false}
-          />
-        </Group>
-      )}
+      {element.locked && <LockBadge x={width - 24} y={6} />}
 
       {/* Conteúdo textual autêntico do Post-it estilo Miro com suporte a hiperlinks sublinhados clicáveis */}
       {formattedWords && formattedWords.length > 0 ? (
@@ -499,9 +497,9 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
       {/* Badges de Reações com Imagens Apple Emoji no Canvas ancoradas na borda inferior estilo Miro */}
       {hasReactions && (
         <Group y={footerBadgesLayout.y}>
-          {reactionBadges.map(({ emoji, users, isMirio, countStr, badgeWidth, x }) => {
+          {reactionBadges.map(({ emoji, users, isMirio, isDitador, countStr, badgeWidth, x }) => {
             const hasUserReacted = currentUserId ? users.includes(currentUserId) : false;
-            const isLocked = isMirio && !mirioReactionUnlocked;
+            const isLocked = (isMirio && !mirioReactionUnlocked) || (isDitador && !ditadorReactionUnlocked);
 
             const badgeFill = hasUserReacted
               ? isDarkTheme
@@ -529,6 +527,8 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
 
             const emojiImg = isMirio
               ? getCachedMirioReactionImage()
+              : isDitador
+              ? getCachedDitadorReactionImage()
               : getCachedAppleEmojiImage(emoji);
 
             return (
@@ -603,7 +603,7 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
                     y={4}
                     width={14}
                     height={14}
-                    cornerRadius={isMirio ? 2 : 0}
+                    cornerRadius={isMirio || isDitador ? 2 : 0}
                     listening={false}
                     perfectDrawEnabled={false}
                   />
@@ -614,7 +614,7 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
                     width={14}
                     height={14}
                     fill={hasUserReacted ? '#86efac' : 'transparent'}
-                    cornerRadius={isMirio ? 2 : 7}
+                    cornerRadius={isMirio || isDitador ? 2 : 7}
                     listening={false}
                   />
                 )}

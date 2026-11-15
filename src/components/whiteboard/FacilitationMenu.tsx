@@ -17,7 +17,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { reactionService } from '@/services/reactionService';
 import { getAppleEmojiUrl } from '@/utils/appleEmoji';
 import { playReactionPopSound } from '@/utils/audioChime';
-import { MIRIO_REACTION, getReactionImageUrl, isMirioReaction } from '@/utils/mirioReaction';
+import { MIRIO_REACTION, DITADOR_REACTION, getReactionImageUrl, isMirioReaction, isDitadorReaction } from '@/utils/mirioReaction';
 
 export interface FacilitationMenuProps {
   boardId: string;
@@ -31,6 +31,7 @@ export interface FacilitationMenuProps {
   isVotingActive?: boolean;
   onEnterPresentation: () => void;
   mirioReactionUnlocked?: boolean;
+  ditadorReactionUnlocked?: boolean;
 }
 
 const QUICK_GLOBAL_REACTIONS = [
@@ -54,11 +55,12 @@ export const FacilitationMenu: React.FC<FacilitationMenuProps> = ({
   isVotingActive = false,
   onEnterPresentation,
   mirioReactionUnlocked = false,
+  ditadorReactionUnlocked = false,
 }) => {
   const [open, setOpen] = useState(false);
 
   const handleSendReaction = async (emoji: string, e: React.MouseEvent<HTMLButtonElement>) => {
-    if (isMirioReaction(emoji) && !mirioReactionUnlocked) {
+    if ((isMirioReaction(emoji) && !mirioReactionUnlocked) || (isDitadorReaction(emoji) && !ditadorReactionUnlocked)) {
       return;
     }
     const rect = e.currentTarget.getBoundingClientRect();
@@ -147,7 +149,11 @@ export const FacilitationMenu: React.FC<FacilitationMenuProps> = ({
             Reações Rápidas
           </span>
           <div className="flex items-center justify-between p-1 bg-muted/40 rounded-xl border border-border/60">
-            {[...QUICK_GLOBAL_REACTIONS, ...(mirioReactionUnlocked ? [{ emoji: MIRIO_REACTION, label: 'Mirio' }] : [])].map((r) => {
+            {[
+              ...QUICK_GLOBAL_REACTIONS,
+              ...(mirioReactionUnlocked ? [{ emoji: MIRIO_REACTION, label: 'Mirio' }] : []),
+              ...(ditadorReactionUnlocked ? [{ emoji: DITADOR_REACTION, label: 'Ditador' }] : []),
+            ].map((r) => {
               const imageUrl = getReactionImageUrl(r.emoji) || getAppleEmojiUrl(r.emoji);
 
               return (

@@ -4,6 +4,7 @@ import type Konva from 'konva';
 import type { CanvasElement } from '../../types/element';
 import { normalizeUrl } from '../../utils/textLinks';
 import { ElementReactionBadges } from './ElementReactionBadges';
+import { LockBadge } from './LockBadge';
 import {
   RICH_TEXT_FONT_FAMILY,
   getElementBaseStyle,
@@ -20,6 +21,7 @@ interface TextItemProps {
   canEdit?: boolean;
   currentUserId?: string;
   mirioReactionUnlocked?: boolean;
+  ditadorReactionUnlocked?: boolean;
   onSelect: (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => void;
   onChange: (updates: Partial<CanvasElement>) => void;
   onStartEditing: (
@@ -51,6 +53,7 @@ export const TextItem: React.FC<TextItemProps> = React.memo(({
   canEdit = true,
   currentUserId,
   mirioReactionUnlocked = false,
+  ditadorReactionUnlocked = false,
   onSelect,
   onChange,
   onStartEditing,
@@ -243,24 +246,7 @@ export const TextItem: React.FC<TextItemProps> = React.memo(({
       )}
 
       {/* Indicador de Elemento Bloqueado */}
-      {element.locked && (
-        <Group x={width + 4} y={-4} listening={false}>
-          <Rect
-            width={16}
-            height={16}
-            fill="rgba(0, 0, 0, 0.4)"
-            cornerRadius={3}
-            listening={false}
-          />
-          <Text
-            text="🔒"
-            fontSize={10}
-            x={1}
-            y={2}
-            listening={false}
-          />
-        </Group>
-      )}
+      {element.locked && <LockBadge x={width + 4} y={-4} size={16} />}
 
       {/* Conteúdo textual com formatação por trecho e links clicáveis */}
       <Group>
@@ -305,6 +291,7 @@ export const TextItem: React.FC<TextItemProps> = React.memo(({
         currentUserId={currentUserId}
         canEdit={canEdit}
         mirioReactionUnlocked={mirioReactionUnlocked}
+        ditadorReactionUnlocked={ditadorReactionUnlocked}
         isHovered={isHoveredLocal}
         onToggleReaction={onToggleReaction}
         onOpenReactionPicker={onOpenReactionPicker}

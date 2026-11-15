@@ -1,11 +1,12 @@
 import React, { useRef, useMemo, useState } from 'react';
-import { Group, Rect, Circle, Line, Star, Text } from 'react-konva';
+import { Group, Rect, Circle, Line, Star, Text, Path, Ellipse } from 'react-konva';
 import type Konva from 'konva';
 import type { CanvasElement } from '../../types/element';
 import { getContrastTextColor } from '../../utils/colors';
 import { extractAllLinks, stripMarkdownLinks, layoutFormattedWords, normalizeUrl } from '../../utils/textLinks';
 import { isCoarseOrMobileViewport } from '../../utils/viewport';
 import { ElementReactionBadges } from './ElementReactionBadges';
+import { LockBadge } from './LockBadge';
 
 interface ShapeItemProps {
   element: CanvasElement;
@@ -16,6 +17,7 @@ interface ShapeItemProps {
   canEdit?: boolean;
   currentUserId?: string;
   mirioReactionUnlocked?: boolean;
+  ditadorReactionUnlocked?: boolean;
   onSelect: (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => void;
   onChange: (updates: Partial<CanvasElement>) => void;
   onStartEditing?: (id: string, x: number, y: number, width: number, height: number, text: string) => void;
@@ -36,6 +38,7 @@ export const ShapeItem: React.FC<ShapeItemProps> = React.memo(({
   canEdit = true,
   currentUserId,
   mirioReactionUnlocked = false,
+  ditadorReactionUnlocked = false,
   onSelect,
   onChange,
   onStartEditing,
@@ -215,6 +218,74 @@ export const ShapeItem: React.FC<ShapeItemProps> = React.memo(({
       );
     }
 
+    if (type === 'hexagon') {
+      // Hexágono (Processo / Arquitetura)
+      const p = [
+        width * 0.25, 0,
+        width * 0.75, 0,
+        width, height * 0.5,
+        width * 0.75, height,
+        width * 0.25, height,
+        0, height * 0.5,
+      ];
+      return (
+        <Line
+          points={p}
+          closed
+          fill={fill}
+          stroke={strokeColor}
+          strokeWidth={actualStrokeWidth}
+          shadowEnabled={shadowsEnabled}
+          shadowColor="rgba(0,0,0,0.06)"
+          shadowBlur={6}
+          shadowOffset={{ x: 0, y: 2 }}
+          perfectDrawEnabled={false}
+          shadowForStrokeEnabled={false}
+        />
+      );
+    }
+
+    if (type === 'cylinder') {
+      // Cilindro / Banco de Dados
+      const rx = width / 2;
+      const ry = Math.min(22, height * 0.2);
+      return (
+        <Group>
+          <Path
+            data={`M 0,${ry} A ${rx},${ry} 0 0,0 ${width},${ry} L ${width},${height - ry} A ${rx},${ry} 0 0,1 0,${height - ry} Z`}
+            fill={fill}
+            stroke={strokeColor}
+            strokeWidth={actualStrokeWidth}
+            shadowEnabled={shadowsEnabled}
+            shadowColor="rgba(0,0,0,0.06)"
+            shadowBlur={6}
+            shadowOffset={{ x: 0, y: 2 }}
+            perfectDrawEnabled={false}
+            shadowForStrokeEnabled={false}
+          />
+          <Path
+            data={`M 0,${height - ry} A ${rx},${ry} 0 0,0 ${width},${height - ry}`}
+            stroke={strokeColor}
+            strokeWidth={actualStrokeWidth}
+            fill="transparent"
+            perfectDrawEnabled={false}
+            shadowForStrokeEnabled={false}
+          />
+          <Ellipse
+            x={rx}
+            y={ry}
+            radiusX={rx}
+            radiusY={ry}
+            fill={fill}
+            stroke={strokeColor}
+            strokeWidth={actualStrokeWidth}
+            perfectDrawEnabled={false}
+            shadowForStrokeEnabled={false}
+          />
+        </Group>
+      );
+    }
+
     // Default: Retângulo
     return (
       <Rect
@@ -293,22 +364,10 @@ export const ShapeItem: React.FC<ShapeItemProps> = React.memo(({
 
       {/* Indicador de Elemento Bloqueado */}
       {element.locked && (
-        <Group x={type === 'circle' ? radius - 20 : width - 24} y={type === 'circle' ? -radius + 4 : 6} listening={false}>
-          <Rect
-            width={18}
-            height={18}
-            fill="rgba(0, 0, 0, 0.4)"
-            cornerRadius={3}
-            listening={false}
-          />
-          <Text
-            text="🔒"
-            fontSize={11}
-            x={2}
-            y={2}
-            listening={false}
-          />
-        </Group>
+        <LockBadge
+          x={type === 'circle' ? radius - 20 : width - 24}
+          y={type === 'circle' ? -radius + 4 : 6}
+        />
       )}
 
       {/* Texto opcional centralizado na forma estilo Miro com suporte a hiperlinks sublinhados clicáveis */}
@@ -368,6 +427,7 @@ export const ShapeItem: React.FC<ShapeItemProps> = React.memo(({
         currentUserId={currentUserId}
         canEdit={canEdit}
         mirioReactionUnlocked={mirioReactionUnlocked}
+        ditadorReactionUnlocked={ditadorReactionUnlocked}
         isHovered={isHoveredLocal}
         onToggleReaction={onToggleReaction}
         onOpenReactionPicker={onOpenReactionPicker}
