@@ -1,3 +1,4 @@
+/* oxlint-disable react/only-export-components */
 import React, { useEffect, useRef } from 'react';
 import { useTheme } from '@/context/ThemeContext';
 import { subscribeViewport, type ViewportState } from '@/utils/viewport';

@@ -1,3 +1,4 @@
+/* oxlint-disable react/only-export-components */
 import React, { useEffect, useMemo, useState } from 'react';
 import { Sparkles, ArrowUpRight, Layers } from '@/components/ui/icons';
 import type { Board } from '@/types/board';

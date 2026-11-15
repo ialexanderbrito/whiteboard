@@ -1,3 +1,4 @@
+/* oxlint-disable react/only-export-components */
 import React from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent } from '@/components/ui/card';

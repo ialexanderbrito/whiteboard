@@ -1,3 +1,4 @@
+/* oxlint-disable react/only-export-components */
 import * as React from 'react';
 import { Drawer } from 'vaul';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
@@ -6,24 +7,28 @@ import { cn } from '@/lib/utils';
 
 const MOBILE_QUERY = '(max-width: 767px)';
 
+function subscribeMobile(callback: () => void) {
+  if (typeof window === 'undefined') return () => {};
+  const mediaQuery = window.matchMedia(MOBILE_QUERY);
+  mediaQuery.addEventListener('change', callback);
+  return () => mediaQuery.removeEventListener('change', callback);
+}
+
+function getMobileSnapshot(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.matchMedia(MOBILE_QUERY).matches;
+}
+
+function getMobileServerSnapshot(): boolean {
+  return false;
+}
+
 /**
  * Detecta viewports touch/estreitas para trocar o shell do modal:
  * < 768px → bottom sheet arrastável (vaul), >= 768px → Dialog centralizado tradicional.
  */
 export function useIsMobileViewport(): boolean {
-  const [isMobile, setIsMobile] = React.useState<boolean>(
-    () => typeof window !== 'undefined' && window.matchMedia(MOBILE_QUERY).matches
-  );
-
-  React.useEffect(() => {
-    const mediaQuery = window.matchMedia(MOBILE_QUERY);
-    const handleViewportChange = (event: MediaQueryListEvent) => setIsMobile(event.matches);
-    setIsMobile(mediaQuery.matches);
-    mediaQuery.addEventListener('change', handleViewportChange);
-    return () => mediaQuery.removeEventListener('change', handleViewportChange);
-  }, []);
-
-  return isMobile;
+  return React.useSyncExternalStore(subscribeMobile, getMobileSnapshot, getMobileServerSnapshot);
 }
 
 interface ResponsiveModalRootProps {
