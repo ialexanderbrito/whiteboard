@@ -55,6 +55,20 @@
       "destination": "https://mirio-whiteboard.firebaseapp.com/__/auth/:path*"
     },
     {
+      "source": "/og-preview",
+      "destination": "/og-preview.html"
+    },
+    {
+      "source": "/((?!api/|__/|.*\\.[\\w]+$).*)",
+      "has": [
+        {
+          "type": "query",
+          "key": "theme"
+        }
+      ],
+      "destination": "/api/html"
+    },
+    {
       "source": "/((?!api/|__/|.*\\.[\\w]+$).*)",
       "destination": "/index.html"
     }

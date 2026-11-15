@@ -1265,8 +1265,26 @@ console.log('[1/4] Templates HTML gerados:');
 console.log(`  - Escuro: ${darkTemplatePath}`);
 console.log(`  - Claro:  ${lightTemplatePath}`);
 
-// 4. Executar Microsoft Edge headless para tirar screenshots de 1200x630
-const edgePath = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
+// 4. Executar navegador headless (Edge ou Chrome) para tirar screenshots de 1200x630
+function resolveHeadlessBrowser() {
+  const browserCandidates = [
+    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+    'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+    '/usr/bin/google-chrome',
+    '/usr/bin/chromium-browser',
+    '/usr/bin/chromium',
+    '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+  ];
+  for (const candidate of browserCandidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return browserCandidates[0];
+}
+
+const edgePath = resolveHeadlessBrowser();
 const darkOutputPath = path.join(projectRoot, 'public', 'og-dark.png');
 const lightOutputPath = path.join(projectRoot, 'public', 'og-light.png');
 const defaultOutputPath = path.join(projectRoot, 'public', 'og.png');

@@ -104,17 +104,24 @@
     }
     </script>
 
-    <!-- Previne flash branco de tema (FOUC) antes do carregamento do React -->
+    <!-- Previne flash branco de tema (FOUC) antes do carregamento do React e sincroniza tema da URL -->
     <script>
       (function() {
         try {
-          var saved = localStorage.getItem('mirio_theme');
+          var params = new URLSearchParams(window.location.search);
+          var urlTheme = params.get('theme');
+          if (urlTheme === 'light' || urlTheme === 'dark' || urlTheme === 'system') {
+            try { localStorage.setItem('mirio_theme', urlTheme); } catch(e) {}
+          }
+          var saved = (urlTheme === 'light' || urlTheme === 'dark') ? urlTheme : localStorage.getItem('mirio_theme');
           var isDark = saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches) || (saved === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
           if (isDark) {
             document.documentElement.classList.add('dark');
+            document.documentElement.classList.remove('light');
             document.documentElement.style.backgroundColor = '#09090b';
           } else {
             document.documentElement.classList.remove('dark');
+            document.documentElement.classList.add('light');
             document.documentElement.style.backgroundColor = '#ffffff';
           }
         } catch (e) {}

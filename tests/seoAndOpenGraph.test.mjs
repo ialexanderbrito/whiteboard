@@ -122,6 +122,101 @@ test('Favicon: public/favicon.svg and raster fallbacks exist and represent Mirio
   assert.ok(fs.existsSync(appleTouchPath), 'public/apple-touch-icon.png deve existir');
 });
 
+test('Dynamic HTML SEO: api/html.js injects appropriate light and dark Open Graph meta tags for crawlers', async () => {
+  const apiHtmlPath = path.join(projectRoot, 'api', 'html.js');
+  assert.ok(fs.existsSync(apiHtmlPath), 'api/html.js deve existir');
+
+  const { default: htmlHandler } = await import('../api/html.js');
+
+  // Teste 1: Tema Claro (?theme=light)
+  let lightHtml = '';
+  let lightHeaders = {};
+  let lightStatus = 0;
+  const mockLightRes = {
+    writeHead(status, headers) {
+      lightStatus = status;
+      lightHeaders = headers;
+    },
+    end(content) {
+      lightHtml = content;
+    }
+  };
+
+  htmlHandler({ query: { theme: 'light' }, headers: {} }, mockLightRes);
+  assert.equal(lightStatus, 200);
+  assert.match(lightHeaders['Content-Type'], /text\/html/);
+  assert.match(lightHtml, /<meta property="og:image" content="https:\/\/mirio-wb\.vercel\.app\/og-light\.png" \/>/);
+  assert.match(lightHtml, /<meta name="twitter:image" content="https:\/\/mirio-wb\.vercel\.app\/og-light\.png" \/>/);
+  assert.match(lightHtml, /<html[^>]*class="[^"]*light/);
+
+  // Teste 2: Tema Escuro (?theme=dark)
+  let darkHtml = '';
+  let darkHeaders = {};
+  let darkStatus = 0;
+  const mockDarkRes = {
+    writeHead(status, headers) {
+      darkStatus = status;
+      darkHeaders = headers;
+    },
+    end(content) {
+      darkHtml = content;
+    }
+  };
+
+  htmlHandler({ query: { theme: 'dark' }, headers: {} }, mockDarkRes);
+  assert.equal(darkStatus, 200);
+  assert.match(darkHeaders['Content-Type'], /text\/html/);
+  assert.match(darkHtml, /<meta property="og:image" content="https:\/\/mirio-wb\.vercel\.app\/og-dark\.png" \/>/);
+  assert.match(darkHtml, /<meta name="twitter:image" content="https:\/\/mirio-wb\.vercel\.app\/og-dark\.png" \/>/);
+  assert.match(darkHtml, /<html[^>]*class="[^"]*dark/);
+});
+
+test('Dynamic Image Endpoint: api/og.js serves PNG binary buffers directly without breaking redirects', async () => {
+  const { default: ogHandler } = await import('../api/og.js');
+
+  // Teste 1: Tema Claro
+  let lightPayload = null;
+  let lightHeaders = {};
+  let lightStatus = 0;
+  const mockLightRes = {
+    writeHead(status, headers) {
+      lightStatus = status;
+      lightHeaders = headers;
+    },
+    end(content) {
+      lightPayload = content;
+    }
+  };
+
+  ogHandler({ query: { theme: 'light' }, headers: {} }, mockLightRes);
+  assert.equal(lightStatus, 200);
+  assert.equal(lightHeaders['Content-Type'], 'image/png');
+  assert.ok(Buffer.isBuffer(lightPayload));
+  assert.equal(lightPayload.readUInt32BE(16), 1200);
+  assert.equal(lightPayload.readUInt32BE(20), 630);
+
+  // Teste 2: Tema Escuro
+  let darkPayload = null;
+  let darkHeaders = {};
+  let darkStatus = 0;
+  const mockDarkRes = {
+    writeHead(status, headers) {
+      darkStatus = status;
+      darkHeaders = headers;
+    },
+    end(content) {
+      darkPayload = content;
+    }
+  };
+
+  ogHandler({ query: { theme: 'dark' }, headers: {} }, mockDarkRes);
+  assert.equal(darkStatus, 200);
+  assert.equal(darkHeaders['Content-Type'], 'image/png');
+  assert.ok(Buffer.isBuffer(darkPayload));
+  assert.equal(darkPayload.readUInt32BE(16), 1200);
+  assert.equal(darkPayload.readUInt32BE(20), 630);
+});
+
 test('Generator: scripts/generate-og.mjs exists and npm script is configured', () => {
   const scriptPath = path.join(projectRoot, 'scripts', 'generate-og.mjs');
   assert.ok(fs.existsSync(scriptPath), 'scripts/generate-og.mjs deve existir');
