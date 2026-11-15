@@ -103,12 +103,32 @@ export function getDefaultShapeBounds(
         height: 130,
       };
     case 'star':
-    default:
       return {
         x: Math.round(center.x - 65),
         y: Math.round(center.y - 65),
         width: 130,
         height: 130,
+      };
+    case 'hexagon':
+      return {
+        x: Math.round(center.x - 70),
+        y: Math.round(center.y - 60),
+        width: 140,
+        height: 120,
+      };
+    case 'cylinder':
+      return {
+        x: Math.round(center.x - 60),
+        y: Math.round(center.y - 70),
+        width: 120,
+        height: 140,
+      };
+    default:
+      return {
+        x: Math.round(center.x - 80),
+        y: Math.round(center.y - 50),
+        width: 160,
+        height: 100,
       };
   }
 }

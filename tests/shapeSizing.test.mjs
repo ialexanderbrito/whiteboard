@@ -101,4 +101,50 @@ test('getDefaultShapeBounds: returns correct default dimensions centered on clic
   assert.equal(star.height, 130);
   assert.equal(star.x, 500 - 65);
   assert.equal(star.y, 400 - 65);
+
+  const hexagon = getDefaultShapeBounds('hexagon', click);
+  assert.equal(hexagon.width, 140);
+  assert.equal(hexagon.height, 120);
+  assert.equal(hexagon.x, 500 - 70);
+  assert.equal(hexagon.y, 400 - 60);
+
+  const cylinder = getDefaultShapeBounds('cylinder', click);
+  assert.equal(cylinder.width, 120);
+  assert.equal(cylinder.height, 140);
+  assert.equal(cylinder.x, 500 - 60);
+  assert.equal(cylinder.y, 400 - 70);
 });
+
+test('isGeometricShape: correctly identifies all geometric shape types', async () => {
+  const { isGeometricShape, GEOMETRIC_SHAPE_TYPES } = await import('../src/types/element.ts');
+  assert.equal(GEOMETRIC_SHAPE_TYPES.length, 7);
+  assert.ok(isGeometricShape('rect'));
+  assert.ok(isGeometricShape('circle'));
+  assert.ok(isGeometricShape('diamond'));
+  assert.ok(isGeometricShape('triangle'));
+  assert.ok(isGeometricShape('star'));
+  assert.ok(isGeometricShape('hexagon'));
+  assert.ok(isGeometricShape('cylinder'));
+  assert.ok(!isGeometricShape('sticky'));
+  assert.ok(!isGeometricShape('arrow'));
+  assert.ok(!isGeometricShape('pen'));
+});
+
+test('ShapeItem: cylinder shape enables pointer events so it can be selected and moved', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const shapeItemSource = fs.readFileSync(
+    path.resolve('src/components/whiteboard/ShapeItem.tsx'),
+    'utf8'
+  );
+
+  // Garante que o bloco do cilindro não contém listening={false} no Group que bloqueava seleção e movimentação
+  const cylinderBlockMatch = shapeItemSource.match(/if\s*\(\s*type\s*===\s*'cylinder'\s*\)\s*\{([\s\S]*?)\n\s*if\s*\(/);
+  assert.ok(cylinderBlockMatch, 'Deve existir o bloco renderShapeNode para cylinder');
+  const cylinderCode = cylinderBlockMatch[1];
+  assert.ok(
+    !cylinderCode.includes('<Group listening={false}>'),
+    'O cilindro não deve ter listening={false} para permitir clique, seleção e arrasto no canvas'
+  );
+});
+

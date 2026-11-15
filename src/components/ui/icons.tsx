@@ -2,6 +2,7 @@ import React from 'react';
 import { HugeiconsIcon, type HugeiconsProps, type IconSvgElement } from '@hugeicons/react';
 import {
   AlertCircleIcon,
+  Alert02Icon,
   TextAlignCenterIcon,
   AlignHorizontalCenterIcon,
   AlignVerticalCenterIcon,
@@ -76,6 +77,7 @@ import {
   LeftToRightListBulletIcon,
   Loading03Icon,
   LockKeyIcon,
+  LockKeyholeIcon,
   Logout01Icon,
   Magnet01Icon,
   MapIcon,
@@ -89,8 +91,7 @@ import {
   MonitorIcon,
   Moon02Icon,
   MoreHorizontalIcon,
-  CursorPointer01Icon,
-  CursorPointer02Icon,
+  MousePointer01Icon as MousePointer01IconGlyph,
   CursorMagicSelection01Icon,
   MusicNote01Icon,
   PaintBoardIcon,
@@ -186,6 +187,7 @@ export function createHugeIcon(icon: IconSvgElement, displayName: string): HugeI
 
 // Mapped Icons (145 Stroke Rounded Free Icons)
 export const AlertCircle = createHugeIcon(AlertCircleIcon, 'AlertCircle');
+export const AlertTriangle = createHugeIcon(Alert02Icon, 'AlertTriangle');
 export const AlignCenter = createHugeIcon(TextAlignCenterIcon, 'AlignCenter');
 export const AlignCenterHorizontal = createHugeIcon(AlignHorizontalCenterIcon, 'AlignCenterHorizontal');
 export const AlignCenterVertical = createHugeIcon(AlignVerticalCenterIcon, 'AlignCenterVertical');
@@ -283,6 +285,7 @@ export const Link2 = createHugeIcon(Link01Icon, 'Link2');
 export const List = createHugeIcon(LeftToRightListBulletIcon, 'List');
 export const Loader2 = createHugeIcon(Loading03Icon, 'Loader2');
 export const Lock = createHugeIcon(LockKeyIcon, 'Lock');
+export const LockClosed = createHugeIcon(LockKeyholeIcon, 'LockClosed');
 export const LogOut = createHugeIcon(Logout01Icon, 'LogOut');
 export const Magnet = createHugeIcon(Magnet01Icon, 'Magnet');
 
@@ -296,8 +299,10 @@ export const Minus = createHugeIcon(MinusSignIcon, 'Minus');
 export const Monitor = createHugeIcon(MonitorIcon, 'Monitor');
 export const Moon = createHugeIcon(Moon02Icon, 'Moon');
 export const MoreHorizontal = createHugeIcon(MoreHorizontalIcon, 'MoreHorizontal');
-export const MousePointer = createHugeIcon(CursorPointer01Icon, 'MousePointer');
-export const MousePointer2 = createHugeIcon(CursorPointer02Icon, 'MousePointer2');
+export const MousePointer = createHugeIcon(MousePointer01IconGlyph, 'MousePointer');
+export const MousePointer2 = createHugeIcon(MousePointer01IconGlyph, 'MousePointer2');
+export const MousePointer01 = createHugeIcon(MousePointer01IconGlyph, 'MousePointer01');
+export const MousePointer01Icon = createHugeIcon(MousePointer01IconGlyph, 'MousePointer01Icon');
 export const MousePointerClick = createHugeIcon(CursorMagicSelection01Icon, 'MousePointerClick');
 export const Music = createHugeIcon(MusicNote01Icon, 'Music');
 
@@ -363,3 +368,36 @@ export const Wand2 = createHugeIcon(MagicWand01Icon, 'Wand2');
 export const X = createHugeIcon(Cancel01Icon, 'X');
 export const ZoomIn = createHugeIcon(ZoomInIcon, 'ZoomIn');
 export const ZoomOut = createHugeIcon(ZoomOutIcon, 'ZoomOut');
+
+export const Hexagon: React.FC<React.SVGProps<SVGSVGElement>> = ({ className, ...props }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    {...props}
+  >
+    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+  </svg>
+);
+
+export const Cylinder: React.FC<React.SVGProps<SVGSVGElement>> = ({ className, ...props }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    {...props}
+  >
+    <ellipse cx="12" cy="5" rx="9" ry="3" />
+    <path d="M3 5v14a9 3 0 0 0 18 0V5" />
+    <path d="M3 12a9 3 0 0 0 18 0" />
+  </svg>
+);
+

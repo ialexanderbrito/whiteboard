@@ -6,6 +6,8 @@ export type ElementType =
   | 'diamond'
   | 'triangle'
   | 'star'
+  | 'hexagon'
+  | 'cylinder'
   | 'text' 
   | 'arrow' 
   | 'line' 
@@ -23,6 +25,8 @@ export type ToolType =
   | 'diamond'
   | 'triangle'
   | 'star'
+  | 'hexagon'
+  | 'cylinder'
   | 'text' 
   | 'arrow' 
   | 'line' 
@@ -32,6 +36,19 @@ export type ToolType =
   | 'laser'
   | 'pan' 
   | 'frame';
+
+export const GEOMETRIC_SHAPE_TYPES: readonly ElementType[] = [
+  'rect',
+  'circle',
+  'diamond',
+  'triangle',
+  'star',
+  'hexagon',
+  'cylinder',
+] as const;
+
+export const isGeometricShape = (type: string): boolean =>
+  GEOMETRIC_SHAPE_TYPES.includes(type as ElementType);
 
 /**
  * Item individual de um Micro-Widget de Checklist
@@ -56,6 +73,15 @@ export interface TextRun {
   url?: string;
 }
 
+export type ConnectionSide = 'top' | 'right' | 'bottom' | 'left' | 'auto';
+
+export interface ElementBinding {
+  elementId: string;
+  side?: ConnectionSide;
+}
+
+export type ConnectorStyle = 'straight' | 'curved' | 'orthogonal';
+
 export interface CanvasElement {
   id: string;
   type: ElementType;
@@ -67,6 +93,7 @@ export interface CanvasElement {
   fill?: string;            // Cor de preenchimento (post-it, formas, moldura)
   stroke?: string;          // Cor de borda ou traço
   strokeWidth?: number;     // Espessura da borda ou caneta
+  dash?: number[];          // Padrão de tracejado [dash, gap] ou [] para contínuo
   opacity?: number;         // Opacidade (ex: marca-texto)
   text?: string;            // Texto de post-it, blocos de texto ou título de moldura
   fontSize?: number;        // Tamanho da fonte
@@ -101,4 +128,9 @@ export interface CanvasElement {
   links?: Array<{ url: string; label?: string; id?: string }>;
   /** Formatação por trecho (texto livre). Quando presente, tem prioridade sobre os campos globais. */
   richText?: TextRun[];
+
+  // Conexões magnéticas (diagramação inteligente estilo Miro/FigJam)
+  startBinding?: ElementBinding;
+  endBinding?: ElementBinding;
+  connectorStyle?: ConnectorStyle;
 }

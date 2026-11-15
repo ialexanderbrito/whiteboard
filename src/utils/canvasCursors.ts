@@ -1,4 +1,5 @@
-import type { ToolType } from '../types/element';
+import type { ToolType } from '../types/element.ts';
+import { isGeometricShape } from '../types/element.ts';
 
 /**
  * Utilitário para gerar cursores SVG personalizados com pontas e vértices
@@ -105,7 +106,7 @@ export function getCustomCanvasCursor(
   }
 
   // 7. Formas Geométricas (mira central com terminações arredondadas e ícone geométrico suave)
-  if (['rect', 'circle', 'diamond', 'triangle', 'star'].includes(tool)) {
+  if (isGeometricShape(tool)) {
     let shapePath = '';
     if (tool === 'rect') {
       shapePath = `<rect x="14" y="14" width="10" height="8" rx="2" fill="#3b82f6" fill-opacity="0.35" stroke="#3b82f6" stroke-width="1.5" stroke-linejoin="round"/>`;
@@ -115,6 +116,10 @@ export function getCustomCanvasCursor(
       shapePath = `<path d="M19 13.5L23.5 18L19 22.5L14.5 18Z" fill="#3b82f6" fill-opacity="0.35" stroke="#3b82f6" stroke-width="1.5" stroke-linejoin="round"/>`;
     } else if (tool === 'triangle') {
       shapePath = `<path d="M19 13.5L23.5 21.5H14.5Z" fill="#3b82f6" fill-opacity="0.35" stroke="#3b82f6" stroke-width="1.5" stroke-linejoin="round"/>`;
+    } else if (tool === 'hexagon') {
+      shapePath = `<path d="M16.5 14H21.5L24 18L21.5 22H16.5L14 18Z" fill="#3b82f6" fill-opacity="0.35" stroke="#3b82f6" stroke-width="1.3" stroke-linejoin="round"/>`;
+    } else if (tool === 'cylinder') {
+      shapePath = `<ellipse cx="19" cy="15" rx="4.5" ry="1.8" fill="#3b82f6" fill-opacity="0.35" stroke="#3b82f6" stroke-width="1.3"/><path d="M14.5 15V21C14.5 22 16.5 22.8 19 22.8C21.5 22.8 23.5 22 23.5 21V15" fill="#3b82f6" fill-opacity="0.35" stroke="#3b82f6" stroke-width="1.3"/>`;
     } else {
       shapePath = `<path d="M19 13L20.2 16.5H24L21 18.7L22.2 22.2L19 20L15.8 22.2L17 18.7L14 16.5H17.8Z" fill="#3b82f6" fill-opacity="0.35" stroke="#3b82f6" stroke-width="1.2" stroke-linejoin="round"/>`;
     }
