@@ -9,6 +9,8 @@ interface ArrowItemProps {
   userSelectionColor?: string;
   remoteSelector?: { name: string; color: string };
   draggable?: boolean;
+  allElements?: CanvasElement[];
+  elementMap?: Map<string, CanvasElement>;
   onSelect: (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => void;
   onChange: (updates: Partial<CanvasElement>) => void;
 }
@@ -66,7 +68,7 @@ export const ArrowItem: React.FC<ArrowItemProps> = React.memo(({
         onChange({
           x: Math.round(node.x()),
           y: Math.round(node.y()),
-          points: scaledPoints.map(p => Math.round(p)),
+          points: scaledPoints.map((p) => Math.round(p)),
           rotation: Math.round(node.rotation()),
         });
       }}
@@ -112,6 +114,7 @@ export const ArrowItem: React.FC<ArrowItemProps> = React.memo(({
           points={points}
           stroke={stroke}
           strokeWidth={strokeWidth}
+          dash={element.dash && element.dash.length > 0 ? element.dash : undefined}
           lineCap="round"
           lineJoin="round"
           tension={tension}
@@ -128,6 +131,7 @@ export const ArrowItem: React.FC<ArrowItemProps> = React.memo(({
           fill={stroke}
           stroke={stroke}
           strokeWidth={strokeWidth}
+          dash={element.dash && element.dash.length > 0 ? element.dash : undefined}
           lineCap="round"
           lineJoin="round"
           tension={tension}
@@ -138,7 +142,7 @@ export const ArrowItem: React.FC<ArrowItemProps> = React.memo(({
         />
       )}
 
-      {/* Alças de extremidade quando o conector está selecionado (estilo Miro/FigJam) */}
+      {/* Alças de extremidade quando o conector está selecionado */}
       {isSelected && (
         <>
           <Circle

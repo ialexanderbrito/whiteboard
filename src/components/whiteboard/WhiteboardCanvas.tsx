@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect, useLayoutEffect, useCallback } from 'react';
+import React, { useRef, useState, useEffect, useLayoutEffect, useCallback, useMemo } from 'react';
 import { Stage, Layer, Transformer, Rect, Circle, Line, Star, Path, Ellipse, Group, Text } from 'react-konva';
 import Konva from 'konva';
 import type { CanvasElement, ToolType, ElementType } from '../../types/element';
@@ -24,6 +24,7 @@ import {
   findNearestSnapAnchor,
   resolveConnectorGeometry,
   getConnectedArrowUpdatesOnMove,
+  getCardinalAnchors,
 } from '../../utils/connectors.ts';
 import { SelectionContextBar } from './SelectionContextBar';
 import { BoardContextMenu } from './BoardContextMenu';
@@ -53,7 +54,7 @@ import {
   runsToPlainText,
   updateRunLink,
 } from '../../utils/richText';
-import { textEditingBridge } from '../../utils/textEditingBridge';
+import { textEditingBridge, setStagedTextSelection } from '../../utils/textEditingBridge';
 import {
   copyCanvasElements,
   getCachedClipboardElements,
@@ -423,6 +424,13 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
   canCommentOnlyRef.current = canCommentOnly;
   onStageChangeRef.current = onStageChange;
 
+  // Mapa de elementos id -> CanvasElement memoizado para resoluções geométricas e conectores
+  const elementMap = useMemo(() => {
+    const map = new Map<string, CanvasElement>();
+    for (const el of elements) map.set(el.id, el);
+    return map;
+  }, [elements]);
+
   // Controle de atalho dinâmico para Apontador Laser (Tap-to-switch e Hold-to-laser temporário)
   const previousToolBeforeLaser = useRef<ToolType>('select');
   const isLaserKeyHeld = useRef(false);
@@ -480,11 +488,16 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
   const [snapTargetAnchor, setSnapTargetAnchor] = useState<{ x: number; y: number } | null>(null);
 
   const handleStartQuickConnect = useCallback(
-    (elementId: string, side: any, worldAnchor: { x: number; y: number }) => {
+    (
+      elementId: string,
+      side: any,
+      worldAnchor: { x: number; y: number },
+      _initialPointerEvent?: React.PointerEvent
+    ) => {
       if (readOnly || canCommentOnly) return;
-      isDrawing.current = true;
       const arrowColor = selectedColor && selectedColor !== '#0f172a' ? selectedColor : '#2563eb';
-      setDrawingElement({
+
+      const tempArrow: CanvasElement = {
         id: 'temp_arrow',
         type: 'arrow',
         x: Math.round(worldAnchor.x),
@@ -498,9 +511,119 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         updatedBy: currentUser.uid,
         updatedByName: currentUser.displayName,
         updatedAt: Date.now(),
-      });
+      };
+      setDrawingElement(tempArrow);
+
+      const startPos = { x: worldAnchor.x, y: worldAnchor.y };
+      let currentSnap: ReturnType<typeof findNearestSnapAnchor> = null;
+      let latestTargetWorldPos = { x: worldAnchor.x, y: worldAnchor.y };
+
+      const onPointerMove = (evt: PointerEvent) => {
+        const stage = stageRef.current;
+        if (!stage) return;
+        const stageBox = stage.container().getBoundingClientRect();
+        const screenX = evt.clientX - stageBox.left;
+        const screenY = evt.clientY - stageBox.top;
+        const curScale = scaleRef.current || 1;
+        const curStagePos = stagePosRef.current || { x: 0, y: 0 };
+        const worldX = (screenX - curStagePos.x) / curScale;
+        const worldY = (screenY - curStagePos.y) / curScale;
+
+        const snap = findNearestSnapAnchor({ x: worldX, y: worldY }, elements, 36, elementId);
+        currentSnap = snap;
+        setSnapTargetAnchor(snap ? snap.anchorPoint : null);
+
+        const targetX = snap ? snap.anchorPoint.x : worldX;
+        const targetY = snap ? snap.anchorPoint.y : worldY;
+        latestTargetWorldPos = { x: targetX, y: targetY };
+
+        const updatedArrow: CanvasElement = {
+          ...tempArrow,
+          points: [0, 0, targetX - tempArrow.x, targetY - tempArrow.y],
+          endBinding: snap ? { elementId: snap.element.id, side: snap.side } : undefined,
+        };
+
+        const elementMap = new Map<string, CanvasElement>();
+        for (const el of elements) elementMap.set(el.id, el);
+
+        const geom = resolveConnectorGeometry(updatedArrow, elementMap);
+        const relPoints = geom.routePoints.map((val, idx) =>
+          idx % 2 === 0 ? Math.round(val - geom.worldStart.x) : Math.round(val - geom.worldStart.y)
+        );
+
+        setDrawingElement({
+          ...updatedArrow,
+          x: Math.round(geom.worldStart.x),
+          y: Math.round(geom.worldStart.y),
+          points: relPoints,
+        });
+      };
+
+      const cleanup = () => {
+        window.removeEventListener('pointermove', onPointerMove);
+        window.removeEventListener('pointerup', onPointerUp);
+        window.removeEventListener('keydown', onKeyDown);
+        setSnapTargetAnchor(null);
+        setDrawingElement(null);
+      };
+
+      const onKeyDown = (evt: KeyboardEvent) => {
+        if (evt.key === 'Escape') {
+          cleanup();
+        }
+      };
+
+      const onPointerUp = async () => {
+        cleanup();
+
+        const dist = Math.hypot(latestTargetWorldPos.x - startPos.x, latestTargetWorldPos.y - startPos.y);
+        if (dist >= 12 || currentSnap) {
+          const finalArrow: CanvasElement = {
+            ...tempArrow,
+            points: [0, 0, latestTargetWorldPos.x - tempArrow.x, latestTargetWorldPos.y - tempArrow.y],
+            endBinding: currentSnap ? { elementId: currentSnap.element.id, side: currentSnap.side } : undefined,
+          };
+
+          const elementMap = new Map<string, CanvasElement>();
+          for (const el of elements) elementMap.set(el.id, el);
+
+          const geom = resolveConnectorGeometry(finalArrow, elementMap);
+          const relPoints = geom.routePoints.map((val, idx) =>
+            idx % 2 === 0 ? Math.round(val - geom.worldStart.x) : Math.round(val - geom.worldStart.y)
+          );
+
+          const newId = await onAddElement({
+            type: 'arrow',
+            x: Math.round(geom.worldStart.x),
+            y: Math.round(geom.worldStart.y),
+            points: relPoints,
+            startBinding: { elementId, side },
+            endBinding: currentSnap ? { elementId: currentSnap.element.id, side: currentSnap.side } : undefined,
+            connectorStyle: 'straight',
+            stroke: arrowColor,
+            strokeWidth: 3,
+            zIndex: getNextZIndex(elements),
+            updatedBy: currentUser.uid,
+            updatedByName: currentUser.displayName,
+          });
+
+          onSelectionChange([newId]);
+        }
+      };
+
+      window.addEventListener('pointermove', onPointerMove);
+      window.addEventListener('pointerup', onPointerUp);
+      window.addEventListener('keydown', onKeyDown);
     },
-    [readOnly, canCommentOnly, selectedColor, elements, currentUser]
+    [
+      readOnly,
+      canCommentOnly,
+      selectedColor,
+      elements,
+      currentUser,
+      onAddElement,
+      onSelectionChange,
+    ]
   );
 
   const canvasToastTimerRef = useRef<number | null>(null);
@@ -568,11 +691,11 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       const title = count === 1 ? 'Elemento bloqueado' : `${count} elementos bloqueados`;
       const message = hadDeletions
         ? count === 1
-          ? 'O elemento bloqueado não foi excluído. Desbloqueie (botão direito → Desbloquear) para excluí-lo.'
-          : 'Os elementos desbloqueados foram excluídos. Desbloqueie os demais para excluí-los.'
+          ? 'O elemento bloqueado não foi excluído. Pressione e segure o cadeado para liberar.'
+          : 'Os elementos desbloqueados foram excluídos. Pressione e segure o cadeado para liberar os demais.'
         : count === 1
-        ? 'Nada foi excluído — o elemento está bloqueado. Desbloqueie (botão direito → Desbloquear) e tente novamente.'
-        : 'Nada foi excluído — todos os elementos selecionados estão bloqueados. Desbloqueie primeiro.';
+        ? 'Nada foi excluído — o elemento está bloqueado. Pressione e segure o cadeado para liberar.'
+        : 'Nada foi excluído — todos os elementos selecionados estão bloqueados. Pressione e segure o cadeado para liberar.';
       showCanvasToast(title, message, 'lock', 4500);
       blockedIds.slice(0, 10).forEach((id) => shakeLockedBadge(id));
     },
@@ -585,6 +708,22 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
 
   // Estado para desenho com caneta ou criação de seta por arraste
   const [drawingElement, setDrawingElement] = useState<CanvasElement | null>(null);
+
+  // Elementos candidatos para ancoragem magnética durante o desenho de seta ou conector
+  const candidateConnectableElements = useMemo(() => {
+    if (!drawingElement || (drawingElement.type !== 'arrow' && drawingElement.type !== 'line')) {
+      return [];
+    }
+    const sourceId = drawingElement.startBinding?.elementId;
+    return elements.filter(
+      (el) =>
+        el.id !== sourceId &&
+        el.type !== 'arrow' &&
+        el.type !== 'line' &&
+        el.type !== 'frame' &&
+        !el.locked
+    );
+  }, [drawingElement, elements]);
   const isDrawing = useRef(false);
   const isErasing = useRef(false);
   const deletedIdsInCurrentDrag = useRef<Set<string>>(new Set());
@@ -1256,7 +1395,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       });
       onSelectionChange([newId]);
     },
-    [elements.length, currentUser, onAddElement, onDuplicateElement, onSelectionChange]
+    [elements, currentUser, onAddElement, onDuplicateElement, onSelectionChange]
   );
 
   // Duplicar elementos em lote
@@ -1495,11 +1634,17 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       const dy = Math.round(targetCenterY - box.centerY);
 
       const now = Date.now();
+      const idMap = new Map<string, string>();
+      copiedElements.forEach((elem, idx) => {
+        idMap.set(elem.id, 'elem_' + Math.random().toString(36).substring(2, 11) + idx);
+      });
+
       const newElements: CanvasElement[] = copiedElements.map((elem, idx) => {
         const { id: _id, updatedAt: _up, ...rest } = elem;
-        return {
+        const newId = idMap.get(elem.id)!;
+        const pasted: CanvasElement = {
           ...rest,
-          id: 'elem_' + Math.random().toString(36).substring(2, 11) + idx,
+          id: newId,
           x: Math.round(elem.x + dx),
           y: Math.round(elem.y + dy),
           zIndex: getNextZIndex(elements) + idx,
@@ -1507,6 +1652,22 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           updatedByName: currentUser.displayName,
           updatedAt: now,
         };
+
+        // Remapeia vínculos magnéticos de setas e linhas para os novos nós clonados
+        if (pasted.startBinding && idMap.has(pasted.startBinding.elementId)) {
+          pasted.startBinding = {
+            ...pasted.startBinding,
+            elementId: idMap.get(pasted.startBinding.elementId)!,
+          };
+        }
+        if (pasted.endBinding && idMap.has(pasted.endBinding.elementId)) {
+          pasted.endBinding = {
+            ...pasted.endBinding,
+            elementId: idMap.get(pasted.endBinding.elementId)!,
+          };
+        }
+
+        return pasted;
       });
 
       if (onBatchAddElements) {
@@ -1521,7 +1682,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     [
       readOnly,
       canCommentOnly,
-      elements.length,
+      elements,
       currentUser.uid,
       currentUser.displayName,
       selectedColor,
@@ -1551,6 +1712,50 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     },
     [readOnly, canCommentOnly, selectedElements, elements, onBatchUpdateElements, onUpdateElement]
   );
+
+  // Iniciar edição inline para textos e post-its a partir do menu ou atalho
+  const handleStartEditingElement = useCallback((elemId: string) => {
+    const elem = elements.find((e) => e.id === elemId);
+    if (!elem) return;
+    if (elem.type === 'sticky') {
+      setInlineEditing({
+        elementId: elem.id,
+        type: 'sticky',
+        worldX: elem.x,
+        worldY: elem.y,
+        width: elem.width || 180,
+        height: elem.height || 180,
+        text: stripMarkdownLinks(elem.text || ''),
+        fill: elem.fill || '#fff9b1',
+        textColor: elem.textColor,
+      });
+    } else if (elem.type === 'text') {
+      setInlineEditing({
+        elementId: elem.id,
+        type: 'text',
+        worldX: elem.x,
+        worldY: elem.y,
+        width: elem.width || 200,
+        height: elem.height || 40,
+        text: stripMarkdownLinks(elem.text || ''),
+        fontSize: elem.fontSize || 20,
+        fill: elem.fill || '#0f172a',
+        textColor: elem.textColor,
+      });
+    } else if (elem.type === 'frame') {
+      setInlineEditing({
+        elementId: elem.id,
+        type: 'frame',
+        worldX: elem.x,
+        worldY: elem.y,
+        width: elem.width || 320,
+        height: 32,
+        text: stripMarkdownLinks(elem.text || ''),
+        fill: '#334155',
+        textColor: '#ffffff',
+      });
+    }
+  }, [elements]);
 
   // Atalhos de teclado
   useEffect(() => {
@@ -1881,7 +2086,13 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     handleReorderLayer,
     onToggleGrid,
     onToggleSmartGuides,
+    onToggleSmartDrawing,
     notifyLockedBlocked,
+    currentTool,
+    inlineEditing,
+    smartDrawing,
+    handleStartEditingElement,
+    showCanvasToast,
   ]);
 
   // Listener do evento nativo de 'paste' para captura rica de dados (imagens, textos e itens)
@@ -3604,6 +3815,13 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     });
   }, [sortedElements, quantizedStageX, quantizedStageY, quantizedScale, selectedIds, inlineEditing]);
 
+  const handleOpenReactionPicker = useCallback(
+    (elementId: string, anchor: { x: number; y: number }, mode?: 'picker' | 'overflow') => {
+      setReactionPickerTarget({ elementId, anchor, mode });
+    },
+    []
+  );
+
   // Keep the element subtree stable while only the camera moves. This lets Konva
   // update the stage transform without recreating every React-Konva child.
   const renderedElements = React.useMemo(
@@ -3651,9 +3869,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
               onSelect={handlers.onSelect}
               onChange={handlers.onChange}
               onToggleReaction={handleToggleReactionInternal}
-              onOpenReactionPicker={(elementId, anchor, mode) => {
-                setReactionPickerTarget({ elementId, anchor, mode });
-              }}
+              onOpenReactionPicker={handleOpenReactionPicker}
             />
           );
         }
@@ -3674,9 +3890,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
               onSelect={handlers.onSelect}
               onChange={handlers.onChange}
               onToggleReaction={handleToggleReactionInternal}
-              onOpenReactionPicker={(elementId, anchor, mode) => {
-                setReactionPickerTarget({ elementId, anchor, mode });
-              }}
+              onOpenReactionPicker={handleOpenReactionPicker}
               onStartEditing={handlers.onStartEditing}
             />
           );
@@ -3709,9 +3923,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
                 triggerCanvasConfetti(cx, cy);
               }}
               onToggleReaction={handleToggleReactionInternal}
-              onOpenReactionPicker={(elementId, anchor, mode) => {
-                setReactionPickerTarget({ elementId, anchor, mode });
-              }}
+              onOpenReactionPicker={handleOpenReactionPicker}
             />
           );
         }
@@ -3733,9 +3945,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
               onChange={handlers.onChange}
               onStartEditing={handlers.onStartEditing}
               onToggleReaction={handleToggleReactionInternal}
-              onOpenReactionPicker={(elementId, anchor, mode) => {
-                setReactionPickerTarget({ elementId, anchor, mode });
-              }}
+              onOpenReactionPicker={handleOpenReactionPicker}
             />
           );
         }
@@ -3749,6 +3959,8 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
               userSelectionColor={userSelectionColor}
               remoteSelector={remoteSelector}
               draggable={canDragItem}
+              allElements={elements}
+              elementMap={elementMap}
               onSelect={handlers.onSelect}
               onChange={handlers.onChange}
             />
@@ -3788,9 +4000,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
               onChange={handlers.onChange}
               onStartEditing={handlers.onStartEditing}
               onToggleReaction={handleToggleReactionInternal}
-              onOpenReactionPicker={(elementId, anchor, mode) => {
-                setReactionPickerTarget({ elementId, anchor, mode });
-              }}
+              onOpenReactionPicker={handleOpenReactionPicker}
             />
           );
         }
@@ -3799,6 +4009,8 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       }),
     [
       mountedElements,
+      elements,
+      elementMap,
       selectedIds,
       remoteSelectionMap,
       currentUser.uid,
@@ -3808,6 +4020,8 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       userSelectionColor,
       inlineEditing?.elementId,
       handleToggleReactionInternal,
+      handleOpenReactionPicker,
+      triggerCanvasConfetti,
       getItemHandlers,
       mirioReactionUnlocked,
       ditadorReactionUnlocked,
@@ -3842,7 +4056,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       if (boardMembers?.[userId]?.photoURL) return boardMembers[userId].photoURL || null;
       return null;
     },
-    [currentUser.uid, currentUser.photoURL, remoteUsers, boardMembers, boardOwner]
+    [currentUser.uid, currentUser.photoURL, remoteUsers, boardMembers]
   );
 
   // Resolve a cor do cursor do participante pelo ID (a mesma das tags de seleção/cursor)
@@ -3868,7 +4082,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       ? selectedElements[0]
       : null;
 
-  // Criação rápida de post-it ou forma geométrica encostada ao selecionado (estilo FigJam / Miro)
+  // Criação rápida de post-it ou forma geométrica encostada ao selecionado
   const handleQuickAddSticky = useCallback(async (direction: StickyDirection) => {
     if (!selectedQuickAddElement || readOnly || selectedQuickAddElement.locked) return;
 
@@ -3953,7 +4167,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     readOnly,
     canCommentOnly,
     onAddElement,
-    elements.length,
+    elements,
     currentUser.uid,
     currentUser.displayName,
     onSelectionChange,
@@ -3983,7 +4197,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       currentTool === 'laser' ? '#ff1744' : selectedColor, 
       penMode
     );
-  }, [isDraggableStage, isMiddlePanningState, isMouseDownState, currentTool, selectedColor, currentUser.color, penMode]);
+  }, [isDraggableStage, isMiddlePanningState, isMouseDownState, currentTool, selectedColor, penMode]);
 
   // Sincroniza o cursor customizado diretamente no container nativo do Konva Stage
   React.useEffect(() => {
@@ -4030,13 +4244,21 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       const clickedEl = elements.find((el) => el.id === clickedElementId);
       // Se clicou em um elemento que já está na seleção, mantém a seleção múltipla
       if (selectedIds.includes(clickedElementId)) {
+        const allSelectedLocked = selectedIds.every((id) => elements.find((el) => el.id === id)?.locked);
+        if (allSelectedLocked) {
+          shakeLockedBadge(clickedElementId);
+          showCanvasToast('Elemento bloqueado', 'Pressione e segure o cadeado para liberar.', 'lock', 4000);
+          return;
+        }
         targetIds = selectedIds;
       } else {
-        // Elemento bloqueado não entra na seleção (proteção total), mas o menu
-        // continua direcionado a ele para oferecer a opção "Desbloquear".
-        if (!clickedEl?.locked) {
-          onSelectionChange([clickedElementId]);
+        // Elemento bloqueado não abre menu de contexto; avisa o usuário que a liberação é por pressão contínua
+        if (clickedEl?.locked) {
+          shakeLockedBadge(clickedElementId);
+          showCanvasToast('Elemento bloqueado', 'Pressione e segure o cadeado para liberar.', 'lock', 4000);
+          return;
         }
+        onSelectionChange([clickedElementId]);
         targetIds = [clickedElementId];
       }
     } else {
@@ -4237,50 +4459,6 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           updates.forEach((u) => onUpdateElement(u.id, u.updates));
         }
       }
-    }
-  };
-
-  // Iniciar edição inline para textos e post-its a partir do menu
-  const handleStartEditingElement = (elemId: string) => {
-    const elem = elements.find((e) => e.id === elemId);
-    if (!elem) return;
-    if (elem.type === 'sticky') {
-      setInlineEditing({
-        elementId: elem.id,
-        type: 'sticky',
-        worldX: elem.x,
-        worldY: elem.y,
-        width: elem.width || 180,
-        height: elem.height || 180,
-        text: stripMarkdownLinks(elem.text || ''),
-        fill: elem.fill || '#fff9b1',
-        textColor: elem.textColor,
-      });
-    } else if (elem.type === 'text') {
-      setInlineEditing({
-        elementId: elem.id,
-        type: 'text',
-        worldX: elem.x,
-        worldY: elem.y,
-        width: elem.width || 200,
-        height: elem.height || 40,
-        text: stripMarkdownLinks(elem.text || ''),
-        fontSize: elem.fontSize || 20,
-        fill: elem.fill || '#0f172a',
-        textColor: elem.textColor,
-      });
-    } else if (elem.type === 'frame') {
-      setInlineEditing({
-        elementId: elem.id,
-        type: 'frame',
-        worldX: elem.x,
-        worldY: elem.y,
-        width: elem.width || 320,
-        height: 32,
-        text: stripMarkdownLinks(elem.text || ''),
-        fill: '#334155',
-        textColor: '#ffffff',
-      });
     }
   };
 
@@ -5296,16 +5474,47 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
             <ArrowItem
               element={drawingElement}
               isSelected={false}
+              allElements={elements}
+              elementMap={elementMap}
               onSelect={() => {}}
               onChange={() => {}}
             />
           )}
 
+          {/* Pontos de conexão magnética em elementos candidatos quando uma seta/linha está sendo traçada */}
+          {candidateConnectableElements.map((el) => {
+            const bounds = getElementWorldBounds(el);
+            const anchors = getCardinalAnchors(bounds);
+            return (
+              <Group key={`cand_${el.id}`} listening={false}>
+                {(['top', 'right', 'bottom', 'left'] as const).map((side) => {
+                  const pt = anchors[side];
+                  const isSnapped =
+                    snapTargetAnchor &&
+                    Math.hypot(snapTargetAnchor.x - pt.x, snapTargetAnchor.y - pt.y) < 2;
+                  if (isSnapped) return null;
+                  return (
+                    <Circle
+                      key={side}
+                      x={pt.x}
+                      y={pt.y}
+                      radius={4.5}
+                      fill="#ffffff"
+                      stroke={userSelectionColor}
+                      strokeWidth={1.5}
+                      opacity={0.65}
+                    />
+                  );
+                })}
+              </Group>
+            );
+          })}
+
           {/* Indicador de snap magnético na âncora alvo ao desenhar conector */}
           {snapTargetAnchor && (
             <Group x={snapTargetAnchor.x} y={snapTargetAnchor.y} listening={false}>
-              <Circle radius={11} fill={`${userSelectionColor}33`} stroke={userSelectionColor} strokeWidth={2} />
-              <Circle radius={4} fill={userSelectionColor} />
+              <Circle radius={13} fill={`${userSelectionColor}33`} stroke={userSelectionColor} strokeWidth={2} />
+              <Circle radius={4.5} fill={userSelectionColor} />
             </Group>
           )}
 
@@ -5711,42 +5920,30 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
             const ta = e.currentTarget;
             if (ta.selectionStart !== ta.selectionEnd) {
               const selText = ta.value.substring(ta.selectionStart, ta.selectionEnd);
-              if (typeof window !== 'undefined') {
-                (window as any).__mirio_active_text_selection = {
-                  elementId: inlineEditing.elementId,
-                  start: ta.selectionStart,
-                  end: ta.selectionEnd,
-                  text: selText,
-                };
-              }
+              setStagedTextSelection({
+                elementId: inlineEditing.elementId,
+                text: selText,
+              });
             }
           }}
           onMouseUp={(e) => {
             const ta = e.currentTarget;
             if (ta.selectionStart !== ta.selectionEnd) {
               const selText = ta.value.substring(ta.selectionStart, ta.selectionEnd);
-              if (typeof window !== 'undefined') {
-                (window as any).__mirio_active_text_selection = {
-                  elementId: inlineEditing.elementId,
-                  start: ta.selectionStart,
-                  end: ta.selectionEnd,
-                  text: selText,
-                };
-              }
+              setStagedTextSelection({
+                elementId: inlineEditing.elementId,
+                text: selText,
+              });
             }
           }}
           onKeyUp={(e) => {
             const ta = e.currentTarget;
             if (ta.selectionStart !== ta.selectionEnd) {
               const selText = ta.value.substring(ta.selectionStart, ta.selectionEnd);
-              if (typeof window !== 'undefined') {
-                (window as any).__mirio_active_text_selection = {
-                  elementId: inlineEditing.elementId,
-                  start: ta.selectionStart,
-                  end: ta.selectionEnd,
-                  text: selText,
-                };
-              }
+              setStagedTextSelection({
+                elementId: inlineEditing.elementId,
+                text: selText,
+              });
             }
           }}
           onBlur={handleFinishEditing}
