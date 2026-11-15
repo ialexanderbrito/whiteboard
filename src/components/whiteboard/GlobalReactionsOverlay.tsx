@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { reactionService, type GlobalReactionEvent } from '@/services/reactionService';
 import { getAppleEmojiUrl } from '@/utils/appleEmoji';
-import { getReactionImageUrl, MIRIO_REACTION, DITADOR_REACTION } from '@/utils/mirioReaction';
+import { getReactionImageUrl, MIRIO_REACTION, DITADOR_REACTION, BRIGADEIRO_REACTION } from '@/utils/mirioReaction';
 
 interface ReactionParticle {
   id: string;
@@ -50,6 +50,11 @@ export const GlobalReactionsOverlay: React.FC<GlobalReactionsOverlayProps> = ({ 
     if (ditadorImage) {
       const img = new Image();
       img.src = ditadorImage;
+    }
+    const brigadeiroImage = getReactionImageUrl(BRIGADEIRO_REACTION);
+    if (brigadeiroImage) {
+      const img = new Image();
+      img.src = brigadeiroImage;
     }
   }, []);
 

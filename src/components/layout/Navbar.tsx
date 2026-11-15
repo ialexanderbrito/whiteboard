@@ -61,6 +61,7 @@ interface NavbarProps {
   onToggleSmartGuides?: (enabled?: boolean) => void;
   mirioReactionUnlocked?: boolean;
   ditadorReactionUnlocked?: boolean;
+  brigadeiroReactionUnlocked?: boolean;
   isShareModalOpen?: boolean;
   onShareModalOpenChange?: (open: boolean) => void;
   isCoffeeModalOpen?: boolean;
@@ -106,6 +107,7 @@ export const Navbar: React.FC<NavbarProps> = React.memo(({
   onToggleSmartGuides,
   mirioReactionUnlocked = false,
   ditadorReactionUnlocked = false,
+  brigadeiroReactionUnlocked = false,
   isShareModalOpen: controlledShareOpen,
   onShareModalOpenChange: setControlledShareOpen,
   isCoffeeModalOpen: controlledCoffeeOpen,
@@ -392,6 +394,7 @@ export const Navbar: React.FC<NavbarProps> = React.memo(({
           onEnterPresentation={onEnterPresentation || (() => {})}
           mirioReactionUnlocked={mirioReactionUnlocked}
           ditadorReactionUnlocked={ditadorReactionUnlocked}
+          brigadeiroReactionUnlocked={brigadeiroReactionUnlocked}
         />
 
         {/* Preferências de Visualização e Grade do Canvas */}

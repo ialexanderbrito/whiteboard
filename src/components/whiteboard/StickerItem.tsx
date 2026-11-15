@@ -16,6 +16,7 @@ interface StickerItemProps {
   currentUserId?: string;
   mirioReactionUnlocked?: boolean;
   ditadorReactionUnlocked?: boolean;
+  brigadeiroReactionUnlocked?: boolean;
   onSelect: (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => void;
   onChange: (updates: Partial<CanvasElement>) => void;
   onToggleReaction?: (elementId: string, emoji: string) => void;
@@ -38,6 +39,7 @@ export const StickerItem: React.FC<StickerItemProps> = React.memo(({
   currentUserId,
   mirioReactionUnlocked = false,
   ditadorReactionUnlocked = false,
+  brigadeiroReactionUnlocked = false,
   onSelect,
   onChange,
   onToggleReaction,
@@ -243,6 +245,7 @@ export const StickerItem: React.FC<StickerItemProps> = React.memo(({
         canEdit
         mirioReactionUnlocked={mirioReactionUnlocked}
         ditadorReactionUnlocked={ditadorReactionUnlocked}
+        brigadeiroReactionUnlocked={brigadeiroReactionUnlocked}
         isHovered={isHoveredLocal}
         onToggleReaction={onToggleReaction}
         onOpenReactionPicker={onOpenReactionPicker}

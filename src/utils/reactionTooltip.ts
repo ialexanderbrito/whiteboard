@@ -46,12 +46,23 @@ export const isMirioReaction = (reaction: string): boolean =>
 export const isDitadorReaction = (reaction: string): boolean =>
   reaction === 'ditador_original' || reaction === '__ditador_original__' || reaction === ':ditador_original:';
 
+export const isBrigadeiroReaction = (reaction: string): boolean =>
+  reaction === 'brigadeiro_original' ||
+  reaction === '__brigadeiro_original__' ||
+  reaction === ':brigadeiro_original:' ||
+  reaction === 'brisadeiro_original' ||
+  reaction === '__brisadeiro_original__' ||
+  reaction === ':brisadeiro_original:' ||
+  reaction === 'brigadeiro' ||
+  reaction === 'brisadeiro';
+
 export interface FormattedVotersResult {
   names: string[];
   verb: 'reagiu com' | 'reagiram com';
   emoji: string;
   isMirio: boolean;
   isDitador: boolean;
+  isBrigadeiro: boolean;
   appleEmojiUrl: string;
 }
 
@@ -85,6 +96,7 @@ export function formatReactionVotersText(
   const verb = names.length === 1 ? 'reagiu com' : 'reagiram com';
   const isMirio = isMirioReaction(emoji);
   const isDitador = isDitadorReaction(emoji);
+  const isBrigadeiro = isBrigadeiroReaction(emoji);
   const appleEmojiUrl = getAppleEmojiUrl(emoji);
 
   return {
@@ -93,6 +105,7 @@ export function formatReactionVotersText(
     emoji,
     isMirio,
     isDitador,
+    isBrigadeiro,
     appleEmojiUrl,
   };
 }

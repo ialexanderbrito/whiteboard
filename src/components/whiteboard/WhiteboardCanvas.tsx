@@ -88,7 +88,14 @@ import { StickyReactionBar } from './StickyReactionBar';
 import { ReactionBadgeTooltip } from './ReactionBadgeTooltip';
 import { StickyQuickAdd } from './StickyQuickAdd';
 import { getAdjacentStickyRect, type StickyDirection } from '../../utils/stickyPlacement';
-import { isMirioReaction, MIRIO_REACTION, isDitadorReaction, DITADOR_REACTION } from '../../utils/mirioReaction';
+import {
+  isMirioReaction,
+  MIRIO_REACTION,
+  isDitadorReaction,
+  DITADOR_REACTION,
+  isBrigadeiroReaction,
+  BRIGADEIRO_REACTION,
+} from '../../utils/mirioReaction';
 import { Vote, Crown, Check, Minus, Plus, LockClosed, AlertCircle, AlertTriangle, Info } from '@/components/ui/icons';
 
 if (typeof window !== 'undefined' && isCoarseOrMobileViewport()) {
@@ -153,6 +160,7 @@ interface WhiteboardCanvasProps {
   boardOwner?: { id?: string; name?: string };
   mirioReactionUnlocked?: boolean;
   ditadorReactionUnlocked?: boolean;
+  brigadeiroReactionUnlocked?: boolean;
   onLaserMove?: (worldPos: { x: number; y: number }, isDrawing: boolean) => void;
   onLaserDown?: (worldPos: { x: number; y: number }) => void;
   onLaserUp?: () => void;
@@ -347,6 +355,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
   boardOwner,
   mirioReactionUnlocked = false,
   ditadorReactionUnlocked = false,
+  brigadeiroReactionUnlocked = false,
   onLaserMove,
   onLaserDown,
   onLaserUp,
@@ -1325,6 +1334,9 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       if (isDitadorReaction(emoji) && !ditadorReactionUnlocked) {
         return;
       }
+      if (isBrigadeiroReaction(emoji) && !brigadeiroReactionUnlocked) {
+        return;
+      }
 
       const elem = elementsRef.current.find((e) => e.id === elementId);
       if (elem) {
@@ -1338,7 +1350,13 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
 
       if (!elem) return;
 
-      const targetEmoji = isMirioReaction(emoji) ? MIRIO_REACTION : isDitadorReaction(emoji) ? DITADOR_REACTION : emoji;
+      const targetEmoji = isMirioReaction(emoji)
+        ? MIRIO_REACTION
+        : isDitadorReaction(emoji)
+        ? DITADOR_REACTION
+        : isBrigadeiroReaction(emoji)
+        ? BRIGADEIRO_REACTION
+        : emoji;
       const reactions = { ...(elem.reactions || {}) };
 
       if (reactions['__mirio_original__']) {
@@ -1355,6 +1373,22 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           ...new Set([...(reactions[DITADOR_REACTION] || []), ...legacyUsers]),
         ];
         delete reactions['__ditador_original__'];
+      }
+
+      if (reactions['__brigadeiro_original__']) {
+        const legacyUsers = reactions['__brigadeiro_original__'] || [];
+        reactions[BRIGADEIRO_REACTION] = [
+          ...new Set([...(reactions[BRIGADEIRO_REACTION] || []), ...legacyUsers]),
+        ];
+        delete reactions['__brigadeiro_original__'];
+      }
+
+      if (reactions['__brisadeiro_original__']) {
+        const legacyUsers = reactions['__brisadeiro_original__'] || [];
+        reactions[BRIGADEIRO_REACTION] = [
+          ...new Set([...(reactions[BRIGADEIRO_REACTION] || []), ...legacyUsers]),
+        ];
+        delete reactions['__brisadeiro_original__'];
       }
 
       const currentUsers = reactions[targetEmoji] || [];
@@ -1374,7 +1408,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
 
       await onUpdateElement(elementId, { reactions });
     },
-    [onToggleReaction, onUpdateElement, mirioReactionUnlocked, ditadorReactionUnlocked]
+    [onToggleReaction, onUpdateElement, mirioReactionUnlocked, ditadorReactionUnlocked, brigadeiroReactionUnlocked]
   );
 
   // Duplicar elemento individual
@@ -1759,10 +1793,15 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
 
   // Atalhos de teclado
   useEffect(() => {
+    let recentKeysBuffer: string[] = [];
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName) || (e.target as HTMLElement).isContentEditable) {
         return;
       }
+
+      const rawKey = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      recentKeysBuffer = [...recentKeysBuffer, rawKey].slice(-10);
 
       if (e.code === 'Space') {
         setIsSpacePressed(true);
@@ -2029,8 +2068,11 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
             }
           }
           if ((e.key === 's' || e.key === 'S') && onOpenTemplates) {
-            e.preventDefault();
-            onOpenTemplates();
+            const isBrisadeiroTyping = recentKeysBuffer.slice(-4, -1).join('') === 'bri';
+            if (!isBrisadeiroTyping) {
+              e.preventDefault();
+              onOpenTemplates();
+            }
           }
           if (e.key === 'e' || e.key === 'E') onSelectTool('eraser');
           if ((e.key === 'u' || e.key === 'U') && onOpenStickers) {
@@ -3866,6 +3908,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
               currentUserId={currentUser.uid}
               mirioReactionUnlocked={mirioReactionUnlocked}
               ditadorReactionUnlocked={ditadorReactionUnlocked}
+              brigadeiroReactionUnlocked={brigadeiroReactionUnlocked}
               onSelect={handlers.onSelect}
               onChange={handlers.onChange}
               onToggleReaction={handleToggleReactionInternal}
@@ -3887,6 +3930,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
               canEdit={canEditItem}
               mirioReactionUnlocked={mirioReactionUnlocked}
               ditadorReactionUnlocked={ditadorReactionUnlocked}
+              brigadeiroReactionUnlocked={brigadeiroReactionUnlocked}
               onSelect={handlers.onSelect}
               onChange={handlers.onChange}
               onToggleReaction={handleToggleReactionInternal}
@@ -3909,6 +3953,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
               currentUserId={currentUser.uid}
               mirioReactionUnlocked={mirioReactionUnlocked}
               ditadorReactionUnlocked={ditadorReactionUnlocked}
+              brigadeiroReactionUnlocked={brigadeiroReactionUnlocked}
               onSelect={handlers.onSelect}
               onChange={handlers.onChange}
               onStartEditingItem={(elementId, target, initialText, itemY) => {
@@ -3941,6 +3986,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
               currentUserId={currentUser.uid}
               mirioReactionUnlocked={mirioReactionUnlocked}
               ditadorReactionUnlocked={ditadorReactionUnlocked}
+              brigadeiroReactionUnlocked={brigadeiroReactionUnlocked}
               onSelect={handlers.onSelect}
               onChange={handlers.onChange}
               onStartEditing={handlers.onStartEditing}
@@ -3996,6 +4042,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
               currentUserId={currentUser.uid}
               mirioReactionUnlocked={mirioReactionUnlocked}
               ditadorReactionUnlocked={ditadorReactionUnlocked}
+              brigadeiroReactionUnlocked={brigadeiroReactionUnlocked}
               onSelect={handlers.onSelect}
               onChange={handlers.onChange}
               onStartEditing={handlers.onStartEditing}
@@ -4025,6 +4072,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       getItemHandlers,
       mirioReactionUnlocked,
       ditadorReactionUnlocked,
+      brigadeiroReactionUnlocked,
     ]
   );
 
@@ -4877,6 +4925,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           onToggleReaction={handleToggleReactionInternal}
           mirioReactionUnlocked={mirioReactionUnlocked}
           ditadorReactionUnlocked={ditadorReactionUnlocked}
+          brigadeiroReactionUnlocked={brigadeiroReactionUnlocked}
         />
       )}
 

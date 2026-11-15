@@ -53,6 +53,10 @@ import {
   isDitadorReaction,
   isDitadorReactionUnlocked,
   unlockDitadorReaction,
+  BRIGADEIRO_REACTION,
+  isBrigadeiroReaction,
+  isBrigadeiroReactionUnlocked,
+  unlockBrigadeiroReaction,
 } from '../utils/mirioReaction';
 import { publishCursorReadout } from '../utils/cursorReadout';
 import { computeFitToContentViewport } from '../utils/viewport';
@@ -113,6 +117,7 @@ export const BoardPage: React.FC = () => {
   });
   const [mirioReactionUnlocked, setMirioReactionUnlocked] = useState(isMirioReactionUnlocked);
   const [ditadorReactionUnlocked, setDitadorReactionUnlocked] = useState(isDitadorReactionUnlocked);
+  const [brigadeiroReactionUnlocked, setBrigadeiroReactionUnlocked] = useState(isBrigadeiroReactionUnlocked);
 
   useEffect(() => {
     const konamiCode = [
@@ -136,9 +141,12 @@ export const BoardPage: React.FC = () => {
       }
 
       const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
-      keyBuffer = [...keyBuffer, key].slice(-Math.max(konamiCode.length, 10));
+      keyBuffer = [...keyBuffer, key].slice(-Math.max(konamiCode.length, 12));
       const isSimpleCode = keyBuffer.slice(-5).join('') === 'mirio';
       const isDitadorCode = keyBuffer.slice(-7).join('') === 'ditador';
+      const isBrigadeiroCode =
+        keyBuffer.slice(-10).join('') === 'brigadeiro' ||
+        keyBuffer.slice(-10).join('') === 'brisadeiro';
       const isKonamiCode =
         keyBuffer.length >= konamiCode.length &&
         keyBuffer.slice(-konamiCode.length).every((value, index) => value === konamiCode[index]);
@@ -150,6 +158,10 @@ export const BoardPage: React.FC = () => {
       } else if (isDitadorCode) {
         unlockDitadorReaction();
         setDitadorReactionUnlocked(true);
+        keyBuffer = [];
+      } else if (isBrigadeiroCode) {
+        unlockBrigadeiroReaction();
+        setBrigadeiroReactionUnlocked(true);
         keyBuffer = [];
       }
     };
@@ -168,13 +180,22 @@ export const BoardPage: React.FC = () => {
       }
     };
 
+    const handleBrigadeiroUnlockedEvent = () => {
+      setBrigadeiroReactionUnlocked(true);
+      if (boardId && currentUser) {
+        void reactionService.triggerReaction(boardId, BRIGADEIRO_REACTION, currentUser.displayName);
+      }
+    };
+
     window.addEventListener('keydown', handleUnlockKeyDown);
     window.addEventListener('mirio-reaction-unlocked', handleUnlockedEvent);
     window.addEventListener('ditador-reaction-unlocked', handleDitadorUnlockedEvent);
+    window.addEventListener('brigadeiro-reaction-unlocked', handleBrigadeiroUnlockedEvent);
     return () => {
       window.removeEventListener('keydown', handleUnlockKeyDown);
       window.removeEventListener('mirio-reaction-unlocked', handleUnlockedEvent);
       window.removeEventListener('ditador-reaction-unlocked', handleDitadorUnlockedEvent);
+      window.removeEventListener('brigadeiro-reaction-unlocked', handleBrigadeiroUnlockedEvent);
     };
   }, [boardId, currentUser]);
 
@@ -1422,10 +1443,17 @@ export const BoardPage: React.FC = () => {
       if (!boardId || !currentUser) return;
       if (isMirioReaction(emoji) && !mirioReactionUnlocked) return;
       if (isDitadorReaction(emoji) && !ditadorReactionUnlocked) return;
+      if (isBrigadeiroReaction(emoji) && !brigadeiroReactionUnlocked) return;
       const elem = elementsRef.current.find((e) => e.id === elementId);
       if (!elem) return;
 
-      const targetEmoji = isMirioReaction(emoji) ? MIRIO_REACTION : isDitadorReaction(emoji) ? DITADOR_REACTION : emoji;
+      const targetEmoji = isMirioReaction(emoji)
+        ? MIRIO_REACTION
+        : isDitadorReaction(emoji)
+        ? DITADOR_REACTION
+        : isBrigadeiroReaction(emoji)
+        ? BRIGADEIRO_REACTION
+        : emoji;
       const reactions = { ...(elem.reactions || {}) };
 
       // Se houver chave legada __mirio_original__, migra para mirio_original para não quebrar no Firestore
@@ -1443,6 +1471,22 @@ export const BoardPage: React.FC = () => {
           ...new Set([...(reactions[DITADOR_REACTION] || []), ...legacyUsers]),
         ];
         delete reactions['__ditador_original__'];
+      }
+
+      if (reactions['__brigadeiro_original__']) {
+        const legacyUsers = reactions['__brigadeiro_original__'] || [];
+        reactions[BRIGADEIRO_REACTION] = [
+          ...new Set([...(reactions[BRIGADEIRO_REACTION] || []), ...legacyUsers]),
+        ];
+        delete reactions['__brigadeiro_original__'];
+      }
+
+      if (reactions['__brisadeiro_original__']) {
+        const legacyUsers = reactions['__brisadeiro_original__'] || [];
+        reactions[BRIGADEIRO_REACTION] = [
+          ...new Set([...(reactions[BRIGADEIRO_REACTION] || []), ...legacyUsers]),
+        ];
+        delete reactions['__brisadeiro_original__'];
       }
 
       const currentUsers = reactions[targetEmoji] || [];
@@ -1466,7 +1510,7 @@ export const BoardPage: React.FC = () => {
       );
       await elementService.updateElement(boardId, elementId, { reactions });
     },
-    [boardId, currentUser, mirioReactionUnlocked, ditadorReactionUnlocked]
+    [boardId, currentUser, mirioReactionUnlocked, ditadorReactionUnlocked, brigadeiroReactionUnlocked]
   );
 
   // Início de sessão de borracha parcial: grava snapshot de histórico antes da remoção
@@ -1801,6 +1845,7 @@ export const BoardPage: React.FC = () => {
           onToggleSmartGuides={handleToggleSmartGuides}
           mirioReactionUnlocked={mirioReactionUnlocked}
           ditadorReactionUnlocked={ditadorReactionUnlocked}
+          brigadeiroReactionUnlocked={brigadeiroReactionUnlocked}
           isShareModalOpen={isShareModalOpen}
           onShareModalOpenChange={setIsShareModalOpen}
           isCoffeeModalOpen={isCoffeeModalOpen}
@@ -2232,6 +2277,7 @@ export const BoardPage: React.FC = () => {
         onToggleSmartGuides={handleToggleSmartGuides}
         mirioReactionUnlocked={mirioReactionUnlocked}
         ditadorReactionUnlocked={ditadorReactionUnlocked}
+        brigadeiroReactionUnlocked={brigadeiroReactionUnlocked}
         boardMembers={board?.members}
         boardOwner={{ id: board?.ownerId, name: board?.ownerName }}
       />

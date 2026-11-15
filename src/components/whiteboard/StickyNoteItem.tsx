@@ -14,6 +14,9 @@ import {
   isDitadorReaction,
   loadDitadorReactionImage,
   getCachedDitadorReactionImage,
+  isBrigadeiroReaction,
+  loadBrigadeiroReactionImage,
+  getCachedBrigadeiroReactionImage,
 } from '../../utils/mirioReaction';
 import {
   getCachedAppleEmojiImage,
@@ -35,6 +38,7 @@ interface StickyNoteItemProps {
   canEdit?: boolean;
   mirioReactionUnlocked?: boolean;
   ditadorReactionUnlocked?: boolean;
+  brigadeiroReactionUnlocked?: boolean;
   onSelect: (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => void;
   onChange: (updates: Partial<CanvasElement>) => void;
   onToggleReaction?: (elementId: string, emoji: string) => void;
@@ -67,6 +71,7 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
   canEdit = true,
   mirioReactionUnlocked = false,
   ditadorReactionUnlocked = false,
+  brigadeiroReactionUnlocked = false,
   onSelect,
   onChange,
   onToggleReaction,
@@ -200,7 +205,13 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
     const map = new Map<string, string[]>();
     for (const [key, users] of Object.entries(reactions)) {
       if (!users || users.length === 0) continue;
-      const canonicalKey = isMirioReaction(key) ? 'mirio_original' : isDitadorReaction(key) ? 'ditador_original' : key;
+      const canonicalKey = isMirioReaction(key)
+        ? 'mirio_original'
+        : isDitadorReaction(key)
+        ? 'ditador_original'
+        : isBrigadeiroReaction(key)
+        ? 'brigadeiro_original'
+        : key;
       const current = map.get(canonicalKey) || [];
       map.set(canonicalKey, [...new Set([...current, ...users])]);
     }
@@ -209,7 +220,7 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
 
   const hasReactions = activeReactions.length > 0;
 
-  // Carregador assíncrono de imagens Apple Emoji e Mirio/Ditador
+  // Carregador assíncrono de imagens Apple Emoji e Mirio/Ditador/Brigadeiro
   useEffect(() => {
     activeReactions.forEach(([emoji]) => {
       if (isMirioReaction(emoji)) {
@@ -222,6 +233,13 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
       } else if (isDitadorReaction(emoji)) {
         if (!getCachedDitadorReactionImage()) {
           void loadDitadorReactionImage().then(() => {
+            setReactionRenderVersion((v) => v + 1);
+            groupRef.current?.getLayer()?.batchDraw();
+          });
+        }
+      } else if (isBrigadeiroReaction(emoji)) {
+        if (!getCachedBrigadeiroReactionImage()) {
+          void loadBrigadeiroReactionImage().then(() => {
             setReactionRenderVersion((v) => v + 1);
             groupRef.current?.getLayer()?.batchDraw();
           });
@@ -260,6 +278,7 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
     const badgeItems = activeReactions.map(([emoji, users]) => {
       const isMirio = isMirioReaction(emoji);
       const isDitador = isDitadorReaction(emoji);
+      const isBrigadeiro = isBrigadeiroReaction(emoji);
       const countStr = users.length.toString();
       const badgeWidth = Math.max(38, Math.round(20 + countStr.length * 7.5 + 8));
       return {
@@ -267,6 +286,7 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
         users,
         isMirio,
         isDitador,
+        isBrigadeiro,
         countStr,
         badgeWidth,
       };
@@ -499,9 +519,12 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
       {/* Badges de Reações com Imagens Apple Emoji no Canvas ancoradas na borda inferior estilo Miro */}
       {hasReactions && (
         <Group y={footerBadgesLayout.y}>
-          {reactionBadges.map(({ emoji, users, isMirio, isDitador, countStr, badgeWidth, x }) => {
+          {reactionBadges.map(({ emoji, users, isMirio, isDitador, isBrigadeiro, countStr, badgeWidth, x }) => {
             const hasUserReacted = currentUserId ? users.includes(currentUserId) : false;
-            const isLocked = (isMirio && !mirioReactionUnlocked) || (isDitador && !ditadorReactionUnlocked);
+            const isLocked =
+              (isMirio && !mirioReactionUnlocked) ||
+              (isDitador && !ditadorReactionUnlocked) ||
+              (isBrigadeiro && !brigadeiroReactionUnlocked);
 
             const badgeFill = hasUserReacted
               ? isDarkTheme
@@ -531,6 +554,8 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
               ? getCachedMirioReactionImage()
               : isDitador
               ? getCachedDitadorReactionImage()
+              : isBrigadeiro
+              ? getCachedBrigadeiroReactionImage()
               : getCachedAppleEmojiImage(emoji);
 
             return (

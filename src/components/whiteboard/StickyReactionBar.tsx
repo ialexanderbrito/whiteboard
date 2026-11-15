@@ -3,7 +3,15 @@ import type { CanvasElement } from '../../types/element';
 import { getAppleEmojiUrl } from '../../utils/appleEmoji';
 import { playReactionPopSound } from '../../utils/audioChime';
 import { getElementWorldBounds } from '../../utils/elementBounds';
-import { MIRIO_REACTION, DITADOR_REACTION, getReactionImageUrl, isMirioReaction, isDitadorReaction } from '../../utils/mirioReaction';
+import {
+  MIRIO_REACTION,
+  DITADOR_REACTION,
+  BRIGADEIRO_REACTION,
+  getReactionImageUrl,
+  isMirioReaction,
+  isDitadorReaction,
+  isBrigadeiroReaction,
+} from '../../utils/mirioReaction';
 import { getViewport, subscribeViewport, type ViewportState } from '../../utils/viewport';
 
 const QUICK_EMOJIS = ['👍', '❤️', '🔥', '🎉', '🚀', '💡', '🤔', '👀'];
@@ -18,6 +26,7 @@ interface StickyReactionBarProps {
   onToggleReaction: (elementId: string, emoji: string) => void;
   mirioReactionUnlocked?: boolean;
   ditadorReactionUnlocked?: boolean;
+  brigadeiroReactionUnlocked?: boolean;
 }
 
 /**
@@ -37,6 +46,7 @@ export const StickyReactionBar: React.FC<StickyReactionBarProps> = React.memo(({
   onToggleReaction,
   mirioReactionUnlocked = false,
   ditadorReactionUnlocked = false,
+  brigadeiroReactionUnlocked = false,
 }) => {
   const barRef = useRef<HTMLDivElement>(null);
   const isOverflowMode = mode === 'overflow';
@@ -47,7 +57,13 @@ export const StickyReactionBar: React.FC<StickyReactionBarProps> = React.memo(({
     const map = new Map<string, string[]>();
     for (const [key, users] of Object.entries(reactions)) {
       if (!users || users.length === 0) continue;
-      const canonicalKey = isMirioReaction(key) ? 'mirio_original' : isDitadorReaction(key) ? 'ditador_original' : key;
+      const canonicalKey = isMirioReaction(key)
+        ? 'mirio_original'
+        : isDitadorReaction(key)
+        ? 'ditador_original'
+        : isBrigadeiroReaction(key)
+        ? 'brigadeiro_original'
+        : key;
       const current = map.get(canonicalKey) || [];
       map.set(canonicalKey, [...new Set([...current, ...users])]);
     }
@@ -146,6 +162,7 @@ export const StickyReactionBar: React.FC<StickyReactionBarProps> = React.memo(({
           {activeReactions.map(([emoji, users]) => {
             const isMirio = isMirioReaction(emoji);
             const isDitador = isDitadorReaction(emoji);
+            const isBrigadeiro = isBrigadeiroReaction(emoji);
             const imageUrl = getReactionImageUrl(emoji) || getAppleEmojiUrl(emoji);
             const hasUserReacted = currentUserId ? users.includes(currentUserId) : false;
 
@@ -166,7 +183,7 @@ export const StickyReactionBar: React.FC<StickyReactionBarProps> = React.memo(({
               >
                 <img
                   src={imageUrl}
-                  alt={isMirio ? 'Mirio' : isDitador ? 'Ditador' : emoji}
+                  alt={isMirio ? 'Mirio' : isDitador ? 'Ditador' : isBrigadeiro ? 'Brigadeiro' : emoji}
                   className="size-4 object-contain pointer-events-none drop-shadow-xs"
                 />
                 <span className="text-[11px] font-bold">{users.length}</span>
@@ -185,10 +202,12 @@ export const StickyReactionBar: React.FC<StickyReactionBarProps> = React.memo(({
               ...QUICK_EMOJIS,
               ...(mirioReactionUnlocked ? [MIRIO_REACTION] : []),
               ...(ditadorReactionUnlocked ? [DITADOR_REACTION] : []),
+              ...(brigadeiroReactionUnlocked ? [BRIGADEIRO_REACTION] : []),
             ].map((emoji) => {
               const imageUrl = getReactionImageUrl(emoji) || getAppleEmojiUrl(emoji);
               const isMirio = isMirioReaction(emoji);
               const isDitador = isDitadorReaction(emoji);
+              const isBrigadeiro = isBrigadeiroReaction(emoji);
 
               return (
                 <button
@@ -200,11 +219,19 @@ export const StickyReactionBar: React.FC<StickyReactionBarProps> = React.memo(({
                     onClose?.();
                   }}
                   className="size-7 rounded-full hover:bg-muted/80 transition-[transform,background-color] duration-150 ease-out hover:scale-120 active:scale-[0.93] flex items-center justify-center cursor-pointer select-none"
-                  title={isMirio ? 'Reagir com Mirio' : isDitador ? 'Reagir com Ditador' : `Reagir com ${emoji}`}
+                  title={
+                    isMirio
+                      ? 'Reagir com Mirio'
+                      : isDitador
+                      ? 'Reagir com Ditador'
+                      : isBrigadeiro
+                      ? 'Reagir com Brigadeiro'
+                      : `Reagir com ${emoji}`
+                  }
                 >
                   <img
                     src={imageUrl}
-                    alt={isMirio ? 'Reação Mirio' : isDitador ? 'Reação Ditador' : emoji}
+                    alt={isMirio ? 'Reação Mirio' : isDitador ? 'Reação Ditador' : isBrigadeiro ? 'Reação Brigadeiro' : emoji}
                     className="size-4.5 select-none pointer-events-none drop-shadow-xs object-contain"
                     loading="eager"
                   />
@@ -226,10 +253,12 @@ export const StickyReactionBar: React.FC<StickyReactionBarProps> = React.memo(({
         ...QUICK_EMOJIS,
         ...(mirioReactionUnlocked ? [MIRIO_REACTION] : []),
         ...(ditadorReactionUnlocked ? [DITADOR_REACTION] : []),
+        ...(brigadeiroReactionUnlocked ? [BRIGADEIRO_REACTION] : []),
       ].map((emoji) => {
         const imageUrl = getReactionImageUrl(emoji) || getAppleEmojiUrl(emoji);
         const isMirio = isMirioReaction(emoji);
         const isDitador = isDitadorReaction(emoji);
+        const isBrigadeiro = isBrigadeiroReaction(emoji);
 
         return (
           <button
@@ -242,11 +271,19 @@ export const StickyReactionBar: React.FC<StickyReactionBarProps> = React.memo(({
               onClose?.();
             }}
             className="size-7 rounded-full hover:bg-muted/80 transition-[transform,background-color] duration-150 ease-out hover:scale-120 active:scale-[0.93] flex items-center justify-center cursor-pointer select-none"
-            title={isMirio ? 'Reagir com Mirio' : isDitador ? 'Reagir com Ditador' : `Reagir com ${emoji}`}
+            title={
+              isMirio
+                ? 'Reagir com Mirio'
+                : isDitador
+                ? 'Reagir com Ditador'
+                : isBrigadeiro
+                ? 'Reagir com Brigadeiro'
+                : `Reagir com ${emoji}`
+            }
           >
             <img
               src={imageUrl}
-              alt={isMirio ? 'Reação Mirio' : isDitador ? 'Reação Ditador' : emoji}
+              alt={isMirio ? 'Reação Mirio' : isDitador ? 'Reação Ditador' : isBrigadeiro ? 'Reação Brigadeiro' : emoji}
               className="size-5 select-none pointer-events-none drop-shadow-xs object-contain"
               loading="eager"
               onError={(e) => {

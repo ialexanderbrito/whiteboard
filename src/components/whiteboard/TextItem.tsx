@@ -22,6 +22,7 @@ interface TextItemProps {
   currentUserId?: string;
   mirioReactionUnlocked?: boolean;
   ditadorReactionUnlocked?: boolean;
+  brigadeiroReactionUnlocked?: boolean;
   onSelect: (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => void;
   onChange: (updates: Partial<CanvasElement>) => void;
   onStartEditing: (
@@ -54,6 +55,7 @@ export const TextItem: React.FC<TextItemProps> = React.memo(({
   currentUserId,
   mirioReactionUnlocked = false,
   ditadorReactionUnlocked = false,
+  brigadeiroReactionUnlocked = false,
   onSelect,
   onChange,
   onStartEditing,
@@ -278,6 +280,7 @@ export const TextItem: React.FC<TextItemProps> = React.memo(({
         canEdit={canEdit}
         mirioReactionUnlocked={mirioReactionUnlocked}
         ditadorReactionUnlocked={ditadorReactionUnlocked}
+        brigadeiroReactionUnlocked={brigadeiroReactionUnlocked}
         isHovered={isHoveredLocal}
         onToggleReaction={onToggleReaction}
         onOpenReactionPicker={onOpenReactionPicker}

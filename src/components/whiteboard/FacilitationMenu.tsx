@@ -17,7 +17,15 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { reactionService } from '@/services/reactionService';
 import { getAppleEmojiUrl } from '@/utils/appleEmoji';
 import { playReactionPopSound } from '@/utils/audioChime';
-import { MIRIO_REACTION, DITADOR_REACTION, getReactionImageUrl, isMirioReaction, isDitadorReaction } from '@/utils/mirioReaction';
+import {
+  MIRIO_REACTION,
+  DITADOR_REACTION,
+  BRIGADEIRO_REACTION,
+  getReactionImageUrl,
+  isMirioReaction,
+  isDitadorReaction,
+  isBrigadeiroReaction,
+} from '@/utils/mirioReaction';
 
 export interface FacilitationMenuProps {
   boardId: string;
@@ -32,6 +40,7 @@ export interface FacilitationMenuProps {
   onEnterPresentation: () => void;
   mirioReactionUnlocked?: boolean;
   ditadorReactionUnlocked?: boolean;
+  brigadeiroReactionUnlocked?: boolean;
 }
 
 const QUICK_GLOBAL_REACTIONS = [
@@ -56,11 +65,16 @@ export const FacilitationMenu: React.FC<FacilitationMenuProps> = ({
   onEnterPresentation,
   mirioReactionUnlocked = false,
   ditadorReactionUnlocked = false,
+  brigadeiroReactionUnlocked = false,
 }) => {
   const [open, setOpen] = useState(false);
 
   const handleSendReaction = async (emoji: string, e: React.MouseEvent<HTMLButtonElement>) => {
-    if ((isMirioReaction(emoji) && !mirioReactionUnlocked) || (isDitadorReaction(emoji) && !ditadorReactionUnlocked)) {
+    if (
+      (isMirioReaction(emoji) && !mirioReactionUnlocked) ||
+      (isDitadorReaction(emoji) && !ditadorReactionUnlocked) ||
+      (isBrigadeiroReaction(emoji) && !brigadeiroReactionUnlocked)
+    ) {
       return;
     }
     const rect = e.currentTarget.getBoundingClientRect();
@@ -153,6 +167,7 @@ export const FacilitationMenu: React.FC<FacilitationMenuProps> = ({
               ...QUICK_GLOBAL_REACTIONS,
               ...(mirioReactionUnlocked ? [{ emoji: MIRIO_REACTION, label: 'Mirio' }] : []),
               ...(ditadorReactionUnlocked ? [{ emoji: DITADOR_REACTION, label: 'Ditador' }] : []),
+              ...(brigadeiroReactionUnlocked ? [{ emoji: BRIGADEIRO_REACTION, label: 'Brigadeiro' }] : []),
             ].map((r) => {
               const imageUrl = getReactionImageUrl(r.emoji) || getAppleEmojiUrl(r.emoji);
 
