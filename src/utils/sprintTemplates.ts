@@ -1,4 +1,5 @@
 import type { CanvasElement } from '../types/element';
+import { getElementBounds } from './alignment.ts';
 
 export type TemplateRoleCategory =
   | 'all'
@@ -1185,13 +1186,56 @@ export function generateTemplateElements(
   user: { uid: string; displayName: string },
   startingZIndex: number
 ): Omit<CanvasElement, 'id' | 'updatedAt'>[] {
+  let currentZ = startingZIndex;
+
+  // 1. Caso possua gerador personalizado (ex: Fluxograma, Wireframe)
   if (template.customGenerator) {
-    return template.customGenerator(origin, user, startingZIndex);
+    const rawElements = template.customGenerator(origin, user, startingZIndex + 1);
+    if (!rawElements || rawElements.length === 0) return [];
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    for (const el of rawElements) {
+      const b = getElementBounds(el as CanvasElement);
+      if (b.left < minX) minX = b.left;
+      if (b.top < minY) minY = b.top;
+      if (b.right > maxX) maxX = b.right;
+      if (b.bottom > maxY) maxY = b.bottom;
+    }
+
+    const padX = 40;
+    const padTop = 56;
+    const padBottom = 40;
+
+    const parentFrame: Omit<CanvasElement, 'id' | 'updatedAt'> = {
+      type: 'frame',
+      x: Math.round(minX - padX),
+      y: Math.round(minY - padTop),
+      width: Math.round(maxX - minX + padX * 2),
+      height: Math.round(maxY - minY + padTop + padBottom),
+      text: template.title,
+      fill: 'rgba(248, 250, 252, 0.35)',
+      stroke: template.accentColor || '#3b82f6',
+      strokeWidth: 2,
+      dash: [], // borda contínua discreta e editorial
+      zIndex: ++currentZ,
+      updatedBy: user.uid,
+      updatedByName: user.displayName,
+    };
+
+    // Garantir que os elementos internos tenham zIndex superior ao frame pai
+    const adjustedElements = rawElements.map((el) => ({
+      ...el,
+      zIndex: ++currentZ,
+    }));
+
+    return [parentFrame, ...adjustedElements];
   }
 
-  const elements: Omit<CanvasElement, 'id' | 'updatedAt'>[] = [];
-
-  // Dimensões calibradas para acomodar 2 colunas de post-its por raia
+  // 2. Templates estruturados em colunas/raias (Retrospectivas, Kanban, Lean Canvas, etc.)
   const columnWidth = 460;
   const cardWidth = 200;
   const cardHeight = 120;
@@ -1201,34 +1245,70 @@ export function generateTemplateElements(
   const paddingTop = 44;
   const gapBetweenColumns = 36;
 
-  let currentZ = startingZIndex;
+  const parentPaddingX = 36;
+  const parentPaddingTop = 56;
+  const parentPaddingBottom = 36;
 
-  template.columns.forEach((col, colIndex) => {
-    const colX = Math.round(origin.x + colIndex * (columnWidth + gapBetweenColumns));
-    const colY = Math.round(origin.y);
+  const numCols = template.columns.length;
+  const columnsTotalWidth = numCols * columnWidth + (numCols - 1) * gapBetweenColumns;
+  const parentWidth = Math.round(columnsTotalWidth + parentPaddingX * 2);
 
+  // Calcula a altura uniforme das colunas para alinhamento estético de alto padrão
+  let maxColHeight = 560;
+  template.columns.forEach((col) => {
     const cardCount = col.cards.length;
     const rows = Math.ceil(cardCount / 2);
     const calculatedHeight = paddingTop + rows * (cardHeight + cardGapY) + 24;
-    const columnHeight = Math.max(560, calculatedHeight);
+    if (calculatedHeight > maxColHeight) {
+      maxColHeight = calculatedHeight;
+    }
+  });
 
-    // 1. Moldura / Raia de Sprint (Frame)
+  const parentHeight = Math.round(parentPaddingTop + maxColHeight + parentPaddingBottom);
+  const parentX = Math.round(origin.x);
+  const parentY = Math.round(origin.y);
+
+  // Moldura Pai que encapsula todo o template
+  const parentFrame: Omit<CanvasElement, 'id' | 'updatedAt'> = {
+    type: 'frame',
+    x: parentX,
+    y: parentY,
+    width: parentWidth,
+    height: parentHeight,
+    text: template.title,
+    fill: 'rgba(248, 250, 252, 0.35)',
+    stroke: template.accentColor || '#64748b',
+    strokeWidth: 2,
+    dash: [], // borda contínua discreta e editorial
+    zIndex: ++currentZ,
+    updatedBy: user.uid,
+    updatedByName: user.displayName,
+  };
+
+  const elements: Omit<CanvasElement, 'id' | 'updatedAt'>[] = [parentFrame];
+
+  template.columns.forEach((col, colIndex) => {
+    const colX = Math.round(parentX + parentPaddingX + colIndex * (columnWidth + gapBetweenColumns));
+    const colY = Math.round(parentY + parentPaddingTop);
+
+    // Sub-moldura / Raia com cor e estilo de identidade da coluna
     elements.push({
       type: 'frame',
       x: colX,
       y: colY,
       width: columnWidth,
-      height: columnHeight,
+      height: maxColHeight,
       text: col.title,
       fill: col.frameFill,
       stroke: col.frameStroke,
       strokeWidth: 2,
+      dash: [8, 5],
       zIndex: ++currentZ,
       updatedBy: user.uid,
       updatedByName: user.displayName,
     });
 
-    // 2. Post-its organizados em grade de 2 colunas dentro da raia
+    // Post-its organizados em grade de 2 colunas dentro da raia
     col.cards.forEach((cardText, cardIndex) => {
       const colNum = cardIndex % 2; // 0 ou 1
       const rowNum = Math.floor(cardIndex / 2);
