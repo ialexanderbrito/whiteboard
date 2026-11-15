@@ -43,82 +43,6 @@ interface GifItem {
   previewUrl?: string;
 }
 
-// Memes populares e reações consagradas na CDN da Klipy (fallback instantâneo)
-const CURATED_GIFS: GifItem[] = [
-  {
-    name: 'Brinde DiCaprio',
-    id: '7916368356156483',
-    url: 'https://static.klipy.com/ii/4e7bea9f7a3371424e6c16ebc93252fe/46/6a/IGemk23TDHctPwlki1.gif',
-    previewUrl: 'https://static.klipy.com/ii/4e7bea9f7a3371424e6c16ebc93252fe/46/6a/pcUbbCo9Qc8wrN0C.gif',
-  },
-  {
-    name: 'Travolta Confuso',
-    id: '3061683536704476',
-    url: 'https://static.klipy.com/ii/d7aec6f6f171607374b2065c836f92f4/67/fc/eYsqvnbO.gif',
-    previewUrl: 'https://static.klipy.com/ii/d7aec6f6f171607374b2065c836f92f4/67/fc/Ggluv1A2.gif',
-  },
-  {
-    name: 'Não Não Deus Não!',
-    id: '6149379373338412',
-    url: 'https://static.klipy.com/ii/d7aec6f6f171607374b2065c836f92f4/8c/39/FmFDzsho.gif',
-    previewUrl: 'https://static.klipy.com/ii/d7aec6f6f171607374b2065c836f92f4/8c/39/1bDCcmPi.gif',
-  },
-  {
-    name: 'Pense Nisso (Roll Safe)',
-    id: '1251982231578481',
-    url: 'https://static.klipy.com/ii/925f17378dd1893b674a723c07535afe/4d/6f/jVcYzyp9.gif',
-    previewUrl: 'https://static.klipy.com/ii/925f17378dd1893b674a723c07535afe/4d/6f/QsvtvV9u.gif',
-  },
-  {
-    name: 'This is Fine (Cachorro)',
-    id: '7889848656714426',
-    url: 'https://static.klipy.com/ii/c3a19a0b747a76e98651f2b9a3cca5ff/49/f8/zl1Y5fjP.gif',
-    previewUrl: 'https://static.klipy.com/ii/c3a19a0b747a76e98651f2b9a3cca5ff/49/f8/cG6oLGC8.gif',
-  },
-  {
-    name: 'Gato Digitador Focado',
-    id: '5122090673266753',
-    url: 'https://static.klipy.com/ii/c3a19a0b747a76e98651f2b9a3cca5ff/9c/63/z1XLwIWS.gif',
-    previewUrl: 'https://static.klipy.com/ii/c3a19a0b747a76e98651f2b9a3cca5ff/9c/63/E3MfOMq9.gif',
-  },
-  {
-    name: 'Comer Pipoca na Treta',
-    id: '7267495775780009',
-    url: 'https://static.klipy.com/ii/35ccce3d852f7995dd2da910f2abd795/ec/59/uGVtiiAZ.gif',
-    previewUrl: 'https://static.klipy.com/ii/35ccce3d852f7995dd2da910f2abd795/ec/59/RsxO4agf.gif',
-  },
-  {
-    name: 'Bebê Vitória (Success)',
-    id: '2492622719539599',
-    url: 'https://static.klipy.com/ii/d6b0ce929193df3c242ac34b5654d2ce/35/88/KiVLVpaQ.gif',
-    previewUrl: 'https://static.klipy.com/ii/d6b0ce929193df3c242ac34b5654d2ce/35/88/cRKlOJf7.gif',
-  },
-  {
-    name: 'Cabeça Explodindo',
-    id: '4532624641600511',
-    url: 'https://static.klipy.com/ii/d6b0ce929193df3c242ac34b5654d2ce/9a/57/CCtgUPsD.gif',
-    previewUrl: 'https://static.klipy.com/ii/d6b0ce929193df3c242ac34b5654d2ce/9a/57/xhKlDpCw.gif',
-  },
-  {
-    name: 'Comemorando (Celebrate)',
-    id: '8168425300051009',
-    url: 'https://static.klipy.com/ii/35ccce3d852f7995dd2da910f2abd795/32/bf/zFtdVhji.gif',
-    previewUrl: 'https://static.klipy.com/ii/35ccce3d852f7995dd2da910f2abd795/32/bf/D2RxVsDJ.gif',
-  },
-  {
-    name: 'Aplausos Entusiasmados',
-    id: '4596653737650329',
-    url: 'https://static.klipy.com/ii/f87f46a2c5aeaeed4c68910815f73eaf/08/b7/hK8oyGl2.gif',
-    previewUrl: 'https://static.klipy.com/ii/f87f46a2c5aeaeed4c68910815f73eaf/08/b7/McUpzTeD.gif',
-  },
-  {
-    name: 'Gargalhada Épica',
-    id: '3478590164151568',
-    url: 'https://static.klipy.com/ii/d6b0ce929193df3c242ac34b5654d2ce/79/f2/VyNapEfQ.gif',
-    previewUrl: 'https://static.klipy.com/ii/d6b0ce929193df3c242ac34b5654d2ce/79/f2/OfDbEjjb.gif',
-  },
-];
-
 interface KlipyMediaVariant {
   gif?: { url?: string };
   webp?: { url?: string };
@@ -225,9 +149,10 @@ export const StickersModal: React.FC<StickersModalProps> = ({
   const [activeTab, setActiveTab] = useState<'upload' | 'emojis' | 'gifs'>('upload');
   const [gifSearch, setGifSearch] = useState('');
   const [customUrl, setCustomUrl] = useState('');
-  const [trendingGifs, setTrendingGifs] = useState<GifItem[]>(CURATED_GIFS);
+  const [trendingGifs, setTrendingGifs] = useState<GifItem[]>([]);
   const [searchResults, setSearchResults] = useState<GifItem[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [isLoadingTrending, setIsLoadingTrending] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [trendingPage, setTrendingPage] = useState(0);
   const [trendingHasNext, setTrendingHasNext] = useState(false);
@@ -253,51 +178,95 @@ export const StickersModal: React.FC<StickersModalProps> = ({
     }
   }, [open]);
 
-  // Carrega GIFs em alta na Klipy ao abrir a aba de GIFs pela primeira vez
+  // Carrega GIFs em alta dinamicamente (Klipy com fallback Giphy)
   const fetchTrendingGifs = async (page = 1, append = false) => {
-    if (!klipyApiKey) {
-      setTrendingHasNext(false);
-      return;
+    if (page === 1) {
+      setIsLoadingTrending(true);
+    } else {
+      setIsLoadingMore(true);
     }
 
-    if (page > 1) setIsLoadingMore(true);
-
     try {
-      const res = await fetch(
-        `https://api.klipy.com/api/v1/${klipyApiKey}/gifs/trending?per_page=24&locale=pt&page=${page}`
-      );
-      if (!res.ok) {
-        if (page === 1) setTrendingHasNext(false);
-        return;
+      // 1. Provedor principal: Klipy API
+      if (klipyApiKey) {
+        const res = await fetch(
+          `https://api.klipy.com/api/v1/${klipyApiKey}/gifs/trending?per_page=24&locale=pt&page=${page}`
+        );
+        if (res.ok) {
+          const parsed = parseKlipyResponse(await res.json());
+          if (parsed.items.length > 0) {
+            setTrendingGifs((prev) => {
+              if (!append) return parsed.items;
+              const seen = new Set(prev.map((g) => g.id));
+              return [...prev, ...parsed.items.filter((g) => !seen.has(g.id))];
+            });
+            setTrendingPage(parsed.page || page);
+            setTrendingHasNext(parsed.hasNext);
+            return;
+          }
+        }
       }
-      const parsed = parseKlipyResponse(await res.json());
-      if (parsed.items.length > 0) {
-        setTrendingGifs((prev) => {
-          if (!append) return parsed.items;
-          const seen = new Set(prev.map((g) => g.id));
-          return [...prev, ...parsed.items.filter((g) => !seen.has(g.id))];
-        });
-        setTrendingPage(parsed.page || page);
-        setTrendingHasNext(parsed.hasNext);
-      } else {
-        setTrendingHasNext(false);
+
+      // 2. Fallback secundário: Giphy API trending (se Klipy não estiver disponível)
+      if (giphyApiKey && page === 1) {
+        const res = await fetch(
+          `https://api.giphy.com/v1/gifs/trending?api_key=${giphyApiKey}&limit=24&rating=g`
+        );
+        if (res.ok) {
+          const data = await res.json();
+          const formatted: GifItem[] = (data.data || [])
+            .map(
+              (item: {
+                id: string;
+                title: string;
+                images?: {
+                  fixed_height?: { url?: string };
+                  downsized?: { url?: string };
+                  original?: { url?: string };
+                };
+              }): GifItem => {
+                const directUrl =
+                  item.images?.fixed_height?.url ||
+                  item.images?.downsized?.url ||
+                  item.images?.original?.url ||
+                  `https://i.giphy.com/media/${item.id}/giphy.gif`;
+                return {
+                  name: item.title || 'GIF animado',
+                  id: item.id,
+                  url: directUrl,
+                  previewUrl: item.images?.fixed_height?.url || directUrl,
+                };
+              }
+            )
+            .filter((item: GifItem) => Boolean(item.url));
+
+          setTrendingGifs(formatted);
+          setTrendingHasNext(false);
+          return;
+        }
       }
+
+      if (page === 1) setTrendingHasNext(false);
     } catch (err) {
-      console.warn('Falha ao carregar GIFs em alta no Klipy:', err);
+      console.warn('Falha ao carregar GIFs em alta:', err);
       setTrendingHasNext(false);
     } finally {
+      setIsLoadingTrending(false);
       setIsLoadingMore(false);
     }
   };
 
   useEffect(() => {
-    if (!open || activeTab !== 'gifs' || hasLoadedTrendingRef.current || !klipyApiKey) {
+    if (!open || activeTab !== 'gifs' || hasLoadedTrendingRef.current) {
+      return;
+    }
+    if (!klipyApiKey && !giphyApiKey) {
       return;
     }
     hasLoadedTrendingRef.current = true;
     void fetchTrendingGifs(1, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, activeTab, klipyApiKey]);
+  }, [open, activeTab, klipyApiKey, giphyApiKey]);
 
   const fetchGifs = async (query: string) => {
     setIsSearching(true);
@@ -361,7 +330,7 @@ export const StickersModal: React.FC<StickersModalProps> = ({
         }
       }
 
-      // 3. Fallback local: filtra destaques
+      // 3. Fallback: pesquisa local nos GIFs em alta já carregados
       const qLower = query.toLowerCase();
       const localMatches = trendingGifs.filter((g) =>
         g.name.toLowerCase().includes(qLower)
@@ -370,7 +339,7 @@ export const StickersModal: React.FC<StickersModalProps> = ({
       setSearchHasNext(false);
     } catch (err) {
       console.warn('Falha ao buscar GIFs:', err);
-      setSearchResults(trendingGifs);
+      setSearchResults([]);
       setSearchHasNext(false);
     } finally {
       setIsSearching(false);
@@ -796,12 +765,13 @@ export const StickersModal: React.FC<StickersModalProps> = ({
             {(() => {
               const query = gifSearch.trim();
               const displayedGifs = query ? searchResults : trendingGifs;
+              const isBusy = query ? isSearching : (isLoadingTrending && trendingGifs.length === 0);
 
               return (
                 <>
                   {/* Grid de GIFs Animados com Loading Skeleton */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-[300px] overflow-y-auto pr-1">
-                    {isSearching ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-[300px] overflow-y-auto pr-1 custom-scrollbar">
+                    {isBusy ? (
                       Array.from({ length: 6 }).map((_, i) => (
                         <Skeleton
                           key={i}
@@ -819,7 +789,7 @@ export const StickersModal: React.FC<StickersModalProps> = ({
                           <button
                             type="button"
                             onClick={() => handleSearchChange('')}
-                            className="text-primary hover:underline font-medium"
+                            className="text-primary hover:underline font-medium active:scale-[0.97] transition-transform duration-150 ease-out"
                           >
                             Ver destaques
                           </button>
@@ -831,14 +801,14 @@ export const StickersModal: React.FC<StickersModalProps> = ({
                           key={gif.id || idx}
                           type="button"
                           onClick={() => handleSelectGif(gif.url, gif.name)}
-                          className="group relative rounded-lg overflow-hidden border border-border bg-muted/30 aspect-video hover:border-primary transition-[transform,border-color] duration-150 active:scale-[0.98]"
+                          className="group relative rounded-lg overflow-hidden border border-border bg-muted/30 aspect-video hover:border-primary transition-[transform,border-color] duration-150 ease-out active:scale-[0.97]"
                           title={gif.name}
                         >
                           <img
                             src={gif.previewUrl || gif.url}
                             alt={gif.name}
                             loading="lazy"
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200 ease-out"
                             onError={(e) => {
                               const target = e.target as HTMLImageElement;
                               if (!target.dataset.retried && gif.url && target.src !== gif.url) {
@@ -847,7 +817,7 @@ export const StickersModal: React.FC<StickersModalProps> = ({
                               }
                             }}
                           />
-                          <div className="absolute inset-x-0 bottom-0 p-1 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="absolute inset-x-0 bottom-0 p-1 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-150 ease-out">
                             <p className="text-[10px] text-white truncate text-left font-medium">
                               {gif.name}
                             </p>
@@ -858,12 +828,12 @@ export const StickersModal: React.FC<StickersModalProps> = ({
                   </div>
 
                   {/* Paginação: carrega a próxima página de resultados */}
-                  {(query ? searchHasNext : trendingHasNext) && !isSearching && (
+                  {(query ? searchHasNext : trendingHasNext) && !isBusy && (
                     <button
                       type="button"
                       onClick={handleLoadMoreGifs}
                       disabled={isLoadingMore}
-                      className="flex items-center justify-center gap-1.5 w-full h-8 rounded-lg border border-border bg-muted/40 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/70 transition-colors disabled:opacity-60 active:scale-[0.98]"
+                      className="flex items-center justify-center gap-1.5 w-full h-8 rounded-lg border border-border bg-muted/40 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/70 transition-[transform,background-color,border-color] duration-150 ease-out disabled:opacity-60 active:scale-[0.97]"
                     >
                       {isLoadingMore ? (
                         <>
