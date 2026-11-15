@@ -81,7 +81,7 @@ import { cn } from '@/lib/utils';
 export const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
   const { currentUser, updateGuestProfile, isConfigured, logout } = useAuth();
-  const { isDark, toggleTheme } = useTheme();
+  const { isDark, toggleTheme, resolvedTheme } = useTheme();
   const [boards, setBoards] = useState<Board[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -232,7 +232,8 @@ export const DashboardPage: React.FC = () => {
   const handleCopyLink = (e: React.MouseEvent, rawBoardId: string) => {
     e.stopPropagation();
     const cleanId = cleanBoardId(rawBoardId);
-    const url = `${window.location.origin}/b/${cleanId}`;
+    const themeParam = resolvedTheme === 'light' ? '?theme=light' : '';
+    const url = `${window.location.origin}/b/${cleanId}${themeParam}`;
     navigator.clipboard.writeText(url);
     setCopiedId(rawBoardId);
     setTimeout(() => setCopiedId(null), 2000);

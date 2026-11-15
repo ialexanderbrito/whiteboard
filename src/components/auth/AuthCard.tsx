@@ -3,7 +3,7 @@ import {
   ArrowRight, 
   AlertCircle, 
   Loader2, 
-  MousePointer2, 
+  MousePointer, 
   User
 } from '@/components/ui/icons';
 import { Button } from '@/components/ui/button';
@@ -193,12 +193,12 @@ export const AuthCard: React.FC<AuthCardProps> = ({
           {/* Cursor Preview Minimalista Monocromático */}
           <div className="flex items-center justify-between px-3 py-2 rounded-lg border border-border/80 bg-muted/20">
             <span className="text-[11px] text-muted-foreground flex items-center gap-1.5">
-              <MousePointer2 className="size-3 text-muted-foreground" />
+              <MousePointer className="size-3 text-muted-foreground" />
               <span>Seu cursor:</span>
             </span>
             
             <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded border border-border bg-background text-foreground text-[11px] font-mono shadow-2xs">
-              <MousePointer2 className="size-2.5 fill-current" />
+              <MousePointer className="size-2.5 fill-current" />
               <span className="truncate max-w-[120px]">{guestName.trim() || 'Você'}</span>
             </div>
           </div>

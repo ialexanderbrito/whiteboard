@@ -32,14 +32,27 @@ export function ThemeProvider({
   storageKey = 'mirio_theme',
   ...props
 }: ThemeProviderProps) {
-  const [theme, setThemeState] = useState<Theme>(
-    () => (typeof window !== 'undefined' ? (localStorage.getItem(storageKey) as Theme) || defaultTheme : defaultTheme)
-  );
+  const getInitialTheme = (): Theme => {
+    if (typeof window === 'undefined') return defaultTheme;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const urlTheme = params.get('theme');
+      if (urlTheme === 'dark' || urlTheme === 'light' || urlTheme === 'system') {
+        localStorage.setItem(storageKey, urlTheme);
+        return urlTheme;
+      }
+    } catch {
+      // ignore
+    }
+    return (localStorage.getItem(storageKey) as Theme) || defaultTheme;
+  };
+
+  const [theme, setThemeState] = useState<Theme>(getInitialTheme);
   const [resolvedTheme, setResolvedTheme] = useState<'dark' | 'light'>(() => {
     if (typeof window === 'undefined') return 'light';
-    const saved = (localStorage.getItem(storageKey) as Theme) || defaultTheme;
-    if (saved === 'dark') return 'dark';
-    if (saved === 'light') return 'light';
+    const currentTheme = getInitialTheme();
+    if (currentTheme === 'dark') return 'dark';
+    if (currentTheme === 'light') return 'light';
     return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   });
 
