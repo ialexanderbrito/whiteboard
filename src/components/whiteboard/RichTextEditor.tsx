@@ -130,41 +130,25 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
   const xRef = useRef(boxX);
   const yRef = useRef(boxY);
   const heightRef = useRef(boxHeight);
-  widthRef.current = boxWidth;
-  xRef.current = boxX;
-  yRef.current = boxY;
-  heightRef.current = boxHeight;
 
   const fontSize = element.fontSize || 20;
   const textAlign = element.textAlign || 'left';
   const baseStyle = useMemo(() => getElementBaseStyle(element), [
-    element.fontWeight,
-    element.fontStyle,
-    element.textDecoration,
-    element.textColor,
-    element.fill,
+    element,
   ]);
   const baseColorRef = useRef(baseStyle.color);
-  baseColorRef.current = baseStyle.color;
   const baseStyleRef = useRef(baseStyle);
-  baseStyleRef.current = baseStyle;
   const scaleRef = useRef(scale);
-  scaleRef.current = scale;
   const fontSizeRef = useRef(fontSize);
-  fontSizeRef.current = fontSize;
   const onFinishRef = useRef(onFinish);
-  onFinishRef.current = onFinish;
 
   // O HTML inicial é criado uma única vez; depois o DOM contentEditable é a fonte da verdade.
-  const initialRunsRef = useRef<ReturnType<typeof getElementRuns> | null>(null);
-  if (initialRunsRef.current === null) {
-    initialRunsRef.current = getElementRuns(element);
-  }
+  const [initialRuns] = useState(() => getElementRuns(element));
 
   useLayoutEffect(() => {
     const editor = editorRef.current;
     if (!editor) return;
-    editor.innerHTML = DOMPurify.sanitize(runsToHtml(initialRunsRef.current || []), {
+    editor.innerHTML = DOMPurify.sanitize(runsToHtml(initialRuns || []), {
       ALLOWED_TAGS: ['b', 'i', 'u', 's', 'span', 'a', 'br'],
       ALLOWED_ATTR: ['style', 'href', 'data-mirio-link', 'target', 'rel'],
     });
@@ -178,7 +162,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
     selection?.addRange(range);
     savedRangeRef.current = range.cloneRange();
     syncHeightRef.current();
-  }, []);
+  }, [initialRuns]);
 
   const syncHeight = useCallback(() => {
     const editor = editorRef.current;
@@ -187,7 +171,6 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
     setBoxHeight(next);
     heightRef.current = next;
   }, []);
-  syncHeightRef.current = syncHeight;
 
   const placeEditor = useCallback((viewport: ViewportState) => {
     const wrapper = wrapperRef.current;
@@ -233,7 +216,20 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
       height,
     });
   }, []);
-  finishRef.current = finish;
+
+  useLayoutEffect(() => {
+    widthRef.current = boxWidth;
+    xRef.current = boxX;
+    yRef.current = boxY;
+    heightRef.current = boxHeight;
+    baseColorRef.current = baseStyle.color;
+    baseStyleRef.current = baseStyle;
+    scaleRef.current = scale;
+    fontSizeRef.current = fontSize;
+    onFinishRef.current = onFinish;
+    syncHeightRef.current = syncHeight;
+    finishRef.current = finish;
+  });
 
   const restoreSelection = useCallback(() => {
     const editor = editorRef.current;

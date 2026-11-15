@@ -37,6 +37,25 @@ function emit() {
   });
 }
 
+export interface StagedTextSelection {
+  elementId?: string;
+  text?: string;
+  url?: string;
+  label?: string;
+  rect?: DOMRect;
+  range?: Range | null;
+}
+
+let stagedSelection: StagedTextSelection | null = null;
+
+export function setStagedTextSelection(sel: StagedTextSelection | null) {
+  stagedSelection = sel;
+}
+
+export function getStagedTextSelection(): StagedTextSelection | null {
+  return stagedSelection;
+}
+
 export const textEditingBridge = {
   register(editor: ActiveTextEditor) {
     activeEditor = editor;

@@ -75,7 +75,7 @@ import {
   updateRunLink,
   type RichTextFormatState,
 } from '../../utils/richText';
-import { textEditingBridge } from '../../utils/textEditingBridge';
+import { textEditingBridge, setStagedTextSelection, getStagedTextSelection } from '../../utils/textEditingBridge';
 import { Button } from '@/components/ui/button';
 import {
   getViewport,
@@ -340,6 +340,44 @@ const LockButton: React.FC<LockButtonProps> = ({ isLocked, onUnlock, onLock, sho
   );
 };
 
+// SVG Icons para roteamento de linha (estilo Miro)
+const StraightLineIcon: React.FC<{ className?: string }> = ({ className = 'size-4' }) => (
+  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" className={className}>
+    <line x1="3" y1="17" x2="17" y2="3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+  </svg>
+);
+
+const OrthogonalLineIcon: React.FC<{ className?: string }> = ({ className = 'size-4' }) => (
+  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" className={className}>
+    <path d="M3 17 H10 V3 H17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+  </svg>
+);
+
+const CurvedLineIcon: React.FC<{ className?: string }> = ({ className = 'size-4' }) => (
+  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" className={className}>
+    <path d="M3 16 C 7 6, 13 24, 17 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none" />
+  </svg>
+);
+
+// SVG Icons para estilo do traço (Sólido, Tracejado, Pontilhado)
+const SolidStrokeIcon: React.FC<{ className?: string }> = ({ className = 'size-4' }) => (
+  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" className={className}>
+    <line x1="2" y1="10" x2="18" y2="10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+  </svg>
+);
+
+const DashedStrokeIcon: React.FC<{ className?: string }> = ({ className = 'size-4' }) => (
+  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" className={className}>
+    <line x1="2" y1="10" x2="18" y2="10" stroke="currentColor" strokeWidth="2" strokeDasharray="3.5 2.5" strokeLinecap="round" />
+  </svg>
+);
+
+const DottedStrokeIcon: React.FC<{ className?: string }> = ({ className = 'size-4' }) => (
+  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" className={className}>
+    <line x1="2" y1="10" x2="18" y2="10" stroke="currentColor" strokeWidth="2.5" strokeDasharray="1 3.5" strokeLinecap="round" />
+  </svg>
+);
+
 export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.memo(({
   selectedElements,
   onUpdateElement,
@@ -399,7 +437,7 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
   const elementLinks = useMemo(() => {
     if (!primaryElement) return [];
     return extractAllLinks(primaryElement.text, primaryElement.linkUrl, primaryElement.links);
-  }, [primaryElement, primaryElement?.text, primaryElement?.linkUrl, primaryElement?.links]);
+  }, [primaryElement]);
 
   const handleSelectConnectorStyle = useCallback((style: ConnectorStyle) => {
     if (!primaryElement) return;
@@ -421,6 +459,11 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
       points: relativePoints,
     });
   }, [primaryElement, allElements, onUpdateElement]);
+
+  const handleSelectDash = useCallback((dash: number[] | undefined) => {
+    if (!primaryElement) return;
+    onUpdateElement(primaryElement.id, { dash });
+  }, [primaryElement, onUpdateElement]);
 
   // Posição flutuante na tela logo acima da seleção (acompanha pan/zoom ao vivo).
   // Usa o bounding box rotation-aware (getElementWorldBounds) para que a barra
@@ -1276,6 +1319,30 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
     ? allRunsHaveFormat(primaryElement.richText, 'strikethrough')
     : Boolean(primaryElement.textDecoration?.includes('line-through'));
 
+  const isAnyFormatActive = Boolean(isBold || isItalic || isUnderline || isStrikethrough);
+  const activeStylesCount = (isBold ? 1 : 0) + (isItalic ? 1 : 0) + (isUnderline ? 1 : 0) + (isStrikethrough ? 1 : 0);
+  const activeFormatNames = [
+    isBold && 'Negrito',
+    isItalic && 'Itálico',
+    isUnderline && 'Sublinhado',
+    isStrikethrough && 'Riscado',
+  ].filter(Boolean) as string[];
+  const formatTooltipText = activeFormatNames.length > 0
+    ? `Formatação (${activeFormatNames.join(', ')})`
+    : `Formatação de texto (${modKey}+B, ${modKey}+I, ${modKey}+U)`;
+
+  const formatTriggerIcon = isBold ? (
+    <Bold className="size-3.5" />
+  ) : isItalic ? (
+    <Italic className="size-3.5" />
+  ) : isUnderline ? (
+    <Underline className="size-3.5" />
+  ) : isStrikethrough ? (
+    <Strikethrough className="size-3.5" />
+  ) : (
+    <Bold className="size-3.5" />
+  );
+
   const handleToggleBold = () => {
     if (isEditorActive && activeEditor) {
       activeEditor.applyCommand('bold');
@@ -1451,9 +1518,7 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
     // Com o editor rico aberto, o link vai exatamente para a seleção atual.
     if (editor) {
       editor.applyLink(norm, linkTextLabel.trim() || undefined);
-      if (typeof window !== 'undefined') {
-        (window as any).__mirio_active_text_selection = null;
-      }
+      setStagedTextSelection(null);
       setIsLinkPopoverOpen(false);
       setIsEditingExistingLink(false);
       setEditingLinkUrl(null);
@@ -1487,9 +1552,7 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
       ...(richText ? { richText } : {}),
     });
 
-    if (typeof window !== 'undefined') {
-      (window as any).__mirio_active_text_selection = null;
-    }
+    setStagedTextSelection(null);
     setIsLinkPopoverOpen(false);
     setIsEditingExistingLink(false);
     setEditingLinkUrl(null);
@@ -1543,7 +1606,7 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
         if (open) {
           const editor = textEditingBridge.get(primaryElement?.id || '');
           const editorSelection = editor?.getSelectionInfo();
-          const activeSel = typeof window !== 'undefined' ? (window as any).__mirio_active_text_selection : null;
+          const activeSel = getStagedTextSelection();
           if (editorSelection?.text) {
             setLinkTextLabel(editorSelection.text);
             setLinkInput('');
@@ -2617,71 +2680,131 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
             </SelectContent>
           </Select>
 
-          {/* 2.2 Negrito Direto na Barra */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                onClick={handleToggleBold}
-                className={`size-7 rounded-md transition active:scale-[0.97] ${
-                  isBold ? 'bg-primary/15 text-primary font-bold' : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <Bold className="size-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="top">Negrito ({modKey}+B)</TooltipContent>
-          </Tooltip>
+          {/* 2.2 Formatação de Texto Compacta (Negrito, Itálico, Sublinhado, Riscado) */}
+          <Popover>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className={`relative size-7 rounded-md transition-all active:scale-[0.97] ${
+                      isAnyFormatActive
+                        ? 'bg-primary/15 text-primary font-bold'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                    aria-label="Formatação de texto"
+                  >
+                    {formatTriggerIcon}
+                    {activeStylesCount > 1 && (
+                      <span className="absolute top-1 right-1 size-1 rounded-full bg-primary" />
+                    )}
+                  </Button>
+                </PopoverTrigger>
+              </TooltipTrigger>
+              <TooltipContent side="top">{formatTooltipText}</TooltipContent>
+            </Tooltip>
 
-          {/* 2.2b Itálico, Sublinhado e Riscado direto na barra */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                onClick={handleToggleItalic}
-                className={`size-7 rounded-md transition active:scale-[0.97] ${
-                  isItalic ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <Italic className="size-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="top">Itálico ({modKey}+I)</TooltipContent>
-          </Tooltip>
+            <PopoverContent
+              side="top"
+              align="center"
+              sideOffset={6}
+              className="w-auto p-1 text-xs shadow-xl rounded-xl border border-border bg-popover/95 backdrop-blur-md"
+              onCloseAutoFocus={handlePopoverCloseAutoFocus}
+              onPointerDownOutside={() => {
+                if (typeof window !== 'undefined') (window as any).__mirio_menu_dismissed_at = Date.now();
+              }}
+              onInteractOutside={() => {
+                if (typeof window !== 'undefined') (window as any).__mirio_menu_dismissed_at = Date.now();
+              }}
+            >
+              <div className="flex items-center gap-0.5 bg-muted/40 p-0.5 rounded-lg border border-border/40">
+                {/* Negrito */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={handleToggleBold}
+                      className={`size-7 rounded-md flex items-center justify-center transition-all duration-150 cursor-pointer active:scale-[0.96] ${
+                        isBold
+                          ? 'bg-primary text-primary-foreground font-bold shadow-xs'
+                          : 'text-muted-foreground hover:text-foreground hover:bg-background'
+                      }`}
+                      aria-label="Negrito"
+                      aria-pressed={isBold}
+                    >
+                      <Bold className="size-3.5" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">Negrito ({modKey}+B)</TooltipContent>
+                </Tooltip>
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                onClick={handleToggleUnderline}
-                className={`size-7 rounded-md transition active:scale-[0.97] ${
-                  isUnderline ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <Underline className="size-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="top">Sublinhado ({modKey}+U)</TooltipContent>
-          </Tooltip>
+                {/* Itálico */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={handleToggleItalic}
+                      className={`size-7 rounded-md flex items-center justify-center transition-all duration-150 cursor-pointer active:scale-[0.96] ${
+                        isItalic
+                          ? 'bg-primary text-primary-foreground font-bold shadow-xs'
+                          : 'text-muted-foreground hover:text-foreground hover:bg-background'
+                      }`}
+                      aria-label="Itálico"
+                      aria-pressed={isItalic}
+                    >
+                      <Italic className="size-3.5" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">Itálico ({modKey}+I)</TooltipContent>
+                </Tooltip>
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                onClick={handleToggleStrikethrough}
-                className={`size-7 rounded-md transition active:scale-[0.97] ${
-                  isStrikethrough ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <Strikethrough className="size-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="top">Riscado ({modKey}+Shift+X)</TooltipContent>
-          </Tooltip>
+                {/* Sublinhado */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={handleToggleUnderline}
+                      className={`size-7 rounded-md flex items-center justify-center transition-all duration-150 cursor-pointer active:scale-[0.96] ${
+                        isUnderline
+                          ? 'bg-primary text-primary-foreground font-bold shadow-xs'
+                          : 'text-muted-foreground hover:text-foreground hover:bg-background'
+                      }`}
+                      aria-label="Sublinhado"
+                      aria-pressed={isUnderline}
+                    >
+                      <Underline className="size-3.5" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">Sublinhado ({modKey}+U)</TooltipContent>
+                </Tooltip>
+
+                {/* Riscado */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={handleToggleStrikethrough}
+                      className={`size-7 rounded-md flex items-center justify-center transition-all duration-150 cursor-pointer active:scale-[0.96] ${
+                        isStrikethrough
+                          ? 'bg-primary text-primary-foreground font-bold shadow-xs'
+                          : 'text-muted-foreground hover:text-foreground hover:bg-background'
+                      }`}
+                      aria-label="Riscado / Tachado"
+                      aria-pressed={isStrikethrough}
+                    >
+                      <Strikethrough className="size-3.5" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">Riscado ({modKey}+Shift+X)</TooltipContent>
+                </Tooltip>
+              </div>
+            </PopoverContent>
+          </Popover>
 
           {/* 2.3 Cor do Texto (1 botão com indicador de cor) */}
           <Popover>
@@ -2812,7 +2935,7 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
             </PopoverContent>
           </Popover>
 
-          {/* 2.4 Mais Formatação Tipográfica: Alinhamento, Itálico, Sublinhado, Riscado e Editar Texto */}
+          {/* 2.4 Alinhamento do Texto e Atalho de Edição */}
           <Popover>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -2820,11 +2943,8 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    className={`size-7 rounded-md transition active:scale-[0.97] ${
-                      isItalic || isUnderline || isStrikethrough
-                        ? 'text-primary bg-primary/10'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
+                    className="size-7 rounded-md transition-all active:scale-[0.97] text-muted-foreground hover:text-foreground"
+                    aria-label="Alinhamento do texto"
                   >
                     {currentTextAlign === 'center' ? (
                       <AlignCenter className="size-3.5" />
@@ -2836,13 +2956,14 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
                   </Button>
                 </PopoverTrigger>
               </TooltipTrigger>
-              <TooltipContent side="top">Alinhamento e Estilos de Texto</TooltipContent>
+              <TooltipContent side="top">Alinhamento do Texto</TooltipContent>
             </Tooltip>
 
             <PopoverContent
               side="top"
               align="center"
-              className="w-56 p-2.5 text-xs shadow-xl border-border bg-popover space-y-2.5"
+              sideOffset={6}
+              className="w-48 p-2 text-xs shadow-xl rounded-xl border border-border bg-popover/95 backdrop-blur-md space-y-2"
               onCloseAutoFocus={handlePopoverCloseAutoFocus}
               onPointerDownOutside={() => {
                 if (typeof window !== 'undefined') (window as any).__mirio_menu_dismissed_at = Date.now();
@@ -2856,86 +2977,50 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
                 <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider block mb-1">
                   Alinhamento
                 </span>
-                <div className="grid grid-cols-3 gap-1 bg-muted/40 p-0.5 rounded-md border border-border/50">
+                <div className="grid grid-cols-3 gap-1 bg-muted/40 p-0.5 rounded-lg border border-border/40">
                   <button
                     type="button"
                     onClick={() => onUpdateElement(primaryElement.id, { textAlign: 'left' })}
-                    className={`h-7 rounded flex items-center justify-center transition cursor-pointer ${
+                    className={`h-7 rounded-md flex items-center justify-center transition-all duration-150 cursor-pointer active:scale-[0.96] ${
                       currentTextAlign === 'left' ? 'bg-primary text-primary-foreground font-bold shadow-xs' : 'text-muted-foreground hover:text-foreground hover:bg-background'
                     }`}
                     title="Alinhar à Esquerda"
+                    aria-label="Alinhar à esquerda"
                   >
                     <AlignLeft className="size-3.5" />
                   </button>
                   <button
                     type="button"
                     onClick={() => onUpdateElement(primaryElement.id, { textAlign: 'center' })}
-                    className={`h-7 rounded flex items-center justify-center transition cursor-pointer ${
+                    className={`h-7 rounded-md flex items-center justify-center transition-all duration-150 cursor-pointer active:scale-[0.96] ${
                       currentTextAlign === 'center' ? 'bg-primary text-primary-foreground font-bold shadow-xs' : 'text-muted-foreground hover:text-foreground hover:bg-background'
                     }`}
                     title="Alinhar ao Centro"
+                    aria-label="Alinhar ao centro"
                   >
                     <AlignCenter className="size-3.5" />
                   </button>
                   <button
                     type="button"
                     onClick={() => onUpdateElement(primaryElement.id, { textAlign: 'right' })}
-                    className={`h-7 rounded flex items-center justify-center transition cursor-pointer ${
+                    className={`h-7 rounded-md flex items-center justify-center transition-all duration-150 cursor-pointer active:scale-[0.96] ${
                       currentTextAlign === 'right' ? 'bg-primary text-primary-foreground font-bold shadow-xs' : 'text-muted-foreground hover:text-foreground hover:bg-background'
                     }`}
                     title="Alinhar à Direita"
+                    aria-label="Alinhar à direita"
                   >
                     <AlignRight className="size-3.5" />
                   </button>
                 </div>
               </div>
 
-              {/* Estilos Tipográficos */}
-              <div>
-                <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider block mb-1">
-                  Estilo
-                </span>
-                <div className="grid grid-cols-3 gap-1 bg-muted/40 p-0.5 rounded-md border border-border/50">
-                  <button
-                    type="button"
-                    onClick={handleToggleItalic}
-                    className={`h-7 rounded flex items-center justify-center transition cursor-pointer ${
-                      isItalic ? 'bg-primary text-primary-foreground font-bold shadow-xs' : 'text-muted-foreground hover:text-foreground hover:bg-background'
-                    }`}
-                    title="Itálico (Ctrl+I)"
-                  >
-                    <Italic className="size-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleToggleUnderline}
-                    className={`h-7 rounded flex items-center justify-center transition cursor-pointer ${
-                      isUnderline ? 'bg-primary text-primary-foreground font-bold shadow-xs' : 'text-muted-foreground hover:text-foreground hover:bg-background'
-                    }`}
-                    title="Sublinhado (Ctrl+U)"
-                  >
-                    <Underline className="size-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleToggleStrikethrough}
-                    className={`h-7 rounded flex items-center justify-center transition cursor-pointer ${
-                      isStrikethrough ? 'bg-primary text-primary-foreground font-bold shadow-xs' : 'text-muted-foreground hover:text-foreground hover:bg-background'
-                    }`}
-                    title="Tachado / Riscado"
-                  >
-                    <Strikethrough className="size-3.5" />
-                  </button>
-                </div>
-              </div>
-
               {/* Botão de Atalho para Editar Texto */}
               {onStartEditing && (
-                <div className="pt-1.5 border-t border-border">
+                <div className="pt-1.5 border-t border-border/60">
                   <button
                     type="button"
                     onClick={() => onStartEditing(primaryElement)}
-                    className="w-full h-7 flex items-center justify-center gap-1.5 rounded-md text-xs font-medium text-primary hover:bg-primary/10 transition cursor-pointer"
+                    className="w-full h-7 flex items-center justify-center gap-1.5 rounded-md text-xs font-medium text-primary hover:bg-primary/10 transition-all duration-150 active:scale-[0.97] cursor-pointer"
                   >
                     <Edit3 className="size-3" />
                     <span>{primaryElement.text?.trim() ? 'Editar Conteúdo' : 'Escrever Texto'}</span>
@@ -3040,59 +3125,130 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
             </SelectContent>
           </Select>
 
-          {/* Seletor de Roteamento de Linha/Seta (Reta, Curva Suave, 90° Ortogonal) */}
+          {/* Estilo de Rota e Traço para Seta e Linha */}
           {(primaryElement.type === 'arrow' || primaryElement.type === 'line') && (
-            <div className="flex items-center gap-0.5 bg-muted/60 p-0.5 rounded-md border border-border/80">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onClick={() => handleSelectConnectorStyle('straight')}
-                    className={`h-6 px-1.5 text-[11px] font-medium rounded transition flex items-center gap-1 active:scale-[0.97] ${
-                      (primaryElement.connectorStyle || 'straight') === 'straight'
-                        ? 'bg-background text-foreground shadow-2xs font-semibold'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    <span>Reta</span>
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="top">Linha Reta</TooltipContent>
-              </Tooltip>
+            <div className="flex items-center gap-1">
+              <Popover>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <PopoverTrigger asChild>
+                      <button
+                        type="button"
+                        className="h-7 px-2 text-xs font-medium rounded-lg border border-border/80 bg-background/80 hover:bg-muted text-foreground flex items-center gap-1.5 transition active:scale-[0.97]"
+                      >
+                        {(primaryElement.connectorStyle || 'straight') === 'orthogonal' ? (
+                          <OrthogonalLineIcon className="size-4 text-primary" />
+                        ) : primaryElement.connectorStyle === 'curved' ? (
+                          <CurvedLineIcon className="size-4 text-primary" />
+                        ) : (
+                          <StraightLineIcon className="size-4 text-primary" />
+                        )}
 
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onClick={() => handleSelectConnectorStyle('curved')}
-                    className={`h-6 px-1.5 text-[11px] font-medium rounded transition flex items-center gap-1 active:scale-[0.97] ${
-                      primaryElement.connectorStyle === 'curved'
-                        ? 'bg-background text-foreground shadow-2xs font-semibold'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    <span>Curva</span>
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="top">Curva Suave (Bezier)</TooltipContent>
-              </Tooltip>
+                        {primaryElement.dash && primaryElement.dash.length > 0 ? (
+                          primaryElement.dash[0] <= 4 ? (
+                            <DottedStrokeIcon className="size-3.5 text-muted-foreground" />
+                          ) : (
+                            <DashedStrokeIcon className="size-3.5 text-muted-foreground" />
+                          )
+                        ) : (
+                          <SolidStrokeIcon className="size-3.5 text-muted-foreground" />
+                        )}
 
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onClick={() => handleSelectConnectorStyle('orthogonal')}
-                    className={`h-6 px-1.5 text-[11px] font-medium rounded transition flex items-center gap-1 active:scale-[0.97] ${
-                      primaryElement.connectorStyle === 'orthogonal'
-                        ? 'bg-background text-foreground shadow-2xs font-semibold'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    <span>90°</span>
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="top">Ortogonal (Em degrau 90°)</TooltipContent>
-              </Tooltip>
+                        <ChevronDown className="size-3 text-muted-foreground -mr-0.5" />
+                      </button>
+                    </PopoverTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">Estilo da linha</TooltipContent>
+                </Tooltip>
+
+                <PopoverContent side="top" align="start" className="w-52 p-2 bg-popover/95 backdrop-blur-md border border-border shadow-lg rounded-xl">
+                  {/* Tipo de linha */}
+                  <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-1 mb-1.5">
+                    Tipo de linha
+                  </div>
+                  <div className="grid grid-cols-3 gap-1 mb-2">
+                    <button
+                      type="button"
+                      onClick={() => handleSelectConnectorStyle('straight')}
+                      title="Linha reta"
+                      className={`h-8 rounded-lg flex items-center justify-center transition active:scale-95 border ${
+                        (primaryElement.connectorStyle || 'straight') === 'straight'
+                          ? 'border-primary bg-primary/10 text-primary shadow-2xs font-semibold'
+                          : 'border-transparent text-muted-foreground hover:bg-muted hover:text-foreground'
+                      }`}
+                    >
+                      <StraightLineIcon className="size-4.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSelectConnectorStyle('orthogonal')}
+                      title="Ortogonal (90° em degrau)"
+                      className={`h-8 rounded-lg flex items-center justify-center transition active:scale-95 border ${
+                        primaryElement.connectorStyle === 'orthogonal'
+                          ? 'border-primary bg-primary/10 text-primary shadow-2xs font-semibold'
+                          : 'border-transparent text-muted-foreground hover:bg-muted hover:text-foreground'
+                      }`}
+                    >
+                      <OrthogonalLineIcon className="size-4.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSelectConnectorStyle('curved')}
+                      title="Curva suave"
+                      className={`h-8 rounded-lg flex items-center justify-center transition active:scale-95 border ${
+                        primaryElement.connectorStyle === 'curved'
+                          ? 'border-primary bg-primary/10 text-primary shadow-2xs font-semibold'
+                          : 'border-transparent text-muted-foreground hover:bg-muted hover:text-foreground'
+                      }`}
+                    >
+                      <CurvedLineIcon className="size-4.5" />
+                    </button>
+                  </div>
+
+                  {/* Estilo do traço */}
+                  <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-1 mb-1.5">
+                    Estilo do traço
+                  </div>
+                  <div className="grid grid-cols-3 gap-1">
+                    <button
+                      type="button"
+                      onClick={() => handleSelectDash(undefined)}
+                      title="Sólido"
+                      className={`h-8 rounded-lg flex items-center justify-center transition active:scale-95 border ${
+                        !primaryElement.dash || primaryElement.dash.length === 0
+                          ? 'border-primary bg-primary/10 text-primary shadow-2xs font-semibold'
+                          : 'border-transparent text-muted-foreground hover:bg-muted hover:text-foreground'
+                      }`}
+                    >
+                      <SolidStrokeIcon className="size-4.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSelectDash([8, 8])}
+                      title="Tracejado"
+                      className={`h-8 rounded-lg flex items-center justify-center transition active:scale-95 border ${
+                        primaryElement.dash && primaryElement.dash.length > 0 && primaryElement.dash[0] > 4
+                          ? 'border-primary bg-primary/10 text-primary shadow-2xs font-semibold'
+                          : 'border-transparent text-muted-foreground hover:bg-muted hover:text-foreground'
+                      }`}
+                    >
+                      <DashedStrokeIcon className="size-4.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSelectDash([3, 6])}
+                      title="Pontilhado"
+                      className={`h-8 rounded-lg flex items-center justify-center transition active:scale-95 border ${
+                        primaryElement.dash && primaryElement.dash.length > 0 && primaryElement.dash[0] <= 4
+                          ? 'border-primary bg-primary/10 text-primary shadow-2xs font-semibold'
+                          : 'border-transparent text-muted-foreground hover:bg-muted hover:text-foreground'
+                      }`}
+                    >
+                      <DottedStrokeIcon className="size-4.5" />
+                    </button>
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
           )}
 

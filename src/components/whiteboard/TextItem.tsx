@@ -69,13 +69,7 @@ export const TextItem: React.FC<TextItemProps> = React.memo(({
 
   const baseStyle = useMemo(
     () => getElementBaseStyle(element),
-    [
-      element.fontWeight,
-      element.fontStyle,
-      element.textDecoration,
-      element.textColor,
-      element.fill,
-    ]
+    [element]
   );
 
   // Layout com formatação por trecho (negrito, itálico, cor, links...).
@@ -90,15 +84,7 @@ export const TextItem: React.FC<TextItemProps> = React.memo(({
         baseColor: baseStyle.color,
       }),
     [
-      element.text,
-      element.richText,
-      element.links,
-      element.linkUrl,
-      element.fontWeight,
-      element.fontStyle,
-      element.textDecoration,
-      element.textColor,
-      element.fill,
+      element,
       width,
       fontSize,
       textAlign,

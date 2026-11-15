@@ -87,3 +87,20 @@ test('SelectionContextBar: Follows Emil Kowalski design engineering principles',
     'SelectTrigger deve possuir aria-label descritivo'
   );
 });
+
+test('SelectionContextBar: Strictly follows React Rules of Hooks (no hooks called after early returns)', () => {
+  const componentPath = path.resolve('src/components/whiteboard/SelectionContextBar.tsx');
+  const content = fs.readFileSync(componentPath, 'utf8');
+
+  // Localiza o primeiro retorno antecipado da barra (selectedElements.length === 0)
+  const firstEarlyReturnIndex = content.indexOf('if (selectedElements.length === 0) return null;');
+  assert.ok(firstEarlyReturnIndex > -1, 'Early return de seleção vazia deve ser identificado');
+
+  const afterFirstEarlyReturn = content.slice(firstEarlyReturnIndex);
+  // Garante que nenhum hook do React (useMemo, useCallback, useState, useEffect, etc.) seja chamado após qualquer early return
+  assert.doesNotMatch(
+    afterFirstEarlyReturn,
+    /\buse(?:State|Effect|Memo|Callback|Ref|LayoutEffect|Id)\s*\(/,
+    'Nenhum hook do React pode ser declarado ou chamado após early returns'
+  );
+});
