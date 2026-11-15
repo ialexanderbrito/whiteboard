@@ -3,6 +3,7 @@ import { Group, Rect, Text } from 'react-konva';
 import type Konva from 'konva';
 import type { CanvasElement } from '../../types/element';
 import { isCoarseOrMobileViewport } from '../../utils/viewport';
+import { LockBadge } from './LockBadge';
 
 interface FrameItemProps {
   element: CanvasElement;
@@ -98,8 +99,8 @@ export const FrameItem: React.FC<FrameItemProps> = React.memo(({
         fill={fillColor}
         stroke={themeColor}
         strokeWidth={element.strokeWidth || 2}
-        dash={[8, 5]}
-        cornerRadius={12}
+        dash={element.dash ?? [8, 5]}
+        cornerRadius={element.dash && element.dash.length === 0 ? 16 : 12}
         onClick={onSelect}
         onTap={onSelect}
         perfectDrawEnabled={false}
@@ -140,13 +141,7 @@ export const FrameItem: React.FC<FrameItemProps> = React.memo(({
           listening={false}
         />
         {element.locked && (
-          <Text
-            text="🔒"
-            x={headerWidth - 20}
-            y={7}
-            fontSize={12}
-            listening={false}
-          />
+          <LockBadge x={headerWidth - 24} y={6} size={16} background={false} />
         )}
       </Group>
 
