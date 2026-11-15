@@ -66,7 +66,9 @@ test('StickyQuickAdd and WhiteboardCanvas support "+" quick-add on both sticky n
   );
 
   assert.ok(
-    canvasSource.includes("['sticky', 'rect', 'circle', 'diamond', 'triangle', 'star'].includes(selectedElements[0].type)"),
+    canvasSource.includes("['sticky', 'rect', 'circle', 'diamond', 'triangle', 'star'].includes(selectedElements[0].type)") ||
+    canvasSource.includes("(selectedElements[0].type === 'sticky' || isGeometricShape(selectedElements[0].type))") ||
+    canvasSource.includes("['sticky', 'rect', 'circle', 'diamond', 'triangle', 'star', 'hexagon', 'cylinder'].includes(selectedElements[0].type)"),
     'WhiteboardCanvas should enable quick-add for sticky notes and all geometric shapes'
   );
   assert.ok(

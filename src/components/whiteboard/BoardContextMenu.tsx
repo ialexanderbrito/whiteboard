@@ -6,6 +6,8 @@ import {
   Diamond,
   Triangle,
   Star,
+  Hexagon,
+  Cylinder,
   Type,
   ArrowUpRight,
   Frame,
@@ -46,7 +48,7 @@ export interface BoardContextMenuProps {
   targetElements: CanvasElement[];
   onClose: () => void;
   onCreateSticky: (color?: string) => void;
-  onCreateShape: (shapeType: 'rect' | 'circle' | 'diamond' | 'triangle' | 'star') => void;
+  onCreateShape: (shapeType: 'rect' | 'circle' | 'diamond' | 'triangle' | 'star' | 'hexagon' | 'cylinder') => void;
   onCreateText: () => void;
   onCreateArrow: () => void;
   onCreateFrame: () => void;
@@ -396,6 +398,34 @@ export const BoardContextMenu: React.FC<BoardContextMenuProps> = ({
                       <div className="flex items-center gap-2">
                         <Star className="size-3.5 text-amber-500" />
                         <span className="font-medium text-[11px]">Estrela</span>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onCreateShape('hexagon');
+                        onClose();
+                      }}
+                      className="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer text-left"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Hexagon className="size-3.5 text-violet-500" />
+                        <span className="font-medium text-[11px]">Hexágono</span>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onCreateShape('cylinder');
+                        onClose();
+                      }}
+                      className="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer text-left"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Cylinder className="size-3.5 text-rose-500" />
+                        <span className="font-medium text-[11px]">Cilindro / DB</span>
                       </div>
                     </button>
                   </div>

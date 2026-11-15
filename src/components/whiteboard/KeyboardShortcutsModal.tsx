@@ -34,6 +34,7 @@ const SHORTCUTS: ShortcutItem[] = [
   { keys: ['R'], description: 'Criar Retângulo', category: 'tools' },
   { keys: ['O'], description: 'Criar Círculo', category: 'tools' },
   { keys: ['A'], description: 'Criar Seta Conectora', category: 'tools' },
+  { keys: ['Shift', 'A'], description: 'Criar Linha Reta', category: 'tools' },
   { keys: ['P'], description: 'Caneta / Desenho Livre', category: 'tools' },
   { keys: ['T'], description: 'Caixa de Texto', category: 'tools' },
   { keys: ['F'], description: 'Moldura / Raia de Sprint', category: 'tools' },
@@ -173,7 +174,7 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
         </div>
 
         {/* Lista Rolável de Atalhos Agrupados */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-5">
+        <div className="flex-1 overflow-y-auto p-5 space-y-5 custom-scrollbar">
           {Object.keys(grouped).length === 0 ? (
             <div className="py-8 text-center text-xs text-muted-foreground">
               Nenhum atalho encontrado para "{search}"

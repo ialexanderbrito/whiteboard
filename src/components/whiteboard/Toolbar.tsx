@@ -30,7 +30,9 @@ import {
   Laser,
   Minus,
   Plus,
-  LayoutTemplate
+  LayoutTemplate,
+  Hexagon,
+  Cylinder
 } from '@/components/ui/icons';
 import type { ToolType } from '../../types/element';
 import { STICKY_COLORS, SHAPE_QUICK_SWATCHES } from '../../utils/colors';
@@ -106,11 +108,18 @@ const PEN_WIDTHS = [
 ];
 
 const SHAPE_OPTIONS = [
-  { id: 'rect' as ToolType, label: 'Retângulo', icon: Square },
-  { id: 'circle' as ToolType, label: 'Círculo', icon: Circle },
+  { id: 'rect' as ToolType, label: 'Retângulo', icon: Square, shortcut: 'R' },
+  { id: 'circle' as ToolType, label: 'Círculo', icon: Circle, shortcut: 'O' },
   { id: 'diamond' as ToolType, label: 'Losango', icon: Diamond },
   { id: 'triangle' as ToolType, label: 'Triângulo', icon: Triangle },
   { id: 'star' as ToolType, label: 'Estrela', icon: Star },
+  { id: 'hexagon' as ToolType, label: 'Hexágono', icon: Hexagon },
+  { id: 'cylinder' as ToolType, label: 'Cilindro / DB', icon: Cylinder },
+];
+
+const CONNECTOR_OPTIONS = [
+  { id: 'arrow' as ToolType, label: 'Seta Conectora', icon: ArrowUpRight, shortcut: 'A' },
+  { id: 'line' as ToolType, label: 'Linha Reta', icon: Minus },
 ];
 
 /**
@@ -165,17 +174,22 @@ export const Toolbar: React.FC<ToolbarProps> = React.memo(({
   onOpenShortcuts,
   onOpenTemplates,
 }) => {
-  const [activePicker, setActivePicker] = useState<'sticky' | 'checklist' | 'pen' | 'shapes' | null>(null);
+  const [activePicker, setActivePicker] = useState<'sticky' | 'checklist' | 'pen' | 'shapes' | 'connectors' | null>(null);
   const [currentShape, setCurrentShape] = useState<ToolType>('rect');
+  const [currentConnector, setCurrentConnector] = useState<ToolType>('arrow');
 
   const isBottom = position === 'bottom';
   const tooltipSide = isBottom ? 'top' : 'right';
 
-  const isShapeActive = ['rect', 'circle', 'diamond', 'triangle', 'star'].includes(currentTool);
+  const isShapeActive = SHAPE_OPTIONS.some((s) => s.id === currentTool);
+  const isConnectorActive = CONNECTOR_OPTIONS.some((c) => c.id === currentTool);
   const isDrawingActive = ['pen', 'highlighter', 'eraser'].includes(currentTool);
 
   const activeShapeOption = SHAPE_OPTIONS.find((s) => s.id === currentShape) || SHAPE_OPTIONS[0];
   const ActiveShapeIcon = activeShapeOption.icon;
+
+  const activeConnectorOption = CONNECTOR_OPTIONS.find((c) => c.id === currentConnector) || CONNECTOR_OPTIONS[0];
+  const ActiveConnectorIcon = activeConnectorOption.icon;
 
   return (
     <>
@@ -413,9 +427,9 @@ export const Toolbar: React.FC<ToolbarProps> = React.memo(({
               </TooltipContent>
             </Tooltip>
 
-            {/* Submenu de Formas Geométricas */}
+            {/* Submenu de Formas Geométricas & Conectores */}
             {activePicker === 'shapes' && (
-              <div className={`absolute ${isBottom ? 'bottom-full mb-2.5 left-1/2 -translate-x-1/2' : 'left-full ml-2 top-0'} bg-popover text-popover-foreground p-1 rounded-md shadow-md border border-border flex flex-col gap-0.5 z-40 animate-in fade-in-0 zoom-in-95 w-44`}>
+              <div className={`absolute ${isBottom ? 'bottom-full mb-2.5 left-1/2 -translate-x-1/2' : 'left-full ml-2 top-0'} bg-popover text-popover-foreground p-1 rounded-md shadow-md border border-border flex flex-col gap-0.5 z-40 animate-in fade-in-0 zoom-in-95 w-48`}>
                 <div className="px-2 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
                   Formas
                 </div>
@@ -431,14 +445,19 @@ export const Toolbar: React.FC<ToolbarProps> = React.memo(({
                         onSelectTool(shp.id);
                         setActivePicker(null);
                       }}
-                      className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs transition-colors text-left ${
+                      className={`flex items-center justify-between px-2 py-1.5 rounded text-xs transition-colors text-left ${
                         isCur
                           ? 'bg-primary text-primary-foreground font-semibold'
                           : 'hover:bg-muted text-foreground'
                       }`}
                     >
-                      <SIcon className="size-3.5" />
-                      <span>{shp.label}</span>
+                      <span className="flex items-center gap-2">
+                        <SIcon className="size-3.5" />
+                        <span>{shp.label}</span>
+                      </span>
+                      {shp.shortcut && (
+                        <kbd className={`text-[10px] font-mono ${isCur ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>{shp.shortcut}</kbd>
+                      )}
                     </button>
                   );
                 })}
@@ -766,28 +785,83 @@ export const Toolbar: React.FC<ToolbarProps> = React.memo(({
             )}
           </div>
 
-          {/* Seta */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={() => {
-                  onSelectTool('arrow');
-                  setActivePicker(null);
-                }}
-                className={`size-8 rounded-md transition-colors flex items-center justify-center active:scale-[0.98] ${
-                  currentTool === 'arrow'
-                    ? 'bg-primary text-primary-foreground shadow-xs'
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                }`}
+          {/* Conectores com Submenu (Seta Conectora e Linha Reta) */}
+          <div className="relative">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSelectTool(currentConnector);
+                    if (isConnectorActive) {
+                      setActivePicker(activePicker === 'connectors' ? null : 'connectors');
+                    }
+                  }}
+                  className={`size-8 rounded-md transition-colors flex items-center justify-center relative active:scale-[0.98] ${
+                    isConnectorActive
+                      ? 'bg-primary text-primary-foreground shadow-xs'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                  }`}
+                >
+                  <ActiveConnectorIcon className="size-4" />
+                  <span className="absolute -bottom-0.5 -right-0.5 text-[8px] opacity-70">▾</span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side={tooltipSide}>
+                <p className="font-medium text-xs">
+                  {activeConnectorOption.label}{' '}
+                  <span className="opacity-60 text-[10px]">({activeConnectorOption.shortcut || 'A'})</span>
+                </p>
+              </TooltipContent>
+            </Tooltip>
+
+            {/* Submenu de Conectores (Seta e Linha Reta) */}
+            {activePicker === 'connectors' && (
+              <div
+                className={`absolute ${
+                  isBottom ? 'bottom-full mb-2.5 left-1/2 -translate-x-1/2' : 'left-full ml-2 top-0'
+                } bg-popover text-popover-foreground p-1 rounded-md shadow-md border border-border flex flex-col gap-0.5 z-40 animate-in fade-in-0 zoom-in-95 w-44`}
               >
-                <ArrowUpRight className="size-4" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side={tooltipSide}>
-              <p className="font-medium text-xs">Seta Conectora <span className="opacity-60 text-[10px]">(A)</span></p>
-            </TooltipContent>
-          </Tooltip>
+                <div className="px-2 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                  Conectores
+                </div>
+                {CONNECTOR_OPTIONS.map((conn) => {
+                  const CIcon = conn.icon;
+                  const isCur = currentTool === conn.id;
+                  return (
+                    <button
+                      key={conn.id}
+                      type="button"
+                      onClick={() => {
+                        setCurrentConnector(conn.id);
+                        onSelectTool(conn.id);
+                        setActivePicker(null);
+                      }}
+                      className={`flex items-center justify-between px-2 py-1.5 rounded text-xs transition-colors text-left w-full ${
+                        isCur
+                          ? 'bg-primary text-primary-foreground font-semibold'
+                          : 'hover:bg-muted text-foreground'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <CIcon className="size-3.5" />
+                        <span>{conn.label}</span>
+                      </span>
+                      {conn.shortcut && (
+                        <kbd
+                          className={`text-[10px] font-mono ${
+                            isCur ? 'text-primary-foreground/80' : 'text-muted-foreground'
+                          }`}
+                        >
+                          {conn.shortcut}
+                        </kbd>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
 
           {/* Texto */}
           <Tooltip>
