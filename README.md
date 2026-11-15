@@ -42,6 +42,7 @@ O **Mirio** foi concebido para eliminar barreiras entre uma ideia e sua execuç�
 - **🔷 Formas Geométricas & Desenho Livre**: Retângulos, círculos, triângulos, losangos, estrelas, conectores direcionais e caneta com suavização.
 - **💬 Cursor Chat & Interações Vivas**: Pressione `/` e converse diretamente pela posição do seu mouse (estilo Figma), aponte com feixe Laser (`L`) e envie reações flutuantes.
 - **⏱️ Facilitação Profissional**: Cronômetro colaborativo sincronizado na sala e sessões de votação anônima com pódio automático.
+- **📸 Exportação**: Captura da área visível do quadro em PNG e backup completo em JSON (elementos e estrutura).
 - **📋 Templates Prontos para Sprint**: Crie com um clique quadros para *Lean Canvas*, *Retrospectivas*, *Brainstorming* e *Matriz de Priorização*.
 - **🔒 Segurança & Controle**: Quadros protegidos por senha opcional, modo apresentação para slides e permissões granulares por participante.
 - **🌗 Design System Imersivo**: Tema Claro e Escuro com transições suaves e zero oscilação visual (Zero-FOUC).

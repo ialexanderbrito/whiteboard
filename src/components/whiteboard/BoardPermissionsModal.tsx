@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import type { Board, BoardPermission, CurrentUser } from '../../types/board';
 import { isBoardOwner } from '../../utils/permissions';
+import { useTheme } from '@/context/ThemeContext';
 import { boardService, cleanBoardId } from '../../services/boardService';
 
 interface BoardPermissionsModalProps {
@@ -156,6 +157,7 @@ export const BoardPermissionsModal: React.FC<BoardPermissionsModalProps> = ({
   currentUser,
   onUpdateBoardSettings,
 }) => {
+  const { resolvedTheme } = useTheme();
   const [copiedLink, setCopiedLink] = useState(false);
   const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
 
@@ -245,9 +247,10 @@ export const BoardPermissionsModal: React.FC<BoardPermissionsModalProps> = ({
   const GeneralIcon = CurrentGeneralConfig.icon || Globe;
 
   const cleanId = cleanBoardId(board.id || '');
+  const themeParam = resolvedTheme === 'light' ? '?theme=light' : '';
   const shareUrl = typeof window !== 'undefined' 
-    ? `${window.location.origin}/b/${cleanId}` 
-    : `/b/${cleanId}`;
+    ? `${window.location.origin}/b/${cleanId}${themeParam}` 
+    : `/b/${cleanId}${themeParam}`;
 
   const handleCopyLink = async () => {
     try {
@@ -464,7 +467,7 @@ export const BoardPermissionsModal: React.FC<BoardPermissionsModalProps> = ({
                 </label>
               </div>
 
-              <div className="border border-border rounded-lg divide-y divide-border/60 overflow-hidden bg-background max-h-56 overflow-y-auto">
+              <div className="border border-border rounded-lg divide-y divide-border/60 overflow-hidden bg-background max-h-56 overflow-y-auto custom-scrollbar">
                 {memberList.map((member) => {
                   const memberRoleConfig = PERMISSION_CONFIG[member.role] || PERMISSION_CONFIG.edit;
 

@@ -164,7 +164,7 @@ export const SprintTemplatesModal: React.FC<SprintTemplatesModalProps> = ({
 
         {/* Grade de Cards com Miniaturas Arquiteturais SVG (Estilo FigJam: clean, imersivo e sem poluição) */}
         {filteredTemplates.length > 0 ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 flex-1 overflow-y-auto p-1 pr-1.5 [scrollbar-width:thin] max-h-[460px]">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 flex-1 overflow-y-auto p-1 pr-1.5 custom-scrollbar [scrollbar-width:thin] max-h-[460px]">
             {filteredTemplates.map((tmpl) => {
               const isSelected = selectedTemplate.id === tmpl.id;
               return (

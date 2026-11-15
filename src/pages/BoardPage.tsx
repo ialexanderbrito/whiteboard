@@ -33,7 +33,7 @@ import { verifyBoardPassword } from '../utils/security';
 import { WaitingRoomScreen } from '../components/whiteboard/WaitingRoomScreen';
 import { HostJoinRequestBanner } from '../components/whiteboard/HostJoinRequestBanner';
 import { Button } from '@/components/ui/button';
-import { Lock, Vote } from '@/components/ui/icons';
+import { Lock, Vote, Edit3 } from '@/components/ui/icons';
 import { CommandPalette } from '../components/command/CommandPalette';
 import { useTheme } from '../context/ThemeContext';
 import { SprintTemplatesModal } from '../components/whiteboard/SprintTemplatesModal';
@@ -43,11 +43,28 @@ import { LoadingScreen } from '../components/layout/LoadingScreen';
 import { MobileReadOnlyDrawer } from '../components/whiteboard/MobileReadOnlyDrawer';
 import { MobileBoardNavbar } from '../components/whiteboard/MobileBoardNavbar';
 import { reactionService } from '../services/reactionService';
-import { MIRIO_REACTION, isMirioReaction, isMirioReactionUnlocked, unlockMirioReaction } from '../utils/mirioReaction';
+import {
+  MIRIO_REACTION,
+  isMirioReaction,
+  isMirioReactionUnlocked,
+  unlockMirioReaction,
+  DITADOR_REACTION,
+  isDitadorReaction,
+  isDitadorReactionUnlocked,
+  unlockDitadorReaction,
+} from '../utils/mirioReaction';
 import { publishCursorReadout } from '../utils/cursorReadout';
 import { computeFitToContentViewport } from '../utils/viewport';
 import { getElementWorldBounds } from '../utils/elementBounds';
 import { computeImageGridLayout } from '../utils/imageUpload';
+import {
+  diffElementsToPatch,
+  applyPatchToState,
+  shouldCoalescePatches,
+  mergePatches,
+  MAX_PATCHES,
+  type UndoPatch,
+} from '../utils/undoHistory';
 import type { MediaInsertItem } from '../components/whiteboard/StickersModal';
 
 // Modais pesados carregados sob demanda (Code-Splitting) para carregamento instantâneo do quadro
@@ -86,6 +103,7 @@ export const BoardPage: React.FC = () => {
   );
   const [isMobileNoticeOpen, setIsMobileNoticeOpen] = useState(false);
   const [mirioReactionUnlocked, setMirioReactionUnlocked] = useState(isMirioReactionUnlocked);
+  const [ditadorReactionUnlocked, setDitadorReactionUnlocked] = useState(isDitadorReactionUnlocked);
 
   useEffect(() => {
     const konamiCode = [
@@ -109,15 +127,20 @@ export const BoardPage: React.FC = () => {
       }
 
       const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
-      keyBuffer = [...keyBuffer, key].slice(-konamiCode.length);
+      keyBuffer = [...keyBuffer, key].slice(-Math.max(konamiCode.length, 10));
       const isSimpleCode = keyBuffer.slice(-5).join('') === 'mirio';
+      const isDitadorCode = keyBuffer.slice(-7).join('') === 'ditador';
       const isKonamiCode =
-        keyBuffer.length === konamiCode.length &&
-        keyBuffer.every((value, index) => value === konamiCode[index]);
+        keyBuffer.length >= konamiCode.length &&
+        keyBuffer.slice(-konamiCode.length).every((value, index) => value === konamiCode[index]);
 
       if (isSimpleCode || isKonamiCode) {
         unlockMirioReaction();
         setMirioReactionUnlocked(true);
+        keyBuffer = [];
+      } else if (isDitadorCode) {
+        unlockDitadorReaction();
+        setDitadorReactionUnlocked(true);
         keyBuffer = [];
       }
     };
@@ -129,11 +152,20 @@ export const BoardPage: React.FC = () => {
       }
     };
 
+    const handleDitadorUnlockedEvent = () => {
+      setDitadorReactionUnlocked(true);
+      if (boardId && currentUser) {
+        void reactionService.triggerReaction(boardId, DITADOR_REACTION, currentUser.displayName);
+      }
+    };
+
     window.addEventListener('keydown', handleUnlockKeyDown);
     window.addEventListener('mirio-reaction-unlocked', handleUnlockedEvent);
+    window.addEventListener('ditador-reaction-unlocked', handleDitadorUnlockedEvent);
     return () => {
       window.removeEventListener('keydown', handleUnlockKeyDown);
       window.removeEventListener('mirio-reaction-unlocked', handleUnlockedEvent);
+      window.removeEventListener('ditador-reaction-unlocked', handleDitadorUnlockedEvent);
     };
   }, [boardId, currentUser]);
 
@@ -178,9 +210,20 @@ export const BoardPage: React.FC = () => {
   const [eraserMode, setEraserMode] = useState<'whole' | 'partial'>('whole');
   const [eraserSize, setEraserSize] = useState<number>(22);
 
-  // Pilhas de Histórico Desfazer / Refazer (Ctrl+Z / Ctrl+Y)
-  const [historyPast, setHistoryPast] = useState<CanvasElement[][]>([]);
-  const [historyFuture, setHistoryFuture] = useState<CanvasElement[][]>([]);
+  // Histórico de Undo/Redo por usuário, baseado em patches por operação
+  // (diff antes/depois por elemento) em vez de snapshots do quadro inteiro.
+  // Vive apenas na sessão (morre no refresh) e o Ctrl+Z reverte somente as
+  // operações locais, preservando edições alheias em campos não tocados.
+  const historyRef = useRef<{ past: UndoPatch[]; future: UndoPatch[] }>({ past: [], future: [] });
+  const pendingBeforeRef = useRef<CanvasElement[] | null>(null);
+  const [historyMeta, setHistoryMeta] = useState({ canUndo: false, canRedo: false });
+
+  // Registro das edições locais recentes: permite detectar quando outro usuário
+  // sobrescreve (last-write-wins) um elemento que eu acabei de alterar, exibindo
+  // um aviso discreto em vez de perda silenciosa.
+  const myRecentEditsRef = useRef<Map<string, number>>(new Map());
+  const [overwriteToast, setOverwriteToast] = useState<{ id: number; names: string[] } | null>(null);
+  const overwriteToastTimerRef = useRef<number | null>(null);
 
   // Rastreia a posição atual do mouse sem provocar re-render desnecessário
   const currentMousePosRef = useRef<{ x: number; y: number }>({
@@ -223,7 +266,7 @@ export const BoardPage: React.FC = () => {
   // Painel de Camadas (desktop)
   const [isLayersPanelOpen, setIsLayersPanelOpen] = useState(false);
 
-  const { isDark, toggleTheme } = useTheme();
+  const { isDark, toggleTheme, resolvedTheme } = useTheme();
 
   // Zoom e Posição do Canvas
   const [scale, setScale] = useState(1);
@@ -406,7 +449,12 @@ export const BoardPage: React.FC = () => {
 
   const handleCopyShareLink = async () => {
     try {
-      await navigator.clipboard.writeText(window.location.href);
+      const cleanId = (boardId || '').replace(/^board_/, '');
+      const themeParam = resolvedTheme === 'light' ? '?theme=light' : '';
+      const shareUrl = cleanId
+        ? `${window.location.origin}/b/${cleanId}${themeParam}`
+        : window.location.href;
+      await navigator.clipboard.writeText(shareUrl);
     } catch {}
   };
 
@@ -568,16 +616,45 @@ export const BoardPage: React.FC = () => {
   // Referência para os controles de presença
   const presenceControls = useRef<ReturnType<typeof presenceService.joinBoard> | null>(null);
 
-  // Registra um instantâneo no histórico antes de alterar elementos
+  // Marca o estado pré-mutação. O patch real (diff antes/depois) é calculado
+  // no flush, depois que o estado de elementos se atualiza.
   const recordSnapshot = useCallback(() => {
-    const snapshot = elementsRef.current;
-    setHistoryPast((prev) => {
-      const next = [...prev, snapshot];
-      if (next.length > 30) return next.slice(next.length - 30);
-      return next;
-    });
-    setHistoryFuture([]);
+    if (pendingBeforeRef.current === null) {
+      pendingBeforeRef.current = elementsRef.current;
+    }
   }, []);
+
+  // Converte a mutação pendente em um patch e empilha no histórico.
+  // Roda a cada mudança de elementos; só age quando há mutação local pendente.
+  useEffect(() => {
+    const beforeState = pendingBeforeRef.current;
+    if (beforeState === null) return;
+    pendingBeforeRef.current = null;
+
+    const patch = diffElementsToPatch(beforeState, elements);
+    if (!patch) return;
+
+    // Registra a versão que eu acabei de gravar de cada elemento tocado
+    const afterMap = new Map(elements.map((e) => [e.id, e] as const));
+    for (const entry of patch.entries) {
+      const el = afterMap.get(entry.id);
+      if (el && typeof el.updatedAt === 'number') {
+        myRecentEditsRef.current.set(entry.id, el.updatedAt);
+      }
+    }
+    if (myRecentEditsRef.current.size > 1000) myRecentEditsRef.current.clear();
+
+    const history = historyRef.current;
+    history.future = [];
+    const top = history.past[history.past.length - 1];
+    if (top && shouldCoalescePatches(top, patch)) {
+      history.past[history.past.length - 1] = mergePatches(top, patch);
+    } else {
+      history.past.push(patch);
+      if (history.past.length > MAX_PATCHES) history.past.shift();
+    }
+    setHistoryMeta({ canUndo: true, canRedo: false });
+  }, [elements]);
 
   // Carrega e escuta metadados do quadro em tempo real
   useEffect(() => {
@@ -667,6 +744,28 @@ export const BoardPage: React.FC = () => {
   useEffect(() => {
     if (!boardId || !currentUid || hasNoAccess || boardNotFound || !isBoardReady) return;
     const unsubscribe = elementService.subscribeElements(boardId, (elems) => {
+      // LWW com sinal: quando outro usuário sobrescreve um elemento que eu
+      // editei recentemente, exibe um aviso discreto (o estado remoto prevalece).
+      const recentEdits = myRecentEditsRef.current;
+      if (recentEdits.size > 0) {
+        const editors = new Set<string>();
+        for (const el of elems) {
+          if (recentEdits.has(el.id) && el.updatedBy && el.updatedBy !== currentUid) {
+            if (el.updatedByName) editors.add(el.updatedByName);
+            // Consome o registro: edições remotas seguintes do mesmo elemento não reavisam
+            recentEdits.delete(el.id);
+          }
+        }
+        if (editors.size > 0) {
+          setOverwriteToast({ id: Date.now(), names: Array.from(editors) });
+          if (overwriteToastTimerRef.current !== null) {
+            window.clearTimeout(overwriteToastTimerRef.current);
+          }
+          overwriteToastTimerRef.current = window.setTimeout(() => {
+            setOverwriteToast(null);
+          }, 5000);
+        }
+      }
       setElements(elems);
     });
     return () => unsubscribe();
@@ -1007,31 +1106,40 @@ export const BoardPage: React.FC = () => {
     await Promise.all(promises);
   };
 
-  // Operação Desfazer (Undo) com diffing inteligente
+  // Operação Desfazer (Undo): reverte o último patch do usuário,
+  // preservando edições alheias em campos que o patch não toca.
   const handleUndo = useCallback(async () => {
-    if (historyPast.length === 0 || !boardId || isReadOnly || isCommentOnly) return;
-    const previousSnapshot = historyPast[historyPast.length - 1];
-    const newPast = historyPast.slice(0, -1);
+    const history = historyRef.current;
+    if (history.past.length === 0 || !boardId || isReadOnly || isCommentOnly) return;
+    const patch = history.past[history.past.length - 1];
+    const preState = elementsRef.current;
+    const postState = applyPatchToState(preState, patch, 'undo');
 
-    setHistoryPast(newPast);
-    setHistoryFuture((prev) => [elements, ...prev]);
-    setElements(previousSnapshot);
+    history.past.pop();
+    history.future.unshift(patch);
+    if (history.future.length > MAX_PATCHES) history.future.pop();
+    setHistoryMeta({ canUndo: history.past.length > 0, canRedo: history.future.length > 0 });
+    setElements(postState);
 
-    await syncDeltaSnapshot(boardId, elements, previousSnapshot);
-  }, [historyPast, elements, boardId, isReadOnly, isCommentOnly]);
+    await syncDeltaSnapshot(boardId, preState, postState);
+  }, [boardId, isReadOnly, isCommentOnly]);
 
-  // Operação Refazer (Redo) com diffing inteligente
+  // Operação Refazer (Redo): reaplica o próximo patch desfeito.
   const handleRedo = useCallback(async () => {
-    if (historyFuture.length === 0 || !boardId || isReadOnly || isCommentOnly) return;
-    const nextSnapshot = historyFuture[0];
-    const newFuture = historyFuture.slice(1);
+    const history = historyRef.current;
+    if (history.future.length === 0 || !boardId || isReadOnly || isCommentOnly) return;
+    const patch = history.future[0];
+    const preState = elementsRef.current;
+    const postState = applyPatchToState(preState, patch, 'redo');
 
-    setHistoryPast((prev) => [...prev, elements]);
-    setHistoryFuture(newFuture);
-    setElements(nextSnapshot);
+    history.future.shift();
+    history.past.push(patch);
+    if (history.past.length > MAX_PATCHES) history.past.shift();
+    setHistoryMeta({ canUndo: history.past.length > 0, canRedo: history.future.length > 0 });
+    setElements(postState);
 
-    await syncDeltaSnapshot(boardId, elements, nextSnapshot);
-  }, [historyFuture, elements, boardId, isReadOnly, isCommentOnly]);
+    await syncDeltaSnapshot(boardId, preState, postState);
+  }, [boardId, isReadOnly, isCommentOnly]);
 
   // Atalhos de teclado para Desfazer / Refazer (Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y)
   useEffect(() => {
@@ -1243,10 +1351,11 @@ export const BoardPage: React.FC = () => {
     async (elementId: string, emoji: string) => {
       if (!boardId || !currentUser) return;
       if (isMirioReaction(emoji) && !mirioReactionUnlocked) return;
+      if (isDitadorReaction(emoji) && !ditadorReactionUnlocked) return;
       const elem = elementsRef.current.find((e) => e.id === elementId);
       if (!elem) return;
 
-      const targetEmoji = isMirioReaction(emoji) ? MIRIO_REACTION : emoji;
+      const targetEmoji = isMirioReaction(emoji) ? MIRIO_REACTION : isDitadorReaction(emoji) ? DITADOR_REACTION : emoji;
       const reactions = { ...(elem.reactions || {}) };
 
       // Se houver chave legada __mirio_original__, migra para mirio_original para não quebrar no Firestore
@@ -1256,6 +1365,14 @@ export const BoardPage: React.FC = () => {
           ...new Set([...(reactions[MIRIO_REACTION] || []), ...legacyUsers]),
         ];
         delete reactions['__mirio_original__'];
+      }
+
+      if (reactions['__ditador_original__']) {
+        const legacyUsers = reactions['__ditador_original__'] || [];
+        reactions[DITADOR_REACTION] = [
+          ...new Set([...(reactions[DITADOR_REACTION] || []), ...legacyUsers]),
+        ];
+        delete reactions['__ditador_original__'];
       }
 
       const currentUsers = reactions[targetEmoji] || [];
@@ -1279,7 +1396,7 @@ export const BoardPage: React.FC = () => {
       );
       await elementService.updateElement(boardId, elementId, { reactions });
     },
-    [boardId, currentUser, mirioReactionUnlocked]
+    [boardId, currentUser, mirioReactionUnlocked, ditadorReactionUnlocked]
   );
 
   // Início de sessão de borracha parcial: grava snapshot de histórico antes da remoção
@@ -1346,7 +1463,10 @@ export const BoardPage: React.FC = () => {
 
     setElements((prev) => [...prev, ...withIds]);
     await elementService.batchAddElements(boardId, withIds);
-    setSelectedElementIds(withIds.map((item) => item.id));
+    // Seleciona com destaque limpo apenas a moldura pai ao inserir, pronta para reposicionamento imediato
+    if (withIds.length > 0) {
+      setSelectedElementIds([withIds[0].id]);
+    }
   };
 
   // Inserção de Stickers, Imagens e GIFs (individual ou em lote organizado em grade)
@@ -1610,6 +1730,7 @@ export const BoardPage: React.FC = () => {
           smartGuides={smartGuidesEnabled}
           onToggleSmartGuides={handleToggleSmartGuides}
           mirioReactionUnlocked={mirioReactionUnlocked}
+          ditadorReactionUnlocked={ditadorReactionUnlocked}
           isShareModalOpen={isShareModalOpen}
           onShareModalOpenChange={setIsShareModalOpen}
           isCoffeeModalOpen={isCoffeeModalOpen}
@@ -1669,6 +1790,29 @@ export const BoardPage: React.FC = () => {
 
       {/* Overlay de Reações Flutuantes Globais em Tempo Real */}
       {!isMobile && <GlobalReactionsOverlay boardId={boardId || ''} />}
+
+      {/* Toast discreto: outro usuário sobrescreveu um elemento que você editou (LWW) */}
+      {overwriteToast && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-top-4 duration-300 pointer-events-auto">
+          <div className="flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-card text-card-foreground shadow-2xl border border-border font-medium text-xs select-none">
+            <Edit3 className="size-5 shrink-0 text-muted-foreground" />
+            <span>
+              {overwriteToast.names.length === 1
+                ? `${overwriteToast.names[0]} editou um elemento que você alterou`
+                : overwriteToast.names.length === 2
+                ? `${overwriteToast.names[0]} e ${overwriteToast.names[1]} editaram elementos que você alterou`
+                : `${overwriteToast.names[0]} e ${overwriteToast.names.length - 1} outros editaram elementos que você alterou`}
+            </span>
+            <button
+              type="button"
+              onClick={() => setOverwriteToast(null)}
+              className="size-5 rounded-full hover:bg-muted flex items-center justify-center text-xs ml-2 cursor-pointer font-bold"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Toast Notificação de Início de Votação para todos na sala */}
       {!isMobile && showVotingToast && votingData?.session && votingData.session.status === 'active' && (
@@ -1766,8 +1910,8 @@ export const BoardPage: React.FC = () => {
           onZoomOut={handleZoomOut}
           onResetZoom={handleResetZoom}
           onOpenStickersModal={() => setIsStickersModalOpen(true)}
-          canUndo={historyPast.length > 0}
-          canRedo={historyFuture.length > 0}
+          canUndo={historyMeta.canUndo}
+          canRedo={historyMeta.canRedo}
           onUndo={handleUndo}
           onRedo={handleRedo}
           penMode={penMode}
@@ -1887,9 +2031,9 @@ export const BoardPage: React.FC = () => {
           frames,
           currentTool,
           selectedCount: selectedElementIds.length,
-          canUndo: historyPast.length > 0,
+          canUndo: historyMeta.canUndo,
           onUndo: handleUndo,
-          canRedo: historyFuture.length > 0,
+          canRedo: historyMeta.canRedo,
           onRedo: handleRedo,
           onAlignElements: handleAlignSelectedElements,
           onOpenEditProfile: () => setIsEditProfileOpen(true),
@@ -2014,6 +2158,7 @@ export const BoardPage: React.FC = () => {
         smartGuidesEnabled={smartGuidesEnabled}
         onToggleSmartGuides={handleToggleSmartGuides}
         mirioReactionUnlocked={mirioReactionUnlocked}
+        ditadorReactionUnlocked={ditadorReactionUnlocked}
         boardMembers={board?.members}
         boardOwner={{ id: board?.ownerId, name: board?.ownerName }}
       />

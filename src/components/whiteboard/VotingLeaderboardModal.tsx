@@ -238,7 +238,7 @@ export const VotingLeaderboardModal: React.FC<VotingLeaderboardModalProps> = ({
 
             {/* Demais itens classificados */}
             {runners.length > 0 && (
-              <div className="flex-1 min-h-0 overflow-y-auto px-2.5 py-3 space-y-0.5">
+              <div className="flex-1 min-h-0 overflow-y-auto px-2.5 py-3 space-y-0.5 custom-scrollbar">
                 {runners.map((item, index) => (
                   <button
                     key={item.elementId}

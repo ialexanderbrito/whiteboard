@@ -1,7 +1,8 @@
 import React, { useRef, useState, useEffect, useLayoutEffect, useCallback } from 'react';
-import { Stage, Layer, Transformer, Rect, Circle, Line, Star, Group, Text } from 'react-konva';
+import { Stage, Layer, Transformer, Rect, Circle, Line, Star, Path, Ellipse, Group, Text } from 'react-konva';
 import Konva from 'konva';
 import type { CanvasElement, ToolType, ElementType } from '../../types/element';
+import { isGeometricShape } from '../../types/element';
 import type { UserPresence, CurrentUser, BoardMember } from '../../types/board';
 import { StickyNoteItem } from './StickyNoteItem';
 import { ChecklistItem } from './ChecklistItem';
@@ -18,9 +19,16 @@ import { ElementLinkBalloon } from './ElementLinkBalloon';
 import { EditLinkModal } from './EditLinkModal';
 import { CanvasGrid, type GridType, type GridSize } from './CanvasGrid';
 import type { LaserPoint } from './LaserTrailOverlay';
+import { ElementConnectorHandles } from './ElementConnectorHandles';
+import {
+  findNearestSnapAnchor,
+  resolveConnectorGeometry,
+  getConnectedArrowUpdatesOnMove,
+} from '../../utils/connectors.ts';
 import { SelectionContextBar } from './SelectionContextBar';
 import { BoardContextMenu } from './BoardContextMenu';
 import { alignElements, type AlignmentType } from '../../utils/alignment';
+import { getElementsContainedInFrame } from '../../utils/frameContainment.ts';
 import { cleanGifUrl } from '../../utils/gif';
 import { sortElementsByLayer, computeLayerReorderUpdates, getNextZIndex, selectionSupportsLayerReorder, resolveLayerShortcut } from '../../utils/layerOrder';
 import { recognizeSmartShape } from '../../utils/smartDrawing';
@@ -72,14 +80,15 @@ import {
   getElementWorldBounds,
   isBoundsInViewport,
   normalizeRotationDeg,
+  type WorldBounds,
 } from '../../utils/elementBounds';
 import { calculateSmartGuidesAndSnap, type GuideLine } from '../../utils/smartGuides';
 import { StickyReactionBar } from './StickyReactionBar';
 import { ReactionBadgeTooltip } from './ReactionBadgeTooltip';
 import { StickyQuickAdd } from './StickyQuickAdd';
 import { getAdjacentStickyRect, type StickyDirection } from '../../utils/stickyPlacement';
-import { isMirioReaction, MIRIO_REACTION } from '../../utils/mirioReaction';
-import { Vote, Crown, Check, Minus, Plus } from '@/components/ui/icons';
+import { isMirioReaction, MIRIO_REACTION, isDitadorReaction, DITADOR_REACTION } from '../../utils/mirioReaction';
+import { Vote, Crown, Check, Minus, Plus, LockClosed, AlertCircle, AlertTriangle, Info } from '@/components/ui/icons';
 
 if (typeof window !== 'undefined' && isCoarseOrMobileViewport()) {
   Konva.pixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
@@ -141,6 +150,7 @@ interface WhiteboardCanvasProps {
   boardMembers?: Record<string, BoardMember>;
   boardOwner?: { id?: string; name?: string };
   mirioReactionUnlocked?: boolean;
+  ditadorReactionUnlocked?: boolean;
   onLaserMove?: (worldPos: { x: number; y: number }, isDrawing: boolean) => void;
   onLaserDown?: (worldPos: { x: number; y: number }) => void;
   onLaserUp?: () => void;
@@ -333,6 +343,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
   boardMembers,
   boardOwner,
   mirioReactionUnlocked = false,
+  ditadorReactionUnlocked = false,
   onLaserMove,
   onLaserDown,
   onLaserUp,
@@ -352,6 +363,37 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     candidateElements: CanvasElement[];
     draggedIds: Set<string>;
   } | null>(null);
+
+  // Sessão de arraste em lote sincronizado a 60/120 FPS com cache O(1)
+  interface DragSessionItem {
+    node: Konva.Node;
+    initX: number;
+    initY: number;
+    isLocked: boolean;
+    gifEl: HTMLElement | null;
+    reactionsEl: HTMLElement | null;
+  }
+
+  interface DragArrowSession {
+    arrow: CanvasElement;
+    group: Konva.Group;
+    line: Konva.Shape | null;
+  }
+
+  interface DragSession {
+    leaderId: string;
+    initialLeaderPos: { x: number; y: number };
+    items: Map<string, DragSessionItem>;
+    connectedArrows: DragArrowSession[];
+    smartGuidesData: {
+      initialBounds: { x: number; y: number; w: number; h: number };
+      candidateElements: CanvasElement[];
+      precomputedTargets: Array<{ element: CanvasElement; bounds: WorldBounds }>;
+    } | null;
+  }
+
+  const dragSessionRef = useRef<DragSession | null>(null);
+  const lastBatchUpdateRef = useRef<{ timestamp: number; key: string } | null>(null);
 
   const gifOverlayRef = useRef<HTMLDivElement>(null);
   const votingOverlayRef = useRef<HTMLDivElement>(null);
@@ -428,17 +470,44 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
   // Toast Notificação de Feedback do Canvas (arquivos não suportados, PDF, alertas pontuais)
   const [canvasToast, setCanvasToast] = useState<{
     id: string;
-    type: 'info' | 'warning' | 'error';
+    type: 'info' | 'warning' | 'error' | 'lock';
     title: string;
     message: string;
   } | null>(null);
+  // Alvo de snap magnético ao arrastar ponta de seta/conector
+  const [snapTargetAnchor, setSnapTargetAnchor] = useState<{ x: number; y: number } | null>(null);
+
+  const handleStartQuickConnect = useCallback(
+    (elementId: string, side: any, worldAnchor: { x: number; y: number }) => {
+      if (readOnly || canCommentOnly) return;
+      isDrawing.current = true;
+      const arrowColor = selectedColor && selectedColor !== '#0f172a' ? selectedColor : '#2563eb';
+      setDrawingElement({
+        id: 'temp_arrow',
+        type: 'arrow',
+        x: Math.round(worldAnchor.x),
+        y: Math.round(worldAnchor.y),
+        points: [0, 0, 0, 0],
+        startBinding: { elementId, side },
+        connectorStyle: 'straight',
+        stroke: arrowColor,
+        strokeWidth: 3,
+        zIndex: getNextZIndex(elements),
+        updatedBy: currentUser.uid,
+        updatedByName: currentUser.displayName,
+        updatedAt: Date.now(),
+      });
+    },
+    [readOnly, canCommentOnly, selectedColor, elements, currentUser]
+  );
+
   const canvasToastTimerRef = useRef<number | null>(null);
 
   const showCanvasToast = useCallback(
     (
       title: string,
       message: string,
-      type: 'info' | 'warning' | 'error' = 'warning',
+      type: 'info' | 'warning' | 'error' | 'lock' = 'warning',
       durationMs = 6500
     ) => {
       if (canvasToastTimerRef.current !== null) {
@@ -465,6 +534,48 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       }
     };
   }, []);
+
+  // Feedback visual no badge do cadeado: shake curto (decay senoidal) via offsetX,
+  // que não é controlado pelo React — os props do elemento permanecem intactos.
+  const shakeLockedBadge = useCallback((elementId: string) => {
+    const elementNode = stageRef.current?.findOne('#' + elementId) as Konva.Group | undefined;
+    const node = elementNode?.findOne('.lock-badge');
+    if (!node) return;
+    const DURATION = 320;
+    const layer = node.getLayer();
+    const anim = new Konva.Animation((frame) => {
+      const t = ((frame?.time ?? 0)) / DURATION;
+      if (t >= 1) {
+        node.offsetX(0);
+        anim.stop();
+        return;
+      }
+      const decay = 1 - t;
+      node.offsetX(Math.sin(t * Math.PI * 5) * 3 * decay);
+      layer?.batchDraw();
+    }, layer);
+    anim.start();
+  }, []);
+
+  // Aviso ao tentar excluir/recortar elementos bloqueados: nada acontece
+  // silenciosamente — toast + shake no badge de cada elemento afetado.
+  const notifyLockedBlocked = useCallback(
+    (blockedIds: string[], hadDeletions: boolean) => {
+      if (blockedIds.length === 0) return;
+      const count = blockedIds.length;
+      const title = count === 1 ? 'Elemento bloqueado' : `${count} elementos bloqueados`;
+      const message = hadDeletions
+        ? count === 1
+          ? 'O elemento bloqueado não foi excluído. Desbloqueie (botão direito → Desbloquear) para excluí-lo.'
+          : 'Os elementos desbloqueados foram excluídos. Desbloqueie os demais para excluí-los.'
+        : count === 1
+        ? 'Nada foi excluído — o elemento está bloqueado. Desbloqueie (botão direito → Desbloquear) e tente novamente.'
+        : 'Nada foi excluído — todos os elementos selecionados estão bloqueados. Desbloqueie primeiro.';
+      showCanvasToast(title, message, 'lock', 4500);
+      blockedIds.slice(0, 10).forEach((id) => shakeLockedBadge(id));
+    },
+    [showCanvasToast, shakeLockedBadge]
+  );
 
   // Marquee (Seleção em lote por arrasto)
   const [marqueeBox, setMarqueeBox] = useState<MarqueeBox | null>(null);
@@ -618,102 +729,117 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
 
   // Rastreamento de posições iniciais para arraste em lote sincronizado
   const dragStartPositions = useRef<Map<string, { x: number; y: number }>>(new Map());
+  // Rastreamento dos elementos filhos contidos dentro de uma moldura durante o arraste inteligente
+  const draggedFrameChildIdsRef = useRef<string[]>([]);
 
-  // Limpa as linhas-guia inteligentes do canvas
+  // Limpa as linhas-guia inteligentes do canvas reutilizando nós no pool
   const clearSmartGuides = useCallback(() => {
     const layer = smartGuidesLayerRef.current;
     if (!layer) return;
-    if (layer.children.length > 0) {
-      layer.destroyChildren();
+    let anyVisible = false;
+    layer.children.forEach((child) => {
+      if (child.visible()) {
+        child.visible(false);
+        anyVisible = true;
+      }
+    });
+    if (anyVisible) {
       layer.batchDraw();
     }
   }, []);
 
-  // Renderiza as réguas e linhas-guia inteligentes estilo Figma/Miro (#F43F5E)
+  // Renderiza as réguas e linhas-guia inteligentes estilo Figma/Miro (#F43F5E) com pooling de alta performance a 60/120 FPS
   const drawSmartGuides = useCallback((guides: GuideLine[]) => {
     const layer = smartGuidesLayerRef.current;
     if (!layer) return;
-    layer.destroyChildren();
 
     if (!guides || guides.length === 0) {
-      layer.batchDraw();
+      clearSmartGuides();
       return;
     }
 
     const currentScale = scaleRef.current || 1;
     const strokeWidth = Math.max(1, 1.5 / currentScale);
     const tickSize = Math.max(2, 4 / currentScale);
+    const dash = [4 / currentScale, 3 / currentScale];
+
+    let lineIndex = 0;
+    const children = layer.children;
+
+    const getPooledLine = (): Konva.Line => {
+      if (lineIndex < children.length) {
+        const line = children[lineIndex] as Konva.Line;
+        line.visible(true);
+        lineIndex++;
+        return line;
+      }
+      const newLine = new Konva.Line({
+        stroke: '#F43F5E',
+        opacity: 0.95,
+        listening: false,
+        perfectDrawEnabled: false,
+      });
+      layer.add(newLine);
+      lineIndex++;
+      return newLine;
+    };
 
     for (const g of guides) {
       if (g.orientation === 'vertical') {
         // Linha guia vertical
-        const line = new Konva.Line({
+        const line = getPooledLine();
+        line.setAttrs({
           points: [g.lineCoord, g.start, g.lineCoord, g.end],
-          stroke: '#F43F5E',
           strokeWidth,
-          dash: [4 / currentScale, 3 / currentScale],
-          opacity: 0.95,
-          listening: false,
-          perfectDrawEnabled: false,
+          dash,
         });
-        layer.add(line);
 
         // Marcadores (ticks) nos topos e bases dos elementos alinhados
-        const topTick = new Konva.Line({
+        const topTick = getPooledLine();
+        topTick.setAttrs({
           points: [g.lineCoord - tickSize, g.start, g.lineCoord + tickSize, g.start],
-          stroke: '#F43F5E',
           strokeWidth,
-          opacity: 0.95,
-          listening: false,
-          perfectDrawEnabled: false,
+          dash: [],
         });
-        const bottomTick = new Konva.Line({
+
+        const bottomTick = getPooledLine();
+        bottomTick.setAttrs({
           points: [g.lineCoord - tickSize, g.end, g.lineCoord + tickSize, g.end],
-          stroke: '#F43F5E',
           strokeWidth,
-          opacity: 0.95,
-          listening: false,
-          perfectDrawEnabled: false,
+          dash: [],
         });
-        layer.add(topTick);
-        layer.add(bottomTick);
       } else {
         // Linha guia horizontal
-        const line = new Konva.Line({
+        const line = getPooledLine();
+        line.setAttrs({
           points: [g.start, g.lineCoord, g.end, g.lineCoord],
-          stroke: '#F43F5E',
           strokeWidth,
-          dash: [4 / currentScale, 3 / currentScale],
-          opacity: 0.95,
-          listening: false,
-          perfectDrawEnabled: false,
+          dash,
         });
-        layer.add(line);
 
         // Marcadores (ticks) nas extremidades esquerda e direita
-        const leftTick = new Konva.Line({
+        const leftTick = getPooledLine();
+        leftTick.setAttrs({
           points: [g.start, g.lineCoord - tickSize, g.start, g.lineCoord + tickSize],
-          stroke: '#F43F5E',
           strokeWidth,
-          opacity: 0.95,
-          listening: false,
-          perfectDrawEnabled: false,
+          dash: [],
         });
-        const rightTick = new Konva.Line({
+
+        const rightTick = getPooledLine();
+        rightTick.setAttrs({
           points: [g.end, g.lineCoord - tickSize, g.end, g.lineCoord + tickSize],
-          stroke: '#F43F5E',
           strokeWidth,
-          opacity: 0.95,
-          listening: false,
-          perfectDrawEnabled: false,
+          dash: [],
         });
-        layer.add(leftTick);
-        layer.add(rightTick);
       }
     }
 
+    for (let i = lineIndex; i < children.length; i++) {
+      children[i].visible(false);
+    }
+
     layer.batchDraw();
-  }, []);
+  }, [clearSmartGuides]);
 
   // Navegação por gestos touch (celular/tablet): pinça de 2 dedos para zoom,
   // movimento dos 2 dedos para pan, arraste de 1 dedo com inércia suave em modo visualização
@@ -1026,6 +1152,22 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         }
       });
       transformerRef.current.nodes(nodes);
+
+      // Desativa o proxy drag interno redundante do Transformer no Konva.
+      // O WhiteboardCanvas gerencia nativamente a movimentação coordenada dos nós
+      // selecionados com cache O(1), suporte a itens bloqueados, snap magnético e setas conectadas.
+      // Isso evita que o Konva inicie múltiplos drag runners simultâneos (ex: 48 itens ao mesmo tempo),
+      // o que causava congelamento da aba e perda severa de performance.
+      const tr = transformerRef.current;
+      if (tr && typeof (tr as any)._getEventNamespace === 'function') {
+        const ns = (tr as any)._getEventNamespace();
+        nodes.forEach((node) => {
+          node.off(`dragstart.${ns}`);
+          node.off(`dragmove.${ns}`);
+          node.off(`dragend.${ns}`);
+        });
+      }
+
       transformerRef.current.getLayer()?.batchDraw();
     } else {
       transformerRef.current.nodes([]);
@@ -1037,6 +1179,9 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
   const handleToggleReactionInternal = useCallback(
     async (elementId: string, emoji: string) => {
       if (isMirioReaction(emoji) && !mirioReactionUnlocked) {
+        return;
+      }
+      if (isDitadorReaction(emoji) && !ditadorReactionUnlocked) {
         return;
       }
 
@@ -1052,7 +1197,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
 
       if (!elem) return;
 
-      const targetEmoji = isMirioReaction(emoji) ? MIRIO_REACTION : emoji;
+      const targetEmoji = isMirioReaction(emoji) ? MIRIO_REACTION : isDitadorReaction(emoji) ? DITADOR_REACTION : emoji;
       const reactions = { ...(elem.reactions || {}) };
 
       if (reactions['__mirio_original__']) {
@@ -1061,6 +1206,14 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           ...new Set([...(reactions[MIRIO_REACTION] || []), ...legacyUsers]),
         ];
         delete reactions['__mirio_original__'];
+      }
+
+      if (reactions['__ditador_original__']) {
+        const legacyUsers = reactions['__ditador_original__'] || [];
+        reactions[DITADOR_REACTION] = [
+          ...new Set([...(reactions[DITADOR_REACTION] || []), ...legacyUsers]),
+        ];
+        delete reactions['__ditador_original__'];
       }
 
       const currentUsers = reactions[targetEmoji] || [];
@@ -1080,7 +1233,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
 
       await onUpdateElement(elementId, { reactions });
     },
-    [onToggleReaction, onUpdateElement, mirioReactionUnlocked]
+    [onToggleReaction, onUpdateElement, mirioReactionUnlocked, ditadorReactionUnlocked]
   );
 
   // Duplicar elemento individual
@@ -1133,7 +1286,13 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
   const handleCut = useCallback(
     async (targets?: CanvasElement[]) => {
       if (readOnly || canCommentOnly) return;
-      const elemsToCut = targets && targets.length > 0 ? targets : selectedElements;
+      // Proteção total com aviso: bloqueados não são recortados e o usuário é notificado.
+      const source = targets && targets.length > 0 ? targets : selectedElements;
+      const blockedIds = source.filter((el) => el.locked).map((el) => el.id);
+      const elemsToCut = source.filter((el) => !el.locked);
+      if (blockedIds.length > 0) {
+        notifyLockedBlocked(blockedIds, elemsToCut.length > 0);
+      }
       if (elemsToCut.length === 0) return;
 
       await copyCanvasElements(elemsToCut);
@@ -1149,7 +1308,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       }
       onSelectionChange([]);
     },
-    [readOnly, canCommentOnly, selectedElements, onBatchDeleteElements, onDeleteElement, onSelectionChange]
+    [readOnly, canCommentOnly, selectedElements, onBatchDeleteElements, onDeleteElement, onSelectionChange, notifyLockedBlocked]
   );
 
   // Colar elementos, imagens externas ou texto como sticky note
@@ -1406,12 +1565,22 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (readOnly) return;
         if (selectedIds.length > 0) {
-          const idsToDelete = canCommentOnly
-            ? selectedIds.filter((id) => {
-                const el = elements.find((item) => item.id === id);
-                return el && el.updatedBy === currentUser.uid;
-              })
-            : selectedIds;
+          // Proteção total: elementos bloqueados não são apagados (desbloqueie primeiro),
+          // mas o usuário é avisado — nada acontece em silêncio.
+          const blockedIds: string[] = [];
+          const idsToDelete = selectedIds.filter((id) => {
+            const el = elements.find((item) => item.id === id);
+            if (!el) return false;
+            if (el.locked) {
+              blockedIds.push(id);
+              return false;
+            }
+            return canCommentOnly ? el.updatedBy === currentUser.uid : true;
+          });
+
+          if (blockedIds.length > 0) {
+            notifyLockedBlocked(blockedIds, idsToDelete.length > 0);
+          }
 
           if (idsToDelete.length > 0) {
             if (onBatchDeleteElements) {
@@ -1478,7 +1647,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
         if (!readOnly && !canCommentOnly && selectedElements.length === 1 && !inlineEditing) {
           const sel = selectedElements[0];
-          if (!sel.locked && ['sticky', 'text', 'rect', 'circle', 'diamond', 'triangle', 'star', 'frame'].includes(sel.type)) {
+          if (!sel.locked && (isGeometricShape(sel.type) || ['sticky', 'text', 'frame'].includes(sel.type))) {
             e.preventDefault();
             handleStartEditingElement(sel.id);
             return;
@@ -1620,7 +1789,13 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           if (e.key === 'f' || e.key === 'F') onSelectTool('frame');
           if (e.key === 'r' || e.key === 'R') onSelectTool('rect');
           if (e.key === 'o' || e.key === 'O') onSelectTool('circle');
-          if (e.key === 'a' || e.key === 'A') onSelectTool('arrow');
+          if (e.key === 'a' || e.key === 'A') {
+            if (e.shiftKey) {
+              onSelectTool('line');
+            } else {
+              onSelectTool('arrow');
+            }
+          }
           if (e.key === 'p' || e.key === 'P') onSelectTool('pen');
           if (e.key === 't' || e.key === 'T') {
             if (e.shiftKey && onOpenTemplates) {
@@ -1688,6 +1863,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     handleReorderLayer,
     onToggleGrid,
     onToggleSmartGuides,
+    notifyLockedBlocked,
   ]);
 
   // Listener do evento nativo de 'paste' para captura rica de dados (imagens, textos e itens)
@@ -2139,21 +2315,40 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     onSelectionChange,
   ]);
 
-  // Atualização de elemento com suporte automático a delta em lote
+  // Atualização de elemento com suporte automático a delta em lote e reconexão magnética de setas
   const handleElementChange = useCallback((elemId: string, updates: Partial<CanvasElement>) => {
-    // Se o elemento é parte de uma multisseleção e houve movimento x/y
+    // Se o elemento é parte de uma multisseleção ou é uma moldura com filhos contidos arrastados
+    const isMulti = selectedIds.includes(elemId) && selectedIds.length > 1;
+    const frameChildIds = [...(draggedFrameChildIdsRef.current || [])];
+    const hasFrameChildren = frameChildIds.length > 0;
+
     if (
       updates.x !== undefined &&
       updates.y !== undefined &&
-      selectedIds.includes(elemId) &&
-      selectedIds.length > 1
+      (isMulti || hasFrameChildren)
     ) {
       const originElem = elementsById.get(elemId) || elements.find((e) => e.id === elemId);
       if (originElem) {
         const dx = updates.x - originElem.x;
         const dy = updates.y - originElem.y;
 
-        const batchUpdates = selectedIds
+        const allTargetIds = isMulti
+          ? Array.from(new Set([...selectedIds, ...frameChildIds]))
+          : [elemId, ...frameChildIds];
+
+        // Previne chamadas duplicadas simultâneas causadas por término de arraste múltiplo no mesmo instante
+        const batchKey = `${allTargetIds.length}:${Math.round(dx)}:${Math.round(dy)}`;
+        const now = Date.now();
+        if (
+          lastBatchUpdateRef.current &&
+          now - lastBatchUpdateRef.current.timestamp < 150 &&
+          lastBatchUpdateRef.current.key === batchKey
+        ) {
+          return;
+        }
+        lastBatchUpdateRef.current = { timestamp: now, key: batchKey };
+
+        const batchUpdates = allTargetIds
           .map((id) => {
             const item = elementsById.get(id) || elements.find((e) => e.id === id);
             if (!item || item.locked) return null;
@@ -2170,10 +2365,42 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           })
           .filter(Boolean) as { id: string; updates: Partial<CanvasElement> }[];
 
+        // Atualiza todas as setas e conectores vinculados a qualquer elemento da seleção
+        const movedElements = batchUpdates.map((u) => {
+          const base = elementsById.get(u.id) || elements.find((e) => e.id === u.id);
+          return { ...base, ...u.updates } as CanvasElement;
+        });
+        const arrowUpdates = getConnectedArrowUpdatesOnMove(movedElements, elements);
+        const fullBatch = [...batchUpdates, ...arrowUpdates];
+
         if (onBatchUpdateElements) {
-          onBatchUpdateElements(batchUpdates);
+          onBatchUpdateElements(fullBatch);
         } else {
-          batchUpdates.forEach((u) => onUpdateElement(u.id, u.updates));
+          fullBatch.forEach((u) => onUpdateElement(u.id, u.updates));
+        }
+        draggedFrameChildIdsRef.current = [];
+        return;
+      }
+    }
+
+    // Movimento ou redimensionamento de elemento individual com reconexão de setas
+    const currentElem = elementsById.get(elemId) || elements.find((e) => e.id === elemId);
+    if (
+      currentElem &&
+      (updates.x !== undefined ||
+        updates.y !== undefined ||
+        updates.width !== undefined ||
+        updates.height !== undefined ||
+        updates.radius !== undefined)
+    ) {
+      const updatedElem = { ...currentElem, ...updates } as CanvasElement;
+      const arrowUpdates = getConnectedArrowUpdatesOnMove([updatedElem], elements);
+      if (arrowUpdates.length > 0) {
+        const fullBatch = [{ id: elemId, updates }, ...arrowUpdates];
+        if (onBatchUpdateElements) {
+          onBatchUpdateElements(fullBatch);
+        } else {
+          fullBatch.forEach((u) => onUpdateElement(u.id, u.updates));
         }
         return;
       }
@@ -2263,13 +2490,9 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
 
           // B. Formas geométricas e desenhos de Smart Drawing (círculo, retângulo, triângulo, seta, linha, etc.)
           const isDrawableShape =
-            el.type === 'circle' ||
-            el.type === 'rect' ||
-            el.type === 'triangle' ||
+            isGeometricShape(el.type) ||
             el.type === 'arrow' ||
-            el.type === 'line' ||
-            el.type === 'diamond' ||
-            el.type === 'star';
+            el.type === 'line';
 
           if (isDrawableShape && checkElementHit(el, sample.x, sample.y, effectiveRadius)) {
             stepChanged = true;
@@ -2542,15 +2765,20 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       return;
     }
 
-    // Seta por arraste
-    if (currentTool === 'arrow') {
+    // Seta e Linha por arraste com encaixe magnético inteligente
+    if (currentTool === 'arrow' || currentTool === 'line') {
       isDrawing.current = true;
-      const newArrow: CanvasElement = {
-        id: 'temp_arrow',
-        type: 'arrow',
-        x: worldPos.x,
-        y: worldPos.y,
+      const snap = findNearestSnapAnchor(worldPos, elements, 32);
+      const startX = snap ? snap.anchorPoint.x : worldPos.x;
+      const startY = snap ? snap.anchorPoint.y : worldPos.y;
+      const newLineOrArrow: CanvasElement = {
+        id: 'temp_' + currentTool,
+        type: currentTool,
+        x: Math.round(startX),
+        y: Math.round(startY),
         points: [0, 0, 0, 0],
+        startBinding: snap ? { elementId: snap.element.id, side: snap.side } : undefined,
+        connectorStyle: 'straight',
         stroke: selectedColor || '#2563eb',
         strokeWidth: 3,
         zIndex: getNextZIndex(elements),
@@ -2558,12 +2786,12 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         updatedByName: currentUser.displayName,
         updatedAt: 0,
       };
-      setDrawingElement(newArrow);
+      setDrawingElement(newLineOrArrow);
       return;
     }
 
     // Criação e dimensionamento interativo de Formas Geométricas por clique e arraste (Figma / Miro style)
-    if (['rect', 'circle', 'diamond', 'triangle', 'star'].includes(currentTool)) {
+    if (isGeometricShape(currentTool)) {
       if (selectedIds.length > 0) {
         onSelectionChange([]);
       }
@@ -2817,7 +3045,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
 
     rafId.current = requestAnimationFrame(() => {
       // Formas geométricas: só cria o drawingElement para pré-visualização quando o usuário de fato arrasta
-      if (['rect', 'circle', 'diamond', 'triangle', 'star'].includes(currentTool)) {
+      if (isGeometricShape(currentTool)) {
         const start = shapeDragStartRef.current || worldPos;
         const dist = Math.hypot(worldPos.x - start.x, worldPos.y - start.y);
         if (dist >= 4 || drawingElement) {
@@ -2847,12 +3075,37 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           ...drawingElement,
           points: newPoints,
         });
-      } else if (drawingElement.type === 'arrow') {
-        const dx = worldPos.x - drawingElement.x;
-        const dy = worldPos.y - drawingElement.y;
-        setDrawingElement({
+      } else if (drawingElement.type === 'arrow' || drawingElement.type === 'line') {
+        const snap = findNearestSnapAnchor(
+          worldPos,
+          elements,
+          36,
+          drawingElement.startBinding?.elementId
+        );
+        setSnapTargetAnchor(snap ? snap.anchorPoint : null);
+
+        const targetX = snap ? snap.anchorPoint.x : worldPos.x;
+        const targetY = snap ? snap.anchorPoint.y : worldPos.y;
+
+        const updatedArrow: CanvasElement = {
           ...drawingElement,
-          points: [0, 0, dx, dy],
+          points: [0, 0, targetX - drawingElement.x, targetY - drawingElement.y],
+          endBinding: snap ? { elementId: snap.element.id, side: snap.side } : undefined,
+        };
+
+        const elementMap = new Map<string, CanvasElement>();
+        for (const el of elements) elementMap.set(el.id, el);
+
+        const geom = resolveConnectorGeometry(updatedArrow, elementMap);
+        const relPoints = geom.routePoints.map((val, idx) =>
+          idx % 2 === 0 ? Math.round(val - geom.worldStart.x) : Math.round(val - geom.worldStart.y)
+        );
+
+        setDrawingElement({
+          ...updatedArrow,
+          x: Math.round(geom.worldStart.x),
+          y: Math.round(geom.worldStart.y),
+          points: relPoints,
         });
       }
     });
@@ -3019,22 +3272,36 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           });
         }
         // Não seleciona o elemento recém-criado: o usuário continua em modo caneta pronto para o próximo traço!
-      } else if (finishedDrawing && finishedDrawing.type === 'arrow' && finishedDrawing.points) {
-        await onAddElement({
-          type: 'arrow',
-          x: Math.round(finishedDrawing.x),
-          y: Math.round(finishedDrawing.y),
-          points: finishedDrawing.points.map((p) => Math.round(p)),
-          stroke: finishedDrawing.stroke,
-          strokeWidth: finishedDrawing.strokeWidth,
-          zIndex: getNextZIndex(elements),
-          updatedBy: currentUser.uid,
-          updatedByName: currentUser.displayName,
-        });
+      } else if (
+        finishedDrawing &&
+        (finishedDrawing.type === 'arrow' || finishedDrawing.type === 'line') &&
+        finishedDrawing.points
+      ) {
+        setSnapTargetAnchor(null);
+        const lastX = finishedDrawing.points[finishedDrawing.points.length - 2];
+        const lastY = finishedDrawing.points[finishedDrawing.points.length - 1];
+        const dist = Math.hypot(lastX - finishedDrawing.points[0], lastY - finishedDrawing.points[1]);
+        if (dist >= 8 || finishedDrawing.startBinding || finishedDrawing.endBinding) {
+          const id = await onAddElement({
+            type: finishedDrawing.type,
+            x: Math.round(finishedDrawing.x),
+            y: Math.round(finishedDrawing.y),
+            points: finishedDrawing.points.map((p) => Math.round(p)),
+            startBinding: finishedDrawing.startBinding,
+            endBinding: finishedDrawing.endBinding,
+            connectorStyle: finishedDrawing.connectorStyle || 'straight',
+            stroke: finishedDrawing.stroke,
+            strokeWidth: finishedDrawing.strokeWidth,
+            zIndex: getNextZIndex(elements),
+            updatedBy: currentUser.uid,
+            updatedByName: currentUser.displayName,
+          });
+          onSelectionChange([id]);
+        }
         onSelectTool('select');
       } else if (
-        ['rect', 'circle', 'diamond', 'triangle', 'star'].includes(currentTool) ||
-        Boolean(finishedDrawing && ['rect', 'circle', 'diamond', 'triangle', 'star'].includes(finishedDrawing.type))
+        isGeometricShape(currentTool) ||
+        Boolean(finishedDrawing && isGeometricShape(finishedDrawing.type))
       ) {
         const shapeType = (finishedDrawing?.type || currentTool) as ElementType;
         const start = dragStart;
@@ -3203,7 +3470,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       return;
     }
 
-    if (['rect', 'circle', 'diamond', 'triangle', 'star'].includes(elem.type)) {
+    if (isGeometricShape(elem.type)) {
       const shapeFill = elem.fill || '#ffffff';
       setInlineEditing({
         elementId: id,
@@ -3298,11 +3565,32 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     [liveErasedElements, elements]
   );
 
+  // Culling no nível React: em boards grandes (150+), monta apenas os componentes
+  // Konva do viewport + margem generosa (600px). Coordenadas são quantizadas para que
+  // micro-movimentos do pan/zoom não invalidem nem remontem os nós React a cada pixel.
+  const quantizedStageX = Math.round(stagePos.x / 180) * 180;
+  const quantizedStageY = Math.round(stagePos.y / 180) * 180;
+  const quantizedScale = Math.round(scale * 10) / 10;
+
+  const mountedElements = React.useMemo(() => {
+    const REACT_CULL_THRESHOLD = 150;
+    if (sortedElements.length <= REACT_CULL_THRESHOLD) return sortedElements;
+    const viewport = { x: quantizedStageX, y: quantizedStageY, scale: quantizedScale };
+    const viewW = typeof window !== 'undefined' ? window.innerWidth : 1280;
+    const viewH = typeof window !== 'undefined' ? window.innerHeight : 720;
+    const alwaysMounted = new Set(selectedIds);
+    if (inlineEditing) alwaysMounted.add(inlineEditing.elementId);
+    return sortedElements.filter((el) => {
+      if (alwaysMounted.has(el.id)) return true;
+      return isBoundsInViewport(getElementWorldBounds(el), viewport, viewW, viewH, 600);
+    });
+  }, [sortedElements, quantizedStageX, quantizedStageY, quantizedScale, selectedIds, inlineEditing]);
+
   // Keep the element subtree stable while only the camera moves. This lets Konva
   // update the stage transform without recreating every React-Konva child.
   const renderedElements = React.useMemo(
     () =>
-      sortedElements.map((elem) => {
+      mountedElements.map((elem) => {
         const isSelected = selectedIds.includes(elem.id);
         const remoteSelector = remoteSelectionMap[elem.id];
         const isOwnElement = elem.updatedBy === currentUser.uid;
@@ -3341,6 +3629,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
               draggable={canDragItem}
               currentUserId={currentUser.uid}
               mirioReactionUnlocked={mirioReactionUnlocked}
+              ditadorReactionUnlocked={ditadorReactionUnlocked}
               onSelect={handlers.onSelect}
               onChange={handlers.onChange}
               onToggleReaction={handleToggleReactionInternal}
@@ -3363,6 +3652,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
               draggable={canDragItem}
               canEdit={canEditItem}
               mirioReactionUnlocked={mirioReactionUnlocked}
+              ditadorReactionUnlocked={ditadorReactionUnlocked}
               onSelect={handlers.onSelect}
               onChange={handlers.onChange}
               onToggleReaction={handleToggleReactionInternal}
@@ -3386,6 +3676,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
               canEdit={canEditItem}
               currentUserId={currentUser.uid}
               mirioReactionUnlocked={mirioReactionUnlocked}
+              ditadorReactionUnlocked={ditadorReactionUnlocked}
               onSelect={handlers.onSelect}
               onChange={handlers.onChange}
               onStartEditingItem={(elementId, target, initialText, itemY) => {
@@ -3407,7 +3698,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           );
         }
 
-        if (['rect', 'circle', 'diamond', 'triangle', 'star'].includes(elem.type)) {
+        if (isGeometricShape(elem.type)) {
           return (
             <ShapeItem
               key={elem.id}
@@ -3419,6 +3710,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
               canEdit={canEditItem}
               currentUserId={currentUser.uid}
               mirioReactionUnlocked={mirioReactionUnlocked}
+              ditadorReactionUnlocked={ditadorReactionUnlocked}
               onSelect={handlers.onSelect}
               onChange={handlers.onChange}
               onStartEditing={handlers.onStartEditing}
@@ -3473,6 +3765,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
               canEdit={canEditItem}
               currentUserId={currentUser.uid}
               mirioReactionUnlocked={mirioReactionUnlocked}
+              ditadorReactionUnlocked={ditadorReactionUnlocked}
               onSelect={handlers.onSelect}
               onChange={handlers.onChange}
               onStartEditing={handlers.onStartEditing}
@@ -3487,7 +3780,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         return null;
       }),
     [
-      sortedElements,
+      mountedElements,
       selectedIds,
       remoteSelectionMap,
       currentUser.uid,
@@ -3498,6 +3791,8 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       inlineEditing?.elementId,
       handleToggleReactionInternal,
       getItemHandlers,
+      mirioReactionUnlocked,
+      ditadorReactionUnlocked,
     ]
   );
 
@@ -3551,7 +3846,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
   // Elemento elegível para botões "+" de criação rápida nas 4 direções (Post-its e Formas Geométricas)
   const selectedQuickAddElement =
     selectedElements.length === 1 &&
-    ['sticky', 'rect', 'circle', 'diamond', 'triangle', 'star'].includes(selectedElements[0].type)
+    (['sticky', 'rect', 'circle', 'diamond', 'triangle', 'star'].includes(selectedElements[0].type) || isGeometricShape(selectedElements[0].type))
       ? selectedElements[0]
       : null;
 
@@ -3714,13 +4009,17 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
 
     let targetIds: string[] = [];
     if (clickedElementId) {
+      const clickedEl = elements.find((el) => el.id === clickedElementId);
       // Se clicou em um elemento que já está na seleção, mantém a seleção múltipla
       if (selectedIds.includes(clickedElementId)) {
         targetIds = selectedIds;
       } else {
-        // Se clicou em um elemento isolado não selecionado, seleciona exclusivamente ele
+        // Elemento bloqueado não entra na seleção (proteção total), mas o menu
+        // continua direcionado a ele para oferecer a opção "Desbloquear".
+        if (!clickedEl?.locked) {
+          onSelectionChange([clickedElementId]);
+        }
         targetIds = [clickedElementId];
-        onSelectionChange([clickedElementId]);
       }
     } else {
       // Clicou no fundo do canvas: limpa a seleção para apresentar o menu de criação do board
@@ -3761,7 +4060,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
 
   // Criação imediata de Forma Geométrica no ponto clicado
   const handleContextMenuCreateShape = async (
-    shapeType: 'rect' | 'circle' | 'diamond' | 'triangle' | 'star'
+    shapeType: 'rect' | 'circle' | 'diamond' | 'triangle' | 'star' | 'hexagon' | 'cylinder'
   ) => {
     if (readOnly || canCommentOnly) return;
     const bounds = getDefaultShapeBounds(shapeType, contextMenuState.worldPos);
@@ -3877,9 +4176,21 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
   // Deletar elementos selecionados
   const handleDeleteSelected = () => {
     if (readOnly || selectedElements.length === 0) return;
-    const idsToDelete = canCommentOnly
-      ? selectedElements.filter((el) => el.updatedBy === currentUser.uid).map((el) => el.id)
-      : selectedElements.map((el) => el.id);
+    // Proteção total com aviso: bloqueados não são apagados e o usuário é notificado.
+    const blockedIds: string[] = [];
+    const idsToDelete = selectedElements
+      .filter((el) => {
+        if (el.locked) {
+          blockedIds.push(el.id);
+          return false;
+        }
+        return canCommentOnly ? el.updatedBy === currentUser.uid : true;
+      })
+      .map((el) => el.id);
+
+    if (blockedIds.length > 0) {
+      notifyLockedBlocked(blockedIds, idsToDelete.length > 0);
+    }
 
     if (idsToDelete.length > 0) {
       if (onBatchDeleteElements) {
@@ -4134,15 +4445,23 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         >
           <div className="flex items-start gap-3 p-3.5 rounded-2xl bg-popover/95 text-popover-foreground border border-border shadow-2xl backdrop-blur-md">
             <div
-              className={`mt-0.5 size-7 rounded-xl flex items-center justify-center shrink-0 text-sm ${
+              className={`mt-0.5 size-7 rounded-xl flex items-center justify-center shrink-0 ${
                 canvasToast.type === 'error'
                   ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400'
-                  : canvasToast.type === 'warning'
+                  : canvasToast.type === 'warning' || canvasToast.type === 'lock'
                   ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
                   : 'bg-primary/15 text-primary'
               }`}
             >
-              {canvasToast.type === 'error' ? '❌' : canvasToast.type === 'warning' ? '⚠️' : 'ℹ️'}
+              {canvasToast.type === 'error' ? (
+                <AlertCircle className="size-4" />
+              ) : canvasToast.type === 'warning' ? (
+                <AlertTriangle className="size-4" />
+              ) : canvasToast.type === 'lock' ? (
+                <LockClosed className="size-4" />
+              ) : (
+                <Info className="size-4" />
+              )}
             </div>
             <div className="flex-1 min-w-0 pr-1">
               <p className="text-xs font-semibold text-foreground tracking-tight">
@@ -4190,6 +4509,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       {!readOnly && !isTransforming && (!canCommentOnly || (selectedElements.length > 0 && selectedElements.every((e) => e.updatedBy === currentUser.uid))) && (
         <SelectionContextBar
         selectedElements={selectedElements}
+        allElements={elements}
         editingElementId={inlineEditing?.elementId}
         onUpdateElement={onUpdateElement}
         onUpdateElements={(ids, updates) => {
@@ -4201,14 +4521,36 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         }}
         onBatchUpdateElements={onBatchUpdateElements}
         onDeleteElement={(id) => {
+          // Proteção total com aviso: elemento bloqueado não é apagado pelo menu de contexto.
+          const target = elements.find((item) => item.id === id);
+          if (!target) return;
+          if (target.locked) {
+            notifyLockedBlocked([id], false);
+            return;
+          }
           onDeleteElement(id);
           onSelectionChange(selectedIds.filter((item) => item !== id));
         }}
         onDeleteElements={(ids) => {
+          // Proteção total com aviso: elementos bloqueados não são apagados pelo menu de contexto.
+          const blockedIds: string[] = [];
+          const deletableIds = ids.filter((id) => {
+            const target = elements.find((item) => item.id === id);
+            if (!target) return false;
+            if (target.locked) {
+              blockedIds.push(id);
+              return false;
+            }
+            return true;
+          });
+          if (blockedIds.length > 0) {
+            notifyLockedBlocked(blockedIds, deletableIds.length > 0);
+          }
+          if (deletableIds.length === 0) return;
           if (onBatchDeleteElements) {
-            onBatchDeleteElements(ids);
+            onBatchDeleteElements(deletableIds);
           } else {
-            ids.forEach((id) => onDeleteElement(id));
+            deletableIds.forEach((id) => onDeleteElement(id));
           }
           onSelectionChange([]);
         }}
@@ -4228,7 +4570,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
             text: stripMarkdownLinks(elem.text || ''),
             fill: elem.fill,
             fontSize: elem.fontSize,
-            textAlign: elem.textAlign || (['rect', 'circle', 'diamond', 'triangle', 'star'].includes(elem.type) ? 'center' : 'left'),
+            textAlign: elem.textAlign || (isGeometricShape(elem.type) ? 'center' : 'left'),
             textColor: elem.fill,
           });
         }}
@@ -4278,6 +4620,21 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         <StickyQuickAdd sticky={selectedQuickAddElement} onCreate={handleQuickAddSticky} />
       )}
 
+      {/* Alças de conexão rápida magnética nas 4 bordas do elemento selecionado (Miro / FigJam) */}
+      {!readOnly &&
+        !canCommentOnly &&
+        currentTool === 'select' &&
+        selectedElements.length === 1 &&
+        !drawingElement &&
+        !inlineEditing &&
+        !isTransforming && (
+          <ElementConnectorHandles
+            element={selectedElements[0]}
+            onStartConnect={handleStartQuickConnect}
+            selectionColor={userSelectionColor}
+          />
+        )}
+
       {/* Balão de Hiperlink Flutuante Estilo Miro (exibido para formas/elementos geométricos selecionados com link; em post-its o link é direto no texto) */}
       {selectedElements.length === 1 && selectedElements[0].type !== 'sticky' && !inlineEditing && !isTransforming && (
         <ElementLinkBalloon
@@ -4323,6 +4680,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           onClose={() => setReactionPickerTarget(null)}
           onToggleReaction={handleToggleReactionInternal}
           mirioReactionUnlocked={mirioReactionUnlocked}
+          ditadorReactionUnlocked={ditadorReactionUnlocked}
         />
       )}
 
@@ -4582,77 +4940,143 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           }
           if (e.target === stageRef.current) return;
           const targetId = e.target.id();
-          if (targetId) {
-            dragStartPositions.current.clear();
-            if (selectedIds.includes(targetId)) {
-              selectedIds.forEach((id) => {
-                const node = stageRef.current?.findOne('#' + id);
-                if (node) {
-                  dragStartPositions.current.set(id, { x: node.x(), y: node.y() });
-                }
+          if (!targetId) return;
+
+          // Se já há uma sessão ativa para este líder de arraste, não reinicializa
+          if (dragSessionRef.current) return;
+
+          dragStartPositions.current.clear();
+          draggedFrameChildIdsRef.current = [];
+
+          // Se o elemento arrastado for uma moldura, descobre dinamicamente todos os elementos filhos contidos
+          const targetElem = elementsById.get(targetId) || elementsRef.current.find((el) => el.id === targetId);
+          if (targetElem && targetElem.type === 'frame') {
+            const contained = getElementsContainedInFrame(targetElem, elementsRef.current);
+            draggedFrameChildIdsRef.current = contained;
+          }
+
+          const isMulti = selectedIds.length > 1 && selectedIds.includes(targetId);
+          const hasFrameChildren = draggedFrameChildIdsRef.current.length > 0;
+          const draggedIds = isMulti
+            ? Array.from(new Set([...selectedIds, ...draggedFrameChildIdsRef.current]))
+            : hasFrameChildren
+            ? [targetId, ...draggedFrameChildIdsRef.current]
+            : [targetId];
+          const draggedIdsSet = new Set(draggedIds);
+
+          const items = new Map<string, DragSessionItem>();
+          draggedIds.forEach((id) => {
+            const node = id === targetId ? e.target : stageRef.current?.findOne('#' + id);
+            const elem = elementsById.get(id) || elementsRef.current.find((el) => el.id === id);
+            const isLocked = Boolean(elem?.locked);
+            const initX = node ? node.x() : (elem ? elem.x : 0);
+            const initY = node ? node.y() : (elem ? elem.y : 0);
+            const gifEl = document.getElementById(`gif-overlay-${id}`);
+            const reactionsEl = document.getElementById(`sticky-reactions-${id}`);
+            if (node) {
+              items.set(id, {
+                node,
+                initX,
+                initY,
+                isLocked,
+                gifEl,
+                reactionsEl,
               });
-            } else {
-              dragStartPositions.current.set(targetId, { x: e.target.x(), y: e.target.y() });
             }
+            dragStartPositions.current.set(id, { x: initX, y: initY });
+          });
 
-            // Inicialização do Alinhamento Magnético e Guias Inteligentes (Smart Guides)
-            if (smartGuidesEnabledRef.current) {
-              const isMulti = selectedIds.length > 1 && selectedIds.includes(targetId);
-              const draggedIds = new Set(isMulti ? selectedIds : [targetId]);
-
-              let initialBounds: { x: number; y: number; w: number; h: number };
-
-              if (!isMulti) {
-                const elem = elementsRef.current.find((el) => el.id === targetId);
-                initialBounds = elem
-                  ? getElementWorldBounds(elem)
-                  : { x: e.target.x(), y: e.target.y(), w: 100, h: 100 };
-              } else {
-                let minX = Infinity;
-                let minY = Infinity;
-                let maxX = -Infinity;
-                let maxY = -Infinity;
-                draggedIds.forEach((id) => {
-                  const elem = elementsRef.current.find((el) => el.id === id);
-                  if (elem) {
-                    const b = getElementWorldBounds(elem);
-                    if (b.x < minX) minX = b.x;
-                    if (b.y < minY) minY = b.y;
-                    if (b.x + b.w > maxX) maxX = b.x + b.w;
-                    if (b.y + b.h > maxY) maxY = b.y + b.h;
+          // Pré-filtra e faz cache de nós de setas/conectores vinculados aos elementos arrastados
+          const connectedArrows: DragArrowSession[] = [];
+          if (stageRef.current) {
+            for (const el of elementsRef.current) {
+              if (el.type === 'arrow' || el.type === 'line') {
+                const startConnected = el.startBinding?.elementId && draggedIdsSet.has(el.startBinding.elementId);
+                const endConnected = el.endBinding?.elementId && draggedIdsSet.has(el.endBinding.elementId);
+                if (startConnected || endConnected) {
+                  const group = stageRef.current.findOne('#' + el.id) as Konva.Group | null;
+                  if (group) {
+                    const line = (group.findOne('Arrow') || group.findOne('Line')) as Konva.Shape | null;
+                    connectedArrows.push({ arrow: el, group, line });
                   }
-                });
-                initialBounds = {
-                  x: Number.isFinite(minX) ? minX : e.target.x(),
-                  y: Number.isFinite(minY) ? minY : e.target.y(),
-                  w: Number.isFinite(maxX) && Number.isFinite(minX) ? Math.max(10, maxX - minX) : 100,
-                  h: Number.isFinite(maxY) && Number.isFinite(minY) ? Math.max(10, maxY - minY) : 100,
-                };
+                }
               }
-
-              const currentScale = scaleRef.current || 1;
-              const viewport = {
-                x: stagePosRef.current.x,
-                y: stagePosRef.current.y,
-                scale: currentScale,
-              };
-
-              const candidates = elementsRef.current.filter((el) => {
-                if (draggedIds.has(el.id)) return false;
-                const b = getElementWorldBounds(el);
-                return isBoundsInViewport(b, viewport, window.innerWidth, window.innerHeight, 600);
-              });
-
-              dragSmartGuidesData.current = {
-                initialSelfPos: { x: e.target.x(), y: e.target.y() },
-                initialBounds,
-                candidateElements: candidates,
-                draggedIds,
-              };
-            } else {
-              dragSmartGuidesData.current = null;
             }
           }
+
+          // Inicialização do Alinhamento Magnético e Guias Inteligentes com pré-cálculo de limites O(1)
+          let smartGuidesData = null;
+          if (smartGuidesEnabledRef.current) {
+            let initialBounds: { x: number; y: number; w: number; h: number };
+
+            if (!isMulti && !hasFrameChildren) {
+              const elem = elementsById.get(targetId) || elementsRef.current.find((el) => el.id === targetId);
+              initialBounds = elem
+                ? getElementWorldBounds(elem)
+                : { x: e.target.x(), y: e.target.y(), w: 100, h: 100 };
+            } else {
+              let minX = Infinity;
+              let minY = Infinity;
+              let maxX = -Infinity;
+              let maxY = -Infinity;
+              draggedIds.forEach((id) => {
+                const elem = elementsById.get(id) || elementsRef.current.find((el) => el.id === id);
+                if (elem) {
+                  const b = getElementWorldBounds(elem);
+                  if (b.x < minX) minX = b.x;
+                  if (b.y < minY) minY = b.y;
+                  if (b.x + b.w > maxX) maxX = b.x + b.w;
+                  if (b.y + b.h > maxY) maxY = b.y + b.h;
+                }
+              });
+              initialBounds = {
+                x: Number.isFinite(minX) ? minX : e.target.x(),
+                y: Number.isFinite(minY) ? minY : e.target.y(),
+                w: Number.isFinite(maxX) && Number.isFinite(minX) ? Math.max(10, maxX - minX) : 100,
+                h: Number.isFinite(maxY) && Number.isFinite(minY) ? Math.max(10, maxY - minY) : 100,
+              };
+            }
+
+            const currentScale = scaleRef.current || 1;
+            const viewport = {
+              x: stagePosRef.current.x,
+              y: stagePosRef.current.y,
+              scale: currentScale,
+            };
+
+            const candidateElements: CanvasElement[] = [];
+            const precomputedTargets: Array<{ element: CanvasElement; bounds: WorldBounds }> = [];
+            elementsRef.current.forEach((el) => {
+              if (draggedIdsSet.has(el.id)) return;
+              const b = getElementWorldBounds(el);
+              if (isBoundsInViewport(b, viewport, window.innerWidth, window.innerHeight, 600)) {
+                candidateElements.push(el);
+                precomputedTargets.push({ element: el, bounds: b });
+              }
+            });
+
+            smartGuidesData = {
+              initialBounds,
+              candidateElements,
+              precomputedTargets,
+            };
+            dragSmartGuidesData.current = {
+              initialSelfPos: { x: e.target.x(), y: e.target.y() },
+              initialBounds,
+              candidateElements,
+              draggedIds: draggedIdsSet,
+            };
+          } else {
+            dragSmartGuidesData.current = null;
+          }
+
+          dragSessionRef.current = {
+            leaderId: targetId,
+            initialLeaderPos: { x: e.target.x(), y: e.target.y() },
+            items,
+            connectedArrows,
+            smartGuidesData,
+          };
         }}
         onDragMove={(e) => {
           if (e.target === stageRef.current) {
@@ -4662,17 +5086,27 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
             return;
           }
           const targetId = e.target.id();
+          if (!targetId) return;
 
-          // Processamento do Alinhamento Magnético e Guias Inteligentes em tempo real
-          if (targetId && smartGuidesEnabledRef.current && dragSmartGuidesData.current) {
+          const session = dragSessionRef.current;
+          // Se já há um líder ativo e este evento pertence a outro nó, ignora para evitar trabalho duplicado
+          if (session && session.leaderId !== targetId) {
+            return;
+          }
+
+          const leaderInitial = session ? session.initialLeaderPos : dragStartPositions.current.get(targetId);
+          if (!leaderInitial) return;
+
+          let rawDx = e.target.x() - leaderInitial.x;
+          let rawDy = e.target.y() - leaderInitial.y;
+
+          // Processamento do Alinhamento Magnético e Guias Inteligentes em tempo real a 60/120 FPS
+          if (smartGuidesEnabledRef.current && session?.smartGuidesData) {
             const isBypass = Boolean(e.evt && (e.evt.ctrlKey || e.evt.metaKey));
             if (isBypass) {
               clearSmartGuides();
             } else {
-              const { initialSelfPos, initialBounds, candidateElements } = dragSmartGuidesData.current;
-              const rawDx = e.target.x() - initialSelfPos.x;
-              const rawDy = e.target.y() - initialSelfPos.y;
-
+              const { initialBounds, candidateElements, precomputedTargets } = session.smartGuidesData;
               const currentBounds = {
                 x: initialBounds.x + rawDx,
                 y: initialBounds.y + rawDy,
@@ -4686,14 +5120,17 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
               const snapResult = calculateSmartGuidesAndSnap({
                 draggedBounds: currentBounds,
                 candidateElements,
+                precomputedTargets,
                 tolerance,
               });
 
               if (snapResult.hasSnapX) {
-                e.target.x(e.target.x() + snapResult.deltaX);
+                rawDx += snapResult.deltaX;
+                e.target.x(leaderInitial.x + rawDx);
               }
               if (snapResult.hasSnapY) {
-                e.target.y(e.target.y() + snapResult.deltaY);
+                rawDy += snapResult.deltaY;
+                e.target.y(leaderInitial.y + rawDy);
               }
 
               drawSmartGuides(snapResult.guides);
@@ -4701,26 +5138,36 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           }
 
           const updateChecklistEditorInputPos = (id: string, worldX: number, worldY: number) => {
-            if (activeChecklistEditorRef.current?.elementId === id) {
-              const checklistInput = document.getElementById(`checklist-editor-input-${id}`);
-              if (checklistInput) {
-                const editor = activeChecklistEditorRef.current;
-                const isTitle = editor.target === 'title';
-                const offsetX = isTitle ? 38 : 40;
-                const elem = elementsRef.current.find((e) => e.id === id);
-                const currentItems = elem?.checklistItems || [];
-                const targetIdx = isTitle ? -1 : currentItems.findIndex((i) => i.id === editor.target);
-                const itemY = isTitle ? 16 : (targetIdx >= 0 ? 56 + targetIdx * 34 : editor.itemY);
-                const curScale = scaleRef.current;
-                const curStagePos = stagePosRef.current;
+            if (activeChecklistEditorRef.current?.elementId !== id) return;
+            const checklistInput = document.getElementById(`checklist-editor-input-${id}`);
+            if (checklistInput) {
+              const editor = activeChecklistEditorRef.current;
+              const isTitle = editor.target === 'title';
+              const offsetX = isTitle ? 38 : 40;
+              const elem = elementsRef.current.find((e) => e.id === id);
+              const currentItems = elem?.checklistItems || [];
+              const targetIdx = isTitle ? -1 : currentItems.findIndex((i) => i.id === editor.target);
+              const itemY = isTitle ? 16 : (targetIdx >= 0 ? 56 + targetIdx * 34 : editor.itemY);
+              const curScale = scaleRef.current;
+              const curStagePos = stagePosRef.current;
 
-                checklistInput.style.left = `${(worldX + offsetX) * curScale + curStagePos.x}px`;
-                checklistInput.style.top = `${(worldY + itemY + 4) * curScale + curStagePos.y}px`;
-              }
+              checklistInput.style.left = `${(worldX + offsetX) * curScale + curStagePos.x}px`;
+              checklistInput.style.top = `${(worldY + itemY + 4) * curScale + curStagePos.y}px`;
             }
           };
 
-          if (targetId) {
+          // Atualização dos overlays DOM do elemento líder
+          const leaderItem = session?.items.get(targetId);
+          if (leaderItem) {
+            if (leaderItem.gifEl) {
+              leaderItem.gifEl.style.left = `${e.target.x()}px`;
+              leaderItem.gifEl.style.top = `${e.target.y()}px`;
+            }
+            if (leaderItem.reactionsEl) {
+              leaderItem.reactionsEl.style.left = `${e.target.x()}px`;
+              leaderItem.reactionsEl.style.top = `${e.target.y()}px`;
+            }
+          } else {
             const targetGif = document.getElementById(`gif-overlay-${targetId}`);
             if (targetGif) {
               targetGif.style.left = `${e.target.x()}px`;
@@ -4731,47 +5178,62 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
               targetReactions.style.left = `${e.target.x()}px`;
               targetReactions.style.top = `${e.target.y()}px`;
             }
-            updateChecklistEditorInputPos(targetId, e.target.x(), e.target.y());
           }
-          if (targetId && selectedIds.length > 1 && selectedIds.includes(targetId)) {
-            const initialSelf = dragStartPositions.current.get(targetId);
-            if (initialSelf) {
-              const dx = e.target.x() - initialSelf.x;
-              const dy = e.target.y() - initialSelf.y;
-              selectedIds.forEach((id) => {
-                if (id !== targetId) {
-                  const elem = elements.find((e) => e.id === id);
-                  if (elem && elem.locked) return;
-                  const init = dragStartPositions.current.get(id);
-                  const node = stageRef.current?.findOne('#' + id);
-                  if (init && node) {
-                    const newX = init.x + dx;
-                    const newY = init.y + dy;
-                    node.position({
-                      x: newX,
-                      y: newY,
-                    });
-                    const itemGif = document.getElementById(`gif-overlay-${id}`);
-                    if (itemGif) {
-                      itemGif.style.left = `${newX}px`;
-                      itemGif.style.top = `${newY}px`;
-                    }
-                    const itemReactions = document.getElementById(`sticky-reactions-${id}`);
-                    if (itemReactions) {
-                      itemReactions.style.left = `${newX}px`;
-                      itemReactions.style.top = `${newY}px`;
-                    }
-                    updateChecklistEditorInputPos(id, newX, newY);
-                  }
+          updateChecklistEditorInputPos(targetId, e.target.x(), e.target.y());
+
+          // Movimento ultra-rápido O(1) de todos os outros elementos selecionados ou filhos de moldura
+          if (session && session.items.size > 1) {
+            session.items.forEach((item, id) => {
+              if (id === targetId || item.isLocked) return;
+              const newX = item.initX + rawDx;
+              const newY = item.initY + rawDy;
+              item.node.position({ x: newX, y: newY });
+              if (item.gifEl) {
+                item.gifEl.style.left = `${newX}px`;
+                item.gifEl.style.top = `${newY}px`;
+              }
+              if (item.reactionsEl) {
+                item.reactionsEl.style.left = `${newX}px`;
+                item.reactionsEl.style.top = `${newY}px`;
+              }
+              updateChecklistEditorInputPos(id, newX, newY);
+            });
+            transformerRef.current?.update();
+            transformerRef.current?.getLayer()?.batchDraw();
+          }
+
+          // Atualização contínua das setas magnéticas conectadas aos elementos movidos a 60/120 FPS
+          if (session && session.connectedArrows.length > 0) {
+            const movedElements: CanvasElement[] = [];
+            session.items.forEach((item, id) => {
+              if (item.isLocked) return;
+              const base = elementsById.get(id) || elementsRef.current.find((el) => el.id === id);
+              if (base) {
+                movedElements.push({
+                  ...base,
+                  x: id === targetId ? e.target.x() : item.initX + rawDx,
+                  y: id === targetId ? e.target.y() : item.initY + rawDy,
+                });
+              }
+            });
+            const arrowUpdates = getConnectedArrowUpdatesOnMove(movedElements, elementsRef.current);
+            for (const update of arrowUpdates) {
+              const arrowSession = session.connectedArrows.find((a) => a.arrow.id === update.id);
+              if (arrowSession) {
+                if (update.updates.x !== undefined) arrowSession.group.x(update.updates.x);
+                if (update.updates.y !== undefined) arrowSession.group.y(update.updates.y);
+                if (update.updates.points && arrowSession.line) {
+                  (arrowSession.line as any).points(update.updates.points);
                 }
-              });
-              transformerRef.current?.getLayer()?.batchDraw();
+              }
             }
           }
         }}
         onDragEnd={(e) => {
           clearSmartGuides();
           dragSmartGuidesData.current = null;
+          dragSessionRef.current = null;
+          draggedFrameChildIdsRef.current = [];
           if (e.target === stageRef.current) {
             applyStagePan(
               { x: Math.round(e.target.x()), y: Math.round(e.target.y()) },
@@ -4812,7 +5274,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
             />
           )}
 
-          {drawingElement && drawingElement.type === 'arrow' && (
+          {drawingElement && (drawingElement.type === 'arrow' || drawingElement.type === 'line') && (
             <ArrowItem
               element={drawingElement}
               isSelected={false}
@@ -4821,8 +5283,16 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
             />
           )}
 
+          {/* Indicador de snap magnético na âncora alvo ao desenhar conector */}
+          {snapTargetAnchor && (
+            <Group x={snapTargetAnchor.x} y={snapTargetAnchor.y} listening={false}>
+              <Circle radius={11} fill={`${userSelectionColor}33`} stroke={userSelectionColor} strokeWidth={2} />
+              <Circle radius={4} fill={userSelectionColor} />
+            </Group>
+          )}
+
           {drawingElement &&
-            ['rect', 'circle', 'diamond', 'triangle', 'star'].includes(drawingElement.type) &&
+            isGeometricShape(drawingElement.type) &&
             (((drawingElement.width ?? 0) > 4) || ((drawingElement.radius ?? 0) > 4)) ? (
               <Group listening={false}>
                 {drawingElement.type === 'circle' && (
@@ -4907,6 +5377,63 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
                     listening={false}
                   />
                 )}
+                {drawingElement.type === 'hexagon' && (
+                  <Line
+                    x={drawingElement.x}
+                    y={drawingElement.y}
+                    points={[
+                      (drawingElement.width || 0) * 0.25, 0,
+                      (drawingElement.width || 0) * 0.75, 0,
+                      drawingElement.width || 0, (drawingElement.height || 0) * 0.5,
+                      (drawingElement.width || 0) * 0.75, drawingElement.height || 0,
+                      (drawingElement.width || 0) * 0.25, drawingElement.height || 0,
+                      0, (drawingElement.height || 0) * 0.5,
+                    ]}
+                    closed
+                    fill={drawingElement.fill || (selectedColor && selectedColor !== '#0f172a' ? selectedColor : '#ffffff')}
+                    stroke={drawingElement.stroke || '#334155'}
+                    strokeWidth={drawingElement.strokeWidth || 2}
+                    perfectDrawEnabled={false}
+                    listening={false}
+                  />
+                )}
+                {drawingElement.type === 'cylinder' && (() => {
+                  const w = drawingElement.width || 0;
+                  const h = drawingElement.height || 0;
+                  const rx = w / 2;
+                  const ry = Math.min(22, h * 0.2);
+                  const previewFill = drawingElement.fill || (selectedColor && selectedColor !== '#0f172a' ? selectedColor : '#ffffff');
+                  const previewStroke = drawingElement.stroke || '#334155';
+                  const previewStrokeWidth = drawingElement.strokeWidth || 2;
+                  return (
+                    <Group x={drawingElement.x} y={drawingElement.y} listening={false}>
+                      <Path
+                        data={`M 0,${ry} A ${rx},${ry} 0 0,0 ${w},${ry} L ${w},${h - ry} A ${rx},${ry} 0 0,1 0,${h - ry} Z`}
+                        fill={previewFill}
+                        stroke={previewStroke}
+                        strokeWidth={previewStrokeWidth}
+                        perfectDrawEnabled={false}
+                      />
+                      <Path
+                        data={`M 0,${h - ry} A ${rx},${ry} 0 0,0 ${w},${h - ry}`}
+                        stroke={previewStroke}
+                        strokeWidth={previewStrokeWidth}
+                        fill="transparent"
+                        perfectDrawEnabled={false}
+                      />
+                      <Ellipse
+                        x={rx}
+                        y={ry}
+                        radiusX={rx}
+                        radiusY={ry}
+                        fill={previewFill}
+                        stroke={previewStroke}
+                        strokeWidth={previewStrokeWidth}
+                        perfectDrawEnabled={false}
+                      />
+                    </Group>
+                  );
+                })()}
                 {/* Badge flutuante com dimensões em tempo real (estilo Figma / Miro) */}
                 {Boolean(
                   drawingElement.width &&
@@ -5259,7 +5786,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
               10,
               (inlineEditing.fontSize || (inlineEditing.type === 'frame' ? 13 : 14)) * scale
             )}px`,
-            textAlign: inlineEditing.textAlign || (['rect', 'circle', 'diamond', 'triangle', 'star'].includes(inlineEditing.type || '') ? 'center' : 'left'),
+            textAlign: inlineEditing.textAlign || (isGeometricShape(inlineEditing.type || '') ? 'center' : 'left'),
             caretColor: '#2563eb',
             transform: inlineEditingElement?.rotation
               ? `rotate(${inlineEditingElement.rotation}deg)`

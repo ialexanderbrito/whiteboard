@@ -178,7 +178,7 @@ export const CreateBoardModal: React.FC<CreateBoardModalProps> = ({
           </DialogHeader>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
+        <form onSubmit={handleSubmit} className="p-5 space-y-4 max-h-[75vh] overflow-y-auto custom-scrollbar">
           {/* 1. Nome do Quadro com Sugestões Rápidas */}
           <div className="space-y-2">
             <label className="text-xs font-semibold text-foreground flex items-center justify-between">
@@ -252,7 +252,7 @@ export const CreateBoardModal: React.FC<CreateBoardModalProps> = ({
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 align="start"
-                className="w-[480px] max-w-[calc(100vw-3rem)] max-h-[260px] overflow-y-auto p-1"
+                className="w-[480px] max-w-[calc(100vw-3rem)] max-h-[260px] overflow-y-auto p-1 custom-scrollbar"
               >
                 <DropdownMenuItem
                   onClick={() => setSelectedTemplateId('')}

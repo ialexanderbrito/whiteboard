@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useRef, useCallback } from 'react';
-import { Layers, X, Frame, StickyNote, Square, Circle, Diamond, Triangle, Star, Type, ArrowRight, Minus, Pen, List, Smile, Play, MousePointerClick } from '@/components/ui/icons';
+import { Layers, X, Frame, StickyNote, Square, Circle, Diamond, Triangle, Star, Type, ArrowRight, Minus, Pen, List, Smile, Play, MousePointerClick, LockClosed, Hexagon, Cylinder } from '@/components/ui/icons';
 import type { CanvasElement, ElementType } from '../../types/element';
 import { sortElementsByLayer, moveBlockInLayerOrder, getLayerLabel, supportsLayerReorder, type ElementZIndexUpdate } from '../../utils/layerOrder';
 
@@ -37,6 +37,8 @@ const TYPE_ICONS: Record<ElementType, React.ComponentType<{ className?: string }
   frame: Frame,
   sticker: Smile,
   gif: Play,
+  hexagon: Hexagon,
+  cylinder: Cylinder,
 };
 
 const TYPE_LABELS: Partial<Record<ElementType, string>> = {
@@ -50,10 +52,12 @@ const TYPE_LABELS: Partial<Record<ElementType, string>> = {
   text: 'Texto',
   arrow: 'Seta',
   line: 'Linha',
-  pen: 'Traço',
-  frame: 'Moldura',
+  pen: 'Desenho',
+  frame: 'Frame',
   sticker: 'Sticker',
   gif: 'GIF',
+  hexagon: 'Hexágono',
+  cylinder: 'Cilindro',
 };
 
 // Amostra da cor de preenchimento do elemento para o chip do ícone
@@ -210,7 +214,7 @@ export const LayersPanel: React.FC<LayersPanelProps> = React.memo(({
       )}
 
       {/* Lista */}
-      <div className="flex-1 overflow-y-auto px-2 py-1.5 overscroll-contain">
+      <div className="flex-1 overflow-y-auto px-2 py-1.5 overscroll-contain custom-scrollbar-thin">
         {ordered.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center px-4 gap-1.5">
             <Layers className="size-5 text-muted-foreground/50" />
@@ -270,9 +274,7 @@ export const LayersPanel: React.FC<LayersPanelProps> = React.memo(({
                     {getLayerLabel(el)}
                   </span>
                   {el.locked && (
-                    <span className="text-[9px] text-muted-foreground shrink-0" aria-label="Trancado">
-                      🔒
-                    </span>
+                    <LockClosed className="size-3 text-muted-foreground shrink-0" aria-label="Trancado" />
                   )}
                   <span className="text-[9px] font-mono text-muted-foreground/60 tabular-nums shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
                     {el.zIndex || 0}

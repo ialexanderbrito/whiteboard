@@ -802,7 +802,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                   <div className="flex size-6 items-center justify-center rounded-lg bg-teal-500/10 text-teal-500 group-data-[selected=true]:bg-teal-500 group-data-[selected=true]:text-white transition-colors">
                     <Download className="size-3.5" />
                   </div>
-                  <span>Exportar Quadro como Imagem (PNG)</span>
+                  <span>Capturar Área Visível do Quadro (PNG)</span>
                 </CommandItem>
               )}
 

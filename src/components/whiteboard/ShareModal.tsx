@@ -36,6 +36,7 @@ import {
 import type { Board, BoardPermission, CurrentUser, UserPresence, JoinRequest } from '../../types/board';
 import { isBoardOwner } from '../../utils/permissions';
 import { boardService } from '../../services/boardService';
+import { useTheme } from '@/context/ThemeContext';
 
 interface ShareModalProps {
   open: boolean;
@@ -133,9 +134,13 @@ export const ShareModal: React.FC<ShareModalProps> = ({
     await boardService.approveAllBoardAccess(board.id, defaultPermission);
   };
 
-  // Link curto e limpo no padrão /b/:id (sem prefixo redundante board_)
+  const { resolvedTheme } = useTheme();
+
+  // Link curto e limpo no padrão /b/:id (sem prefixo redundante board_) sincronizado ao tema ativo
   const cleanId = (board?.id || '').replace(/^board_/, '');
-  const cleanShareUrl = cleanId ? `${window.location.origin}/b/${cleanId}` : window.location.href;
+  const cleanShareUrl = cleanId
+    ? `${window.location.origin}/b/${cleanId}${resolvedTheme === 'light' ? '?theme=light' : ''}`
+    : window.location.href;
 
   const handleCopyLink = async () => {
     try {
@@ -679,7 +684,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
               )}
             </div>
 
-            <div className="space-y-2 max-h-[150px] overflow-y-auto pr-1 divide-y divide-border/30">
+            <div className="space-y-2 max-h-[150px] overflow-y-auto pr-1 divide-y divide-border/30 custom-scrollbar">
               {pendingRequests.map((req) => (
                 <div key={req.uid} className="flex items-center justify-between pt-2 first:pt-0">
                   <div className="flex items-center gap-2 min-w-0 pr-2">
@@ -765,7 +770,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
             </span>
           </div>
 
-          <div className="max-h-[175px] overflow-y-auto space-y-1 pr-1 divide-y divide-border/20">
+          <div className="max-h-[175px] overflow-y-auto space-y-1 pr-1 divide-y divide-border/20 custom-scrollbar">
             {peopleWithAccess.map((person) => {
               const isSelf = person.isCurrentUser;
               const initials = getInitials(person.name);
