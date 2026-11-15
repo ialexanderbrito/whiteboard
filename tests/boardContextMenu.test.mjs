@@ -30,6 +30,14 @@ test('BoardContextMenu follows Emil Kowalski animation & craft principles', () =
   assert.match(content, /transformOrigin: adjustedPos\.origin/, 'Menu deve respeitar a origem do quadrante clicado');
 });
 
+test('BoardContextMenu follows project black and white / monochrome design standard', () => {
+  const componentPath = path.resolve('src/components/whiteboard/BoardContextMenu.tsx');
+  const content = fs.readFileSync(componentPath, 'utf8');
+
+  // Não deve conter classes coloridas arbitrárias nos ícones do menu
+  assert.doesNotMatch(content, /text-(amber|blue|indigo|cyan|emerald|violet|rose|teal|purple)-\d+/, 'Não deve conter ícones coloridos com cores fora do padrão preto e branco');
+});
+
 test('BoardContextMenu contains all Creation and Board Tools for empty canvas', () => {
   const componentPath = path.resolve('src/components/whiteboard/BoardContextMenu.tsx');
   const content = fs.readFileSync(componentPath, 'utf8');
@@ -46,9 +54,10 @@ test('BoardContextMenu contains all Creation and Board Tools for empty canvas', 
   assert.match(content, /Selecionar Tudo/, 'Deve conter opção Selecionar Tudo');
   assert.match(content, /Modelos de Sprint\.\.\./, 'Deve conter atalho para Templates de Sprint');
   assert.match(content, /Stickers & Emojis\.\.\./, 'Deve conter atalho para Stickers');
+  assert.match(content, /Visualização/, 'Deve conter submenu de Visualização');
   assert.match(content, /Redefinir Zoom/, 'Deve conter opção Redefinir Zoom');
   assert.match(content, /Grade/, 'Deve conter opção para Alternar Grade');
-  assert.match(content, /Guias Inteligentes/, 'Deve conter opção para Alternar Guias Inteligentes');
+  assert.match(content, /Guias/, 'Deve conter opção para Alternar Guias');
 });
 
 test('BoardContextMenu contains Element Object Actions when element is selected', () => {
@@ -59,7 +68,9 @@ test('BoardContextMenu contains Element Object Actions when element is selected'
   assert.match(content, /Copiar/, 'Deve conter Copiar');
   assert.match(content, /Duplicar/, 'Deve conter Duplicar');
   assert.match(content, /Recortar/, 'Deve conter Recortar');
-  assert.match(content, /Bloquear no Quadro|Desbloquear/, 'Deve conter Bloquear/Desbloquear');
+  // Bloquear e Desbloquear foram removidos do menu de contexto em favor do "pressionar para liberar" na barra de seleção
+  assert.doesNotMatch(content, /Bloquear no Quadro/, 'Não deve conter Bloquear no Quadro no menu de contexto');
+  assert.doesNotMatch(content, /Desbloquear/, 'Não deve conter Desbloquear no menu de contexto');
   assert.match(content, /Organizar Camadas/, 'Deve conter submenu de Camadas');
   assert.match(content, /Trazer para Frente/, 'Deve conter Trazer para Frente');
   assert.match(content, /Enviar para Trás/, 'Deve conter Enviar para Trás');

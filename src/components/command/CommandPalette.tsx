@@ -221,9 +221,10 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   const isDashboard = Boolean(dashboardContext);
 
   // Frames sanitizados com rótulo amigável
+  const frames = boardContext?.frames;
   const frameItems = useMemo(() => {
-    if (!boardContext?.frames) return [];
-    return boardContext.frames.map((frame, index) => {
+    if (!frames) return [];
+    return frames.map((frame, index) => {
       const title = (frame.text || '').trim() || `Moldura #${index + 1}`;
       return {
         id: frame.id,
@@ -231,7 +232,12 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         frame,
       };
     });
-  }, [boardContext?.frames]);
+  }, [frames]);
+
+  const itemIconClass =
+    'flex size-6 shrink-0 items-center justify-center rounded-md bg-muted/70 text-muted-foreground group-data-[selected=true]:bg-foreground group-data-[selected=true]:text-background transition-colors';
+  const itemDestructiveIconClass =
+    'flex size-6 shrink-0 items-center justify-center rounded-md bg-destructive/10 text-destructive group-data-[selected=true]:bg-destructive group-data-[selected=true]:text-destructive-foreground transition-colors';
 
   return (
     <>
@@ -239,7 +245,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       {/* Header Contextual com Badge Elegante */}
       <div className="flex items-center justify-between px-4 pt-3 pb-1 border-b border-border/40 bg-muted/20">
         <div className="flex items-center gap-2">
-          <span className="flex size-2 rounded-full bg-emerald-500 animate-pulse" />
+          <span className="flex size-2 rounded-full bg-foreground/40 ring-2 ring-border/50" />
           <span className="text-[11px] font-semibold tracking-wider uppercase text-muted-foreground/80">
             {isBoard
               ? `Quadro • ${boardContext?.boardTitle || 'Quadro sem título'}`
@@ -284,7 +290,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     onSelect={() => handleSelect(() => boardContext.onJumpToFrame?.(item.frame))}
                     className="group"
                   >
-                    <div className="flex size-6 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-500 group-data-[selected=true]:bg-indigo-500 group-data-[selected=true]:text-white transition-colors">
+                    <div className={itemIconClass}>
                       <Frame className="size-3.5" />
                     </div>
                     <span className="font-medium text-foreground">{item.title}</span>
@@ -303,7 +309,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                   onSelect={() => handleSelect(() => boardContext.onAlignElements?.('left'))}
                   className="group"
                 >
-                  <div className="flex size-6 items-center justify-center rounded-lg bg-sky-500/10 text-sky-500 group-data-[selected=true]:bg-sky-500 group-data-[selected=true]:text-white transition-colors">
+                  <div className={itemIconClass}>
                     <AlignStartVertical className="size-3.5" />
                   </div>
                   <span className="font-medium text-foreground">Alinhar à Esquerda</span>
@@ -314,7 +320,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                   onSelect={() => handleSelect(() => boardContext.onAlignElements?.('center-horizontal'))}
                   className="group"
                 >
-                  <div className="flex size-6 items-center justify-center rounded-lg bg-sky-500/10 text-sky-500 group-data-[selected=true]:bg-sky-500 group-data-[selected=true]:text-white transition-colors">
+                  <div className={itemIconClass}>
                     <AlignCenterVertical className="size-3.5" />
                   </div>
                   <span className="font-medium text-foreground">Centralizar Horizontalmente</span>
@@ -325,7 +331,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                   onSelect={() => handleSelect(() => boardContext.onAlignElements?.('right'))}
                   className="group"
                 >
-                  <div className="flex size-6 items-center justify-center rounded-lg bg-sky-500/10 text-sky-500 group-data-[selected=true]:bg-sky-500 group-data-[selected=true]:text-white transition-colors">
+                  <div className={itemIconClass}>
                     <AlignEndVertical className="size-3.5" />
                   </div>
                   <span className="font-medium text-foreground">Alinhar à Direita</span>
@@ -336,7 +342,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                   onSelect={() => handleSelect(() => boardContext.onAlignElements?.('top'))}
                   className="group"
                 >
-                  <div className="flex size-6 items-center justify-center rounded-lg bg-sky-500/10 text-sky-500 group-data-[selected=true]:bg-sky-500 group-data-[selected=true]:text-white transition-colors">
+                  <div className={itemIconClass}>
                     <AlignStartHorizontal className="size-3.5" />
                   </div>
                   <span className="font-medium text-foreground">Alinhar ao Topo</span>
@@ -347,7 +353,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                   onSelect={() => handleSelect(() => boardContext.onAlignElements?.('center-vertical'))}
                   className="group"
                 >
-                  <div className="flex size-6 items-center justify-center rounded-lg bg-sky-500/10 text-sky-500 group-data-[selected=true]:bg-sky-500 group-data-[selected=true]:text-white transition-colors">
+                  <div className={itemIconClass}>
                     <AlignCenterHorizontal className="size-3.5" />
                   </div>
                   <span className="font-medium text-foreground">Centralizar Verticalmente</span>
@@ -358,7 +364,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                   onSelect={() => handleSelect(() => boardContext.onAlignElements?.('bottom'))}
                   className="group"
                 >
-                  <div className="flex size-6 items-center justify-center rounded-lg bg-sky-500/10 text-sky-500 group-data-[selected=true]:bg-sky-500 group-data-[selected=true]:text-white transition-colors">
+                  <div className={itemIconClass}>
                     <AlignEndHorizontal className="size-3.5" />
                   </div>
                   <span className="font-medium text-foreground">Alinhar à Base</span>
@@ -371,7 +377,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                       onSelect={() => handleSelect(() => boardContext.onAlignElements?.('distribute-horizontal'))}
                       className="group"
                     >
-                      <div className="flex size-6 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-500 group-data-[selected=true]:bg-indigo-500 group-data-[selected=true]:text-white transition-colors">
+                      <div className={itemIconClass}>
                         <AlignHorizontalDistributeCenter className="size-3.5" />
                       </div>
                       <span className="font-medium text-foreground">Distribuir Horizontalmente</span>
@@ -382,7 +388,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                       onSelect={() => handleSelect(() => boardContext.onAlignElements?.('distribute-vertical'))}
                       className="group"
                     >
-                      <div className="flex size-6 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-500 group-data-[selected=true]:bg-indigo-500 group-data-[selected=true]:text-white transition-colors">
+                      <div className={itemIconClass}>
                         <AlignVerticalDistributeCenter className="size-3.5" />
                       </div>
                       <span className="font-medium text-foreground">Distribuir Verticalmente</span>
@@ -393,13 +399,13 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
               </CommandGroup>
             )}
 
-            {/* Ferramentas de Criação & Desenho */}
-            <CommandGroup heading="Ferramentas do Canvas">
+            {/* Navegação & Modos */}
+            <CommandGroup heading="Navegação & Modos">
               <CommandItem
                 onSelect={() => handleSelect(() => boardContext.onSelectTool?.('select'))}
                 className="group"
               >
-                <div className="flex size-6 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500 group-data-[selected=true]:bg-blue-500 group-data-[selected=true]:text-white transition-colors">
+                <div className={itemIconClass}>
                   <MousePointer className="size-3.5" />
                 </div>
                 <span>Mover e Selecionar</span>
@@ -412,7 +418,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                 onSelect={() => handleSelect(() => boardContext.onSelectTool?.('pan'))}
                 className="group"
               >
-                <div className="flex size-6 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500 group-data-[selected=true]:bg-blue-500 group-data-[selected=true]:text-white transition-colors">
+                <div className={itemIconClass}>
                   <Hand className="size-3.5" />
                 </div>
                 <span>Mão / Panorâmica (Pan)</span>
@@ -421,12 +427,43 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                 </CommandShortcut>
               </CommandItem>
 
+              <CommandItem
+                onSelect={() => handleSelect(() => boardContext.onSelectTool?.('laser'))}
+                className="group"
+              >
+                <div className={itemIconClass}>
+                  <Wand2 className="size-3.5" />
+                </div>
+                <span>Apontador Laser Colaborativo</span>
+                <CommandShortcut>
+                  <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] font-bold">K</kbd>
+                </CommandShortcut>
+              </CommandItem>
+
+              {boardContext.onOpenCursorChat && (
+                <CommandItem
+                  onSelect={() => handleSelect(boardContext.onOpenCursorChat)}
+                  className="group"
+                >
+                  <div className={itemIconClass}>
+                    <MessageSquare className="size-3.5" />
+                  </div>
+                  <span>Chat do Cursor ao Vivo</span>
+                  <CommandShortcut>
+                    <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] font-bold">/</kbd>
+                  </CommandShortcut>
+                </CommandItem>
+              )}
+            </CommandGroup>
+
+            {/* Criação & Desenho */}
+            <CommandGroup heading="Criação & Desenho">
               {!boardContext.isReadOnly && (
                 <CommandItem
                   onSelect={() => handleSelect(() => boardContext.onSelectTool?.('sticky'))}
                   className="group"
                 >
-                  <div className="flex size-6 items-center justify-center rounded-lg bg-amber-500/10 text-amber-500 group-data-[selected=true]:bg-amber-500 group-data-[selected=true]:text-white transition-colors">
+                  <div className={itemIconClass}>
                     <StickyNote className="size-3.5" />
                   </div>
                   <span>Post-it (Sticky Note)</span>
@@ -442,7 +479,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     onSelect={() => handleSelect(() => boardContext.onSelectTool?.('rect'))}
                     className="group"
                   >
-                    <div className="flex size-6 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500 group-data-[selected=true]:bg-blue-500 group-data-[selected=true]:text-white transition-colors">
+                    <div className={itemIconClass}>
                       <Square className="size-3.5" />
                     </div>
                     <span>Retângulo</span>
@@ -455,7 +492,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     onSelect={() => handleSelect(() => boardContext.onSelectTool?.('circle'))}
                     className="group"
                   >
-                    <div className="flex size-6 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500 group-data-[selected=true]:bg-blue-500 group-data-[selected=true]:text-white transition-colors">
+                    <div className={itemIconClass}>
                       <Circle className="size-3.5" />
                     </div>
                     <span>Círculo</span>
@@ -468,7 +505,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     onSelect={() => handleSelect(() => boardContext.onSelectTool?.('diamond'))}
                     className="group"
                   >
-                    <div className="flex size-6 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500 group-data-[selected=true]:bg-blue-500 group-data-[selected=true]:text-white transition-colors">
+                    <div className={itemIconClass}>
                       <Diamond className="size-3.5" />
                     </div>
                     <span>Losango / Decisão</span>
@@ -481,7 +518,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     onSelect={() => handleSelect(() => boardContext.onSelectTool?.('triangle'))}
                     className="group"
                   >
-                    <div className="flex size-6 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500 group-data-[selected=true]:bg-blue-500 group-data-[selected=true]:text-white transition-colors">
+                    <div className={itemIconClass}>
                       <Triangle className="size-3.5" />
                     </div>
                     <span>Triângulo</span>
@@ -491,17 +528,30 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     onSelect={() => handleSelect(() => boardContext.onSelectTool?.('star'))}
                     className="group"
                   >
-                    <div className="flex size-6 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500 group-data-[selected=true]:bg-blue-500 group-data-[selected=true]:text-white transition-colors">
+                    <div className={itemIconClass}>
                       <Star className="size-3.5" />
                     </div>
                     <span>Estrela</span>
                   </CommandItem>
 
                   <CommandItem
+                    onSelect={() => handleSelect(() => boardContext.onSelectTool?.('text'))}
+                    className="group"
+                  >
+                    <div className={itemIconClass}>
+                      <Type className="size-3.5" />
+                    </div>
+                    <span>Caixa de Texto</span>
+                    <CommandShortcut>
+                      <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] font-bold">T</kbd>
+                    </CommandShortcut>
+                  </CommandItem>
+
+                  <CommandItem
                     onSelect={() => handleSelect(() => boardContext.onSelectTool?.('arrow'))}
                     className="group"
                   >
-                    <div className="flex size-6 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500 group-data-[selected=true]:bg-blue-500 group-data-[selected=true]:text-white transition-colors">
+                    <div className={itemIconClass}>
                       <ArrowUpRight className="size-3.5" />
                     </div>
                     <span>Seta Conectora</span>
@@ -514,7 +564,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     onSelect={() => handleSelect(() => boardContext.onSelectTool?.('line'))}
                     className="group"
                   >
-                    <div className="flex size-6 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500 group-data-[selected=true]:bg-blue-500 group-data-[selected=true]:text-white transition-colors">
+                    <div className={itemIconClass}>
                       <Minus className="size-3.5" />
                     </div>
                     <span>Linha Reta</span>
@@ -527,7 +577,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     onSelect={() => handleSelect(() => boardContext.onSelectTool?.('pen'))}
                     className="group"
                   >
-                    <div className="flex size-6 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500 group-data-[selected=true]:bg-blue-500 group-data-[selected=true]:text-white transition-colors">
+                    <div className={itemIconClass}>
                       <Pen className="size-3.5" />
                     </div>
                     <span>Caneta / Desenho Livre</span>
@@ -542,7 +592,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                       onSelect={() => handleSelect(() => boardContext.onToggleSmartDrawing?.(!boardContext.smartDrawing))}
                       className="group"
                     >
-                      <div className="flex size-6 items-center justify-center rounded-lg bg-purple-500/10 text-purple-500 group-data-[selected=true]:bg-purple-500 group-data-[selected=true]:text-white transition-colors">
+                      <div className={itemIconClass}>
                         <Wand2 className="size-3.5" />
                       </div>
                       <span>
@@ -560,23 +610,10 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                   )}
 
                   <CommandItem
-                    onSelect={() => handleSelect(() => boardContext.onSelectTool?.('text'))}
-                    className="group"
-                  >
-                    <div className="flex size-6 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500 group-data-[selected=true]:bg-blue-500 group-data-[selected=true]:text-white transition-colors">
-                      <Type className="size-3.5" />
-                    </div>
-                    <span>Caixa de Texto</span>
-                    <CommandShortcut>
-                      <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] font-bold">T</kbd>
-                    </CommandShortcut>
-                  </CommandItem>
-
-                  <CommandItem
                     onSelect={() => handleSelect(() => boardContext.onSelectTool?.('frame'))}
                     className="group"
                   >
-                    <div className="flex size-6 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-500 group-data-[selected=true]:bg-indigo-500 group-data-[selected=true]:text-white transition-colors">
+                    <div className={itemIconClass}>
                       <Frame className="size-3.5" />
                     </div>
                     <span>Nova Moldura / Raia</span>
@@ -589,7 +626,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     onSelect={() => handleSelect(() => boardContext.onSelectTool?.('eraser'))}
                     className="group"
                   >
-                    <div className="flex size-6 items-center justify-center rounded-lg bg-rose-500/10 text-rose-500 group-data-[selected=true]:bg-rose-500 group-data-[selected=true]:text-white transition-colors">
+                    <div className={itemIconClass}>
                       <Eraser className="size-3.5" />
                     </div>
                     <span>Borracha (Eraser)</span>
@@ -603,7 +640,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                       onSelect={() => handleSelect(boardContext.onOpenStickers)}
                       className="group"
                     >
-                      <div className="flex size-6 items-center justify-center rounded-lg bg-amber-500/10 text-amber-500 group-data-[selected=true]:bg-amber-500 group-data-[selected=true]:text-white transition-colors">
+                      <div className={itemIconClass}>
                         <Smile className="size-3.5" />
                       </div>
                       <span>Imagens do Computador, Stickers, Emojis & GIFs</span>
@@ -614,34 +651,6 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                   )}
                 </>
               )}
-
-              <CommandItem
-                onSelect={() => handleSelect(() => boardContext.onSelectTool?.('laser'))}
-                className="group"
-              >
-                <div className="flex size-6 items-center justify-center rounded-lg bg-rose-500/10 text-rose-500 group-data-[selected=true]:bg-rose-500 group-data-[selected=true]:text-white transition-colors">
-                  <Wand2 className="size-3.5" />
-                </div>
-                <span>Apontador Laser Colaborativo</span>
-                <CommandShortcut>
-                  <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] font-bold">K</kbd>
-                </CommandShortcut>
-              </CommandItem>
-
-              {boardContext.onOpenCursorChat && (
-                <CommandItem
-                  onSelect={() => handleSelect(boardContext.onOpenCursorChat)}
-                  className="group"
-                >
-                  <div className="flex size-6 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-500 group-data-[selected=true]:bg-cyan-500 group-data-[selected=true]:text-white transition-colors">
-                    <MessageSquare className="size-3.5" />
-                  </div>
-                  <span>Chat do Cursor ao Vivo</span>
-                  <CommandShortcut>
-                    <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] font-bold">/</kbd>
-                  </CommandShortcut>
-                </CommandItem>
-              )}
             </CommandGroup>
 
             {/* Facilitação & Sprints de Equipe */}
@@ -651,7 +660,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                   onSelect={() => handleSelect(boardContext.onToggleTimer)}
                   className="group"
                 >
-                  <div className="flex size-6 items-center justify-center rounded-lg bg-purple-500/10 text-purple-500 group-data-[selected=true]:bg-purple-500 group-data-[selected=true]:text-white transition-colors">
+                  <div className={itemIconClass}>
                     <Timer className="size-3.5" />
                   </div>
                   <span>Abrir / Fechar Cronômetro Colaborativo (Timer)</span>
@@ -662,7 +671,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                 onSelect={() => handleSelect(() => boardContext.onStartTimer?.(300))}
                 className="group"
               >
-                <div className="flex size-6 items-center justify-center rounded-lg bg-purple-500/10 text-purple-500 group-data-[selected=true]:bg-purple-500 group-data-[selected=true]:text-white transition-colors">
+                <div className={itemIconClass}>
                   <Timer className="size-3.5" />
                 </div>
                 <span>Iniciar Timer de 5 Minutos</span>
@@ -672,7 +681,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                 onSelect={() => handleSelect(() => boardContext.onStartTimer?.(900))}
                 className="group"
               >
-                <div className="flex size-6 items-center justify-center rounded-lg bg-purple-500/10 text-purple-500 group-data-[selected=true]:bg-purple-500 group-data-[selected=true]:text-white transition-colors">
+                <div className={itemIconClass}>
                   <Timer className="size-3.5" />
                 </div>
                 <span>Iniciar Timer de 15 Minutos</span>
@@ -682,7 +691,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                 onSelect={() => handleSelect(() => boardContext.onStartTimer?.(1500))}
                 className="group"
               >
-                <div className="flex size-6 items-center justify-center rounded-lg bg-purple-500/10 text-purple-500 group-data-[selected=true]:bg-purple-500 group-data-[selected=true]:text-white transition-colors">
+                <div className={itemIconClass}>
                   <Timer className="size-3.5" />
                 </div>
                 <span>Iniciar Timer Pomodoro (25 Minutos)</span>
@@ -693,7 +702,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                   onSelect={() => handleSelect(boardContext.onOpenVoting)}
                   className="group"
                 >
-                  <div className="flex size-6 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500 group-data-[selected=true]:bg-emerald-500 group-data-[selected=true]:text-white transition-colors">
+                  <div className={itemIconClass}>
                     <Vote className="size-3.5" />
                   </div>
                   <span>Sessão de Votação (Dot Voting)</span>
@@ -705,7 +714,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                   onSelect={() => handleSelectImmediate(boardContext.onEnterPresentation)}
                   className="group"
                 >
-                  <div className="flex size-6 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-500 group-data-[selected=true]:bg-indigo-500 group-data-[selected=true]:text-white transition-colors">
+                  <div className={itemIconClass}>
                     <Tv className="size-3.5" />
                   </div>
                   <span>Iniciar Modo Apresentação de Slides</span>
@@ -717,7 +726,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                   onSelect={() => handleSelect(boardContext.onOpenTemplates)}
                   className="group"
                 >
-                  <div className="flex size-6 items-center justify-center rounded-lg bg-purple-500/10 text-purple-500 group-data-[selected=true]:bg-purple-500 group-data-[selected=true]:text-white transition-colors">
+                  <div className={itemIconClass}>
                     <LayoutTemplate className="size-3.5" />
                   </div>
                   <span>Inserir Templates de Sprint (Scrum, Retro, Kanban)</span>
@@ -737,7 +746,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                   onSelect={() => handleSelect(boardContext.onShare)}
                   className="group"
                 >
-                  <div className="flex size-6 items-center justify-center rounded-lg bg-sky-500/10 text-sky-500 group-data-[selected=true]:bg-sky-500 group-data-[selected=true]:text-white transition-colors">
+                  <div className={itemIconClass}>
                     <Share2 className="size-3.5" />
                   </div>
                   <span>Compartilhar Quadro & Permissões</span>
@@ -749,7 +758,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                   onSelect={() => handleSelectImmediate(boardContext.onCopyLink)}
                   className="group"
                 >
-                  <div className="flex size-6 items-center justify-center rounded-lg bg-sky-500/10 text-sky-500 group-data-[selected=true]:bg-sky-500 group-data-[selected=true]:text-white transition-colors">
+                  <div className={itemIconClass}>
                     <Copy className="size-3.5" />
                   </div>
                   <span>Copiar Link de Acesso do Quadro</span>
@@ -761,7 +770,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                   onSelect={() => handleSelect(boardContext.onUndo)}
                   className="group"
                 >
-                  <div className="flex size-6 items-center justify-center rounded-lg bg-muted text-muted-foreground group-data-[selected=true]:bg-primary group-data-[selected=true]:text-primary-foreground transition-colors">
+                  <div className={itemIconClass}>
                     <Undo2 className="size-3.5" />
                   </div>
                   <span>Desfazer Última Ação (Undo)</span>
@@ -778,7 +787,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                   onSelect={() => handleSelect(boardContext.onRedo)}
                   className="group"
                 >
-                  <div className="flex size-6 items-center justify-center rounded-lg bg-muted text-muted-foreground group-data-[selected=true]:bg-primary group-data-[selected=true]:text-primary-foreground transition-colors">
+                  <div className={itemIconClass}>
                     <Redo2 className="size-3.5" />
                   </div>
                   <span>Refazer Ação (Redo)</span>
@@ -795,7 +804,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                   onSelect={() => handleSelect(boardContext.onFitToContent)}
                   className="group"
                 >
-                  <div className="flex size-6 items-center justify-center rounded-lg bg-muted text-muted-foreground group-data-[selected=true]:bg-primary group-data-[selected=true]:text-primary-foreground transition-colors">
+                  <div className={itemIconClass}>
                     <Maximize2 className="size-3.5" />
                   </div>
                   <span>Centralizar e Ajustar Conteúdo na Tela</span>
@@ -807,7 +816,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                   onSelect={() => handleSelect(boardContext.onResetZoom)}
                   className="group"
                 >
-                  <div className="flex size-6 items-center justify-center rounded-lg bg-muted text-muted-foreground group-data-[selected=true]:bg-primary group-data-[selected=true]:text-primary-foreground transition-colors">
+                  <div className={itemIconClass}>
                     <RotateCcw className="size-3.5" />
                   </div>
                   <span>Redefinir Zoom para 100%</span>
@@ -824,7 +833,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                   onSelect={() => handleSelectImmediate(boardContext.onExportPNG)}
                   className="group"
                 >
-                  <div className="flex size-6 items-center justify-center rounded-lg bg-teal-500/10 text-teal-500 group-data-[selected=true]:bg-teal-500 group-data-[selected=true]:text-white transition-colors">
+                  <div className={itemIconClass}>
                     <Download className="size-3.5" />
                   </div>
                   <span>Capturar Área Visível do Quadro (PNG)</span>
@@ -836,7 +845,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                   onSelect={() => handleSelectImmediate(boardContext.onExportJSON)}
                   className="group"
                 >
-                  <div className="flex size-6 items-center justify-center rounded-lg bg-teal-500/10 text-teal-500 group-data-[selected=true]:bg-teal-500 group-data-[selected=true]:text-white transition-colors">
+                  <div className={itemIconClass}>
                     <FileText className="size-3.5" />
                   </div>
                   <span>Exportar Backup do Quadro (JSON)</span>
@@ -852,7 +861,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                   onSelect={() => handleSelect(() => boardContext.onToggleSmartGuides?.(!boardContext.smartGuides))}
                   className="group"
                 >
-                  <div className="flex size-6 items-center justify-center rounded-lg bg-pink-500/10 text-pink-500 group-data-[selected=true]:bg-pink-500 group-data-[selected=true]:text-white transition-colors">
+                  <div className={itemIconClass}>
                     <Magnet className="size-3.5" />
                   </div>
                   <span>
@@ -873,7 +882,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                   onSelect={() => handleSelect(() => boardContext.onToggleRemoteCursors?.(!boardContext.showRemoteCursors))}
                   className="group"
                 >
-                  <div className="flex size-6 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500 group-data-[selected=true]:bg-blue-500 group-data-[selected=true]:text-white transition-colors">
+                  <div className={itemIconClass}>
                     {boardContext.showRemoteCursors ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
                   </div>
                   <span>{boardContext.showRemoteCursors ? 'Ocultar Cursores dos Colegas' : 'Exibir Cursores dos Colegas'}</span>
@@ -885,7 +894,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                   onSelect={() => handleSelect(() => boardContext.onToggleGrid?.(!boardContext.showGrid))}
                   className="group"
                 >
-                  <div className="flex size-6 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500 group-data-[selected=true]:bg-blue-500 group-data-[selected=true]:text-white transition-colors">
+                  <div className={itemIconClass}>
                     {boardContext.showGrid ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
                   </div>
                   <span>{boardContext.showGrid ? 'Ocultar Grade do Canvas' : 'Exibir Grade do Canvas'}</span>
@@ -908,7 +917,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     })}
                     className="group"
                   >
-                    <div className="flex size-6 items-center justify-center rounded-lg bg-muted text-muted-foreground group-data-[selected=true]:bg-primary group-data-[selected=true]:text-primary-foreground transition-colors">
+                    <div className={itemIconClass}>
                       <LayoutGrid className="size-3.5" />
                     </div>
                     <span>Estilo de Grade: Híbrida (Pontos + Linhas)</span>
@@ -923,7 +932,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     })}
                     className="group"
                   >
-                    <div className="flex size-6 items-center justify-center rounded-lg bg-muted text-muted-foreground group-data-[selected=true]:bg-primary group-data-[selected=true]:text-primary-foreground transition-colors">
+                    <div className={itemIconClass}>
                       <CircleDot className="size-3.5" />
                     </div>
                     <span>Estilo de Grade: Pontos</span>
@@ -938,7 +947,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     })}
                     className="group"
                   >
-                    <div className="flex size-6 items-center justify-center rounded-lg bg-muted text-muted-foreground group-data-[selected=true]:bg-primary group-data-[selected=true]:text-primary-foreground transition-colors">
+                    <div className={itemIconClass}>
                       <Grid className="size-3.5" />
                     </div>
                     <span>Estilo de Grade: Linhas (Papel Milimetrado)</span>
@@ -953,7 +962,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     })}
                     className="group"
                   >
-                    <div className="flex size-6 items-center justify-center rounded-lg bg-muted text-muted-foreground group-data-[selected=true]:bg-primary group-data-[selected=true]:text-primary-foreground transition-colors">
+                    <div className={itemIconClass}>
                       <Plus className="size-3.5" />
                     </div>
                     <span>Estilo de Grade: Cruzes / Retículo (+)</span>
@@ -968,7 +977,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     })}
                     className="group"
                   >
-                    <div className="flex size-6 items-center justify-center rounded-lg bg-muted text-muted-foreground group-data-[selected=true]:bg-primary group-data-[selected=true]:text-primary-foreground transition-colors">
+                    <div className={itemIconClass}>
                       <Boxes className="size-3.5" />
                     </div>
                     <span>Estilo de Grade: Isométrica 3D</span>
@@ -982,7 +991,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     onSelect={() => handleSelect(() => boardContext.onChangeGridSize?.('small'))}
                     className="group"
                   >
-                    <div className="flex size-6 items-center justify-center rounded-lg bg-muted text-muted-foreground group-data-[selected=true]:bg-primary group-data-[selected=true]:text-primary-foreground transition-colors">
+                    <div className={itemIconClass}>
                       <span className="text-[10px] font-bold">24</span>
                     </div>
                     <span>Densidade da Grade: Pequena (24px)</span>
@@ -992,7 +1001,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     onSelect={() => handleSelect(() => boardContext.onChangeGridSize?.('medium'))}
                     className="group"
                   >
-                    <div className="flex size-6 items-center justify-center rounded-lg bg-muted text-muted-foreground group-data-[selected=true]:bg-primary group-data-[selected=true]:text-primary-foreground transition-colors">
+                    <div className={itemIconClass}>
                       <span className="text-[10px] font-bold">40</span>
                     </div>
                     <span>Densidade da Grade: Média (40px)</span>
@@ -1002,7 +1011,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     onSelect={() => handleSelect(() => boardContext.onChangeGridSize?.('large'))}
                     className="group"
                   >
-                    <div className="flex size-6 items-center justify-center rounded-lg bg-muted text-muted-foreground group-data-[selected=true]:bg-primary group-data-[selected=true]:text-primary-foreground transition-colors">
+                    <div className={itemIconClass}>
                       <span className="text-[10px] font-bold">64</span>
                     </div>
                     <span>Densidade da Grade: Grande (64px)</span>
@@ -1016,7 +1025,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     onSelect={() => handleSelect(() => boardContext.onChangeGridOpacity?.(0.3))}
                     className="group"
                   >
-                    <div className="flex size-6 items-center justify-center rounded-lg bg-muted text-muted-foreground group-data-[selected=true]:bg-primary group-data-[selected=true]:text-primary-foreground transition-colors">
+                    <div className={itemIconClass}>
                       <SlidersHorizontal className="size-3.5" />
                     </div>
                     <span>Opacidade da Grade: Suave (30%)</span>
@@ -1026,7 +1035,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     onSelect={() => handleSelect(() => boardContext.onChangeGridOpacity?.(0.55))}
                     className="group"
                   >
-                    <div className="flex size-6 items-center justify-center rounded-lg bg-muted text-muted-foreground group-data-[selected=true]:bg-primary group-data-[selected=true]:text-primary-foreground transition-colors">
+                    <div className={itemIconClass}>
                       <SlidersHorizontal className="size-3.5" />
                     </div>
                     <span>Opacidade da Grade: Padrão (55%)</span>
@@ -1036,7 +1045,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     onSelect={() => handleSelect(() => boardContext.onChangeGridOpacity?.(0.9))}
                     className="group"
                   >
-                    <div className="flex size-6 items-center justify-center rounded-lg bg-muted text-muted-foreground group-data-[selected=true]:bg-primary group-data-[selected=true]:text-primary-foreground transition-colors">
+                    <div className={itemIconClass}>
                       <SlidersHorizontal className="size-3.5" />
                     </div>
                     <span>Opacidade da Grade: Nítida (90%)</span>
@@ -1062,7 +1071,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     onSelect={() => handleSelect(() => navigate(`/b/${cleanBoardId(b.id)}`))}
                     className="group"
                   >
-                    <div className="flex size-6 items-center justify-center rounded-lg bg-primary/10 text-primary group-data-[selected=true]:bg-primary group-data-[selected=true]:text-primary-foreground transition-colors">
+                    <div className={itemIconClass}>
                       <FolderKanban className="size-3.5" />
                     </div>
                     <div className="flex flex-col">
@@ -1086,7 +1095,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                 onSelect={() => handleSelect(dashboardContext.onCreateBoard)}
                 className="group"
               >
-                <div className="flex size-6 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500 group-data-[selected=true]:bg-emerald-500 group-data-[selected=true]:text-white transition-colors">
+                <div className={itemIconClass}>
                   <Plus className="size-3.5" />
                 </div>
                 <span>Criar Novo Quadro em Branco</span>
@@ -1097,7 +1106,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                 onSelect={() => handleSelect(dashboardContext.onToggleViewMode)}
                 className="group"
               >
-                <div className="flex size-6 items-center justify-center rounded-lg bg-muted text-muted-foreground group-data-[selected=true]:bg-primary group-data-[selected=true]:text-primary-foreground transition-colors">
+                <div className={itemIconClass}>
                   {dashboardContext.viewMode === 'grid' ? (
                     <List className="size-3.5" />
                   ) : (
@@ -1121,7 +1130,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     }
                     className="group"
                   >
-                    <div className="flex size-6 items-center justify-center rounded-lg bg-sky-500/10 text-sky-500 group-data-[selected=true]:bg-sky-500 group-data-[selected=true]:text-white transition-colors">
+                    <div className={itemIconClass}>
                       <Users className="size-3.5" />
                     </div>
                     <span>
@@ -1142,7 +1151,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     }
                     className="group"
                   >
-                    <div className="flex size-6 items-center justify-center rounded-lg bg-amber-500/10 text-amber-500 group-data-[selected=true]:bg-amber-500 group-data-[selected=true]:text-white transition-colors">
+                    <div className={itemIconClass}>
                       <KeyRound className="size-3.5" />
                     </div>
                     <span>
@@ -1156,7 +1165,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                 onSelect={() => handleSelect(handleOpenCoffeeModal)}
                 className="group"
               >
-                <div className="flex size-6 items-center justify-center rounded-lg bg-amber-500/10 text-amber-500 group-data-[selected=true]:bg-amber-500 group-data-[selected=true]:text-white transition-colors">
+                <div className={itemIconClass}>
                   <Coffee className="size-3.5" />
                 </div>
                 <span>Apoiar o Projeto Mirio (PIX)</span>
@@ -1173,7 +1182,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     onSelect={() => handleSelect(() => dashboardContext.onCreateFromTemplate?.(tmpl))}
                     className="group"
                   >
-                    <div className="flex size-6 items-center justify-center rounded-lg bg-purple-500/10 text-purple-500 group-data-[selected=true]:bg-purple-500 group-data-[selected=true]:text-white transition-colors">
+                    <div className={itemIconClass}>
                       <LayoutTemplate className="size-3.5" />
                     </div>
                     <div className="flex flex-col">
@@ -1200,7 +1209,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
               onSelect={() => handleSelect(handleOpenCoffeeModal)}
               className="group"
             >
-              <div className="flex size-6 items-center justify-center rounded-lg bg-amber-500/10 text-amber-500 group-data-[selected=true]:bg-amber-500 group-data-[selected=true]:text-white transition-colors">
+              <div className={itemIconClass}>
                 <Coffee className="size-3.5" />
               </div>
               <span>Apoiar o Projeto Mirio (PIX)</span>
@@ -1217,14 +1226,14 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             >
               {(boardContext?.isAnonymous ?? dashboardContext?.isAnonymous ?? true) ? (
                 <>
-                  <div className="flex size-6 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500 group-data-[selected=true]:bg-emerald-500 group-data-[selected=true]:text-white transition-colors">
+                  <div className={itemIconClass}>
                     <UserPen className="size-3.5" />
                   </div>
                   <span>Trocar Nome de Convidado</span>
                 </>
               ) : (
                 <>
-                  <div className="flex size-6 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500 group-data-[selected=true]:bg-blue-500 group-data-[selected=true]:text-white transition-colors">
+                  <div className={itemIconClass}>
                     <Palette className="size-3.5" />
                   </div>
                   <span>Personalizar Cor do Cursor (Conta Google)</span>
@@ -1241,7 +1250,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
               }
               className="group"
             >
-              <div className="flex size-6 items-center justify-center rounded-lg bg-muted text-muted-foreground group-data-[selected=true]:bg-primary group-data-[selected=true]:text-primary-foreground transition-colors">
+              <div className={itemIconClass}>
                 {boardContext?.isDarkMode ?? dashboardContext?.isDarkMode ? (
                   <Sun className="size-3.5" />
                 ) : (
@@ -1263,7 +1272,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
               }
               className="group"
             >
-              <div className="flex size-6 items-center justify-center rounded-lg bg-muted text-muted-foreground group-data-[selected=true]:bg-primary group-data-[selected=true]:text-primary-foreground transition-colors">
+              <div className={itemIconClass}>
                 <Keyboard className="size-3.5" />
               </div>
               <span>Ver Todos os Atalhos de Teclado</span>
@@ -1279,7 +1288,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
               onSelect={() => handleSelect(boardContext.onBackToDashboard)}
               className="group"
             >
-              <div className="flex size-6 items-center justify-center rounded-lg bg-muted text-muted-foreground group-data-[selected=true]:bg-primary group-data-[selected=true]:text-primary-foreground transition-colors">
+              <div className={itemIconClass}>
                 <LayoutGrid className="size-3.5" />
               </div>
               <span>Voltar ao Painel de Quadros</span>
@@ -1290,9 +1299,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             <CommandItem
               keywords={['sair', 'logout', 'desconectar', 'conta']}
               onSelect={() => handleSelect(boardContext?.onLogout || dashboardContext?.onLogout)}
-              className="group text-rose-500 data-[selected=true]:text-rose-500"
+              className="group text-destructive data-[selected=true]:text-destructive"
             >
-              <div className="flex size-6 items-center justify-center rounded-lg bg-rose-500/10 text-rose-500 group-data-[selected=true]:bg-rose-500 group-data-[selected=true]:text-white transition-colors">
+              <div className={itemDestructiveIconClass}>
                 <LogOut className="size-3.5" />
               </div>
               <span>Sair da Conta (Logout)</span>

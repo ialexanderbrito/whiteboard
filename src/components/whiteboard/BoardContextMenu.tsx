@@ -17,8 +17,6 @@ import {
   CopyPlus,
   Scissors,
   Trash2,
-  Lock,
-  Unlock,
   BringToFront,
   SendToBack,
   Layers,
@@ -36,10 +34,10 @@ import {
   AlignEndHorizontal,
   Plus,
   Magnet,
+  Eye,
 } from '@/components/ui/icons';
 import type { CanvasElement } from '../../types/element';
 import type { AlignmentType } from '../../utils/alignment';
-import { STICKY_COLORS } from '../../utils/colors';
 import { selectionSupportsLayerReorder } from '../../utils/layerOrder';
 
 export interface BoardContextMenuProps {
@@ -58,7 +56,7 @@ export interface BoardContextMenuProps {
   onCut: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
-  onToggleLock: () => void;
+  onToggleLock?: () => void;
   onReorderLayer: (action: 'bringToFront' | 'sendToBack' | 'bringForward' | 'sendBackward') => void;
   onAlign?: (type: AlignmentType) => void;
   onStartEditing?: (elementId: string) => void;
@@ -73,7 +71,7 @@ export interface BoardContextMenuProps {
   canCommentOnly?: boolean;
 }
 
-type SubmenuType = 'sticky-colors' | 'shapes' | 'layers' | 'align' | 'insert' | null;
+type SubmenuType = 'shapes' | 'layers' | 'align' | 'insert' | 'view' | null;
 
 export const BoardContextMenu: React.FC<BoardContextMenuProps> = ({
   isOpen,
@@ -91,7 +89,6 @@ export const BoardContextMenu: React.FC<BoardContextMenuProps> = ({
   onCut,
   onDuplicate,
   onDelete,
-  onToggleLock,
   onReorderLayer,
   onAlign,
   onStartEditing,
@@ -126,7 +123,7 @@ export const BoardContextMenu: React.FC<BoardContextMenuProps> = ({
     const viewportHeight = window.innerHeight;
 
     const menuWidth = menuEl ? menuEl.offsetWidth || 230 : 230;
-    const menuHeight = menuEl ? menuEl.offsetHeight || 340 : 340;
+    const menuHeight = menuEl ? menuEl.offsetHeight || 220 : 220;
 
     let targetX = position.x;
     let targetY = position.y;
@@ -194,7 +191,6 @@ export const BoardContextMenu: React.FC<BoardContextMenuProps> = ({
   const isElementMode = targetElements.length > 0;
   const isSingleElement = targetElements.length === 1;
   const primaryElement = isElementMode ? targetElements[0] : null;
-  const allLocked = isElementMode && targetElements.every((e) => e.locked);
   const canEditPrimaryText =
     isSingleElement &&
     (primaryElement?.type === 'sticky' ||
@@ -222,286 +218,211 @@ export const BoardContextMenu: React.FC<BoardContextMenuProps> = ({
       {/* ========================================================= */}
       {!isElementMode ? (
         <div className="space-y-1">
-          <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/75">
-            Adicionar ao Board
-          </div>
-
-          {/* Nota Adesiva (Post-it) com hover flyout de cores */}
-          <div
-            className="relative"
-            onMouseEnter={() => setActiveSubmenu('sticky-colors')}
-            onMouseLeave={() => setActiveSubmenu(null)}
-          >
+          {/* Barra de Ferramentas de Criação Rápida no Topo */}
+          <div className="flex items-center justify-between gap-1 p-1 bg-muted/40 rounded-lg border border-border/40">
+            {/* Nota Adesiva (Post-it) */}
             <button
               type="button"
+              title="Nota Adesiva (N)"
               onClick={() => {
                 onCreateSticky();
                 onClose();
               }}
-              className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer group"
+              className="flex-1 h-8 flex items-center justify-center rounded-md text-muted-foreground hover:bg-background hover:text-foreground hover:shadow-2xs transition-all duration-150 active:scale-[0.92] cursor-pointer group"
             >
-              <div className="flex items-center gap-2">
-                <StickyNote className="size-4 text-amber-500 group-hover:scale-105 transition-transform" />
-                <span className="font-medium">Nota Adesiva</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <kbd className="px-1.5 py-0.5 text-[9px] font-mono bg-muted text-muted-foreground rounded border border-border/50">
-                  N
-                </kbd>
-                <ChevronRight className="size-3.5 text-muted-foreground/60" />
-              </div>
+              <StickyNote className="size-4 group-hover:scale-110 transition-transform" />
             </button>
 
-            {/* Submenu de Cores de Post-it */}
-            {activeSubmenu === 'sticky-colors' && (
+            {/* Formas Geométricas com hover flyout */}
+            {!canCommentOnly && (
               <div
-                className="absolute top-0 z-50 min-w-[170px] rounded-xl border border-border/80 bg-popover/95 text-popover-foreground shadow-xl backdrop-blur-md p-1.5 text-xs animate-in fade-in zoom-in-95 duration-100 will-change-transform"
-                style={{
-                  [submenuSide === 'left' ? 'right' : 'left']: 'calc(100% + 4px)',
-                }}
+                className="relative flex-1"
+                onMouseEnter={() => setActiveSubmenu('shapes')}
+                onMouseLeave={() => setActiveSubmenu(null)}
               >
-                <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/75">
-                  Cores de Post-it
-                </div>
-                <div className="grid grid-cols-1 gap-0.5 mt-0.5">
-                  {STICKY_COLORS.map((color) => (
-                    <button
-                      key={color.value}
-                      type="button"
-                      onClick={() => {
-                        onCreateSticky(color.value);
-                        onClose();
-                      }}
-                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer text-left"
-                    >
-                      <span
-                        className="size-3.5 rounded-full border border-black/15 shadow-2xs shrink-0"
-                        style={{ backgroundColor: color.value }}
-                      />
-                      <span className="font-medium text-[11px] truncate">{color.name}</span>
-                    </button>
-                  ))}
-                </div>
+                <button
+                  type="button"
+                  title="Formas (R)"
+                  onClick={() => {
+                    onCreateShape('rect');
+                    onClose();
+                  }}
+                  className="w-full h-8 flex items-center justify-center rounded-md text-muted-foreground hover:bg-background hover:text-foreground hover:shadow-2xs transition-all duration-150 active:scale-[0.92] cursor-pointer group"
+                >
+                  <Square className="size-4 group-hover:scale-110 transition-transform" />
+                </button>
+
+                {/* Submenu de Formas Geométricas */}
+                {activeSubmenu === 'shapes' && (
+                  <div
+                    className="absolute top-0 z-50 min-w-[160px] rounded-xl border border-border/80 bg-popover/95 text-popover-foreground shadow-xl backdrop-blur-md p-1.5 text-xs animate-in fade-in zoom-in-95 duration-100 will-change-transform"
+                    style={{
+                      [submenuSide === 'left' ? 'right' : 'left']: 'calc(100% + 4px)',
+                    }}
+                  >
+                    <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/75">
+                      Formas Geométricas
+                    </div>
+                    <div className="space-y-0.5 mt-0.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onCreateShape('rect');
+                          onClose();
+                        }}
+                        className="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer text-left group"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Square className="size-3.5 text-muted-foreground group-hover:text-foreground" />
+                          <span className="font-medium text-[11px]">Retângulo</span>
+                        </div>
+                        <kbd className="px-1 py-0.5 text-[9px] font-mono bg-muted text-muted-foreground rounded border border-border/50">
+                          R
+                        </kbd>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onCreateShape('circle');
+                          onClose();
+                        }}
+                        className="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer text-left group"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Circle className="size-3.5 text-muted-foreground group-hover:text-foreground" />
+                          <span className="font-medium text-[11px]">Círculo</span>
+                        </div>
+                        <kbd className="px-1 py-0.5 text-[9px] font-mono bg-muted text-muted-foreground rounded border border-border/50">
+                          O
+                        </kbd>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onCreateShape('diamond');
+                          onClose();
+                        }}
+                        className="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer text-left group"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Diamond className="size-3.5 text-muted-foreground group-hover:text-foreground" />
+                          <span className="font-medium text-[11px]">Losango</span>
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onCreateShape('triangle');
+                          onClose();
+                        }}
+                        className="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer text-left group"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Triangle className="size-3.5 text-muted-foreground group-hover:text-foreground" />
+                          <span className="font-medium text-[11px]">Triângulo</span>
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onCreateShape('star');
+                          onClose();
+                        }}
+                        className="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer text-left group"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Star className="size-3.5 text-muted-foreground group-hover:text-foreground" />
+                          <span className="font-medium text-[11px]">Estrela</span>
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onCreateShape('hexagon');
+                          onClose();
+                        }}
+                        className="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer text-left group"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Hexagon className="size-3.5 text-muted-foreground group-hover:text-foreground" />
+                          <span className="font-medium text-[11px]">Hexágono</span>
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onCreateShape('cylinder');
+                          onClose();
+                        }}
+                        className="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer text-left group"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Cylinder className="size-3.5 text-muted-foreground group-hover:text-foreground" />
+                          <span className="font-medium text-[11px]">Cilindro</span>
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
-          </div>
 
-          {/* Formas Geométricas com hover flyout */}
-          {!canCommentOnly && (
-            <div
-              className="relative"
-              onMouseEnter={() => setActiveSubmenu('shapes')}
-              onMouseLeave={() => setActiveSubmenu(null)}
-            >
+            {/* Caixa de Texto */}
+            {!canCommentOnly && (
               <button
                 type="button"
+                title="Texto (T)"
                 onClick={() => {
-                  onCreateShape('rect');
+                  onCreateText();
                   onClose();
                 }}
-                className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer group"
+                className="flex-1 h-8 flex items-center justify-center rounded-md text-muted-foreground hover:bg-background hover:text-foreground hover:shadow-2xs transition-all duration-150 active:scale-[0.92] cursor-pointer group"
               >
-                <div className="flex items-center gap-2">
-                  <Square className="size-4 text-blue-500 group-hover:scale-105 transition-transform" />
-                  <span className="font-medium">Formas</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <kbd className="px-1.5 py-0.5 text-[9px] font-mono bg-muted text-muted-foreground rounded border border-border/50">
-                    R
-                  </kbd>
-                  <ChevronRight className="size-3.5 text-muted-foreground/60" />
-                </div>
+                <Type className="size-4 group-hover:scale-110 transition-transform" />
               </button>
+            )}
 
-              {/* Submenu de Formas Geométricas */}
-              {activeSubmenu === 'shapes' && (
-                <div
-                  className="absolute top-0 z-50 min-w-[160px] rounded-xl border border-border/80 bg-popover/95 text-popover-foreground shadow-xl backdrop-blur-md p-1.5 text-xs animate-in fade-in zoom-in-95 duration-100 will-change-transform"
-                  style={{
-                    [submenuSide === 'left' ? 'right' : 'left']: 'calc(100% + 4px)',
-                  }}
-                >
-                  <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/75">
-                    Formas Geométricas
-                  </div>
-                  <div className="space-y-0.5 mt-0.5">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onCreateShape('rect');
-                        onClose();
-                      }}
-                      className="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer text-left"
-                    >
-                      <div className="flex items-center gap-2">
-                        <Square className="size-3.5 text-blue-500" />
-                        <span className="font-medium text-[11px]">Retângulo</span>
-                      </div>
-                      <kbd className="px-1 py-0.5 text-[9px] font-mono bg-muted text-muted-foreground rounded border border-border/50">
-                        R
-                      </kbd>
-                    </button>
+            {/* Seta / Conector */}
+            {!canCommentOnly && (
+              <button
+                type="button"
+                title="Seta / Conector (A)"
+                onClick={() => {
+                  onCreateArrow();
+                  onClose();
+                }}
+                className="flex-1 h-8 flex items-center justify-center rounded-md text-muted-foreground hover:bg-background hover:text-foreground hover:shadow-2xs transition-all duration-150 active:scale-[0.92] cursor-pointer group"
+              >
+                <ArrowUpRight className="size-4 group-hover:scale-110 transition-transform" />
+              </button>
+            )}
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onCreateShape('circle');
-                        onClose();
-                      }}
-                      className="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer text-left"
-                    >
-                      <div className="flex items-center gap-2">
-                        <Circle className="size-3.5 text-indigo-500" />
-                        <span className="font-medium text-[11px]">Círculo</span>
-                      </div>
-                      <kbd className="px-1 py-0.5 text-[9px] font-mono bg-muted text-muted-foreground rounded border border-border/50">
-                        O
-                      </kbd>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onCreateShape('diamond');
-                        onClose();
-                      }}
-                      className="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer text-left"
-                    >
-                      <div className="flex items-center gap-2">
-                        <Diamond className="size-3.5 text-cyan-500" />
-                        <span className="font-medium text-[11px]">Losango / Decisão</span>
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onCreateShape('triangle');
-                        onClose();
-                      }}
-                      className="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer text-left"
-                    >
-                      <div className="flex items-center gap-2">
-                        <Triangle className="size-3.5 text-emerald-500" />
-                        <span className="font-medium text-[11px]">Triângulo</span>
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onCreateShape('star');
-                        onClose();
-                      }}
-                      className="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer text-left"
-                    >
-                      <div className="flex items-center gap-2">
-                        <Star className="size-3.5 text-amber-500" />
-                        <span className="font-medium text-[11px]">Estrela</span>
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onCreateShape('hexagon');
-                        onClose();
-                      }}
-                      className="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer text-left"
-                    >
-                      <div className="flex items-center gap-2">
-                        <Hexagon className="size-3.5 text-violet-500" />
-                        <span className="font-medium text-[11px]">Hexágono</span>
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onCreateShape('cylinder');
-                        onClose();
-                      }}
-                      className="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer text-left"
-                    >
-                      <div className="flex items-center gap-2">
-                        <Cylinder className="size-3.5 text-rose-500" />
-                        <span className="font-medium text-[11px]">Cilindro / DB</span>
-                      </div>
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Caixa de Texto */}
-          {!canCommentOnly && (
-            <button
-              type="button"
-              onClick={() => {
-                onCreateText();
-                onClose();
-              }}
-              className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer group"
-            >
-              <div className="flex items-center gap-2">
-                <Type className="size-4 text-violet-500 group-hover:scale-105 transition-transform" />
-                <span className="font-medium">Texto</span>
-              </div>
-              <kbd className="px-1.5 py-0.5 text-[9px] font-mono bg-muted text-muted-foreground rounded border border-border/50">
-                T
-              </kbd>
-            </button>
-          )}
-
-          {/* Seta / Conector */}
-          {!canCommentOnly && (
-            <button
-              type="button"
-              onClick={() => {
-                onCreateArrow();
-                onClose();
-              }}
-              className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer group"
-            >
-              <div className="flex items-center gap-2">
-                <ArrowUpRight className="size-4 text-teal-500 group-hover:scale-105 transition-transform" />
-                <span className="font-medium">Seta / Conector</span>
-              </div>
-              <kbd className="px-1.5 py-0.5 text-[9px] font-mono bg-muted text-muted-foreground rounded border border-border/50">
-                A
-              </kbd>
-            </button>
-          )}
-
-          {/* Moldura de Sprint */}
-          {!canCommentOnly && (
-            <button
-              type="button"
-              onClick={() => {
-                onCreateFrame();
-                onClose();
-              }}
-              className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer group"
-            >
-              <div className="flex items-center gap-2">
-                <Frame className="size-4 text-slate-500 group-hover:scale-105 transition-transform" />
-                <span className="font-medium">Moldura / Frame</span>
-              </div>
-              <kbd className="px-1.5 py-0.5 text-[9px] font-mono bg-muted text-muted-foreground rounded border border-border/50">
-                F
-              </kbd>
-            </button>
-          )}
+            {/* Moldura de Sprint */}
+            {!canCommentOnly && (
+              <button
+                type="button"
+                title="Moldura / Frame (F)"
+                onClick={() => {
+                  onCreateFrame();
+                  onClose();
+                }}
+                className="flex-1 h-8 flex items-center justify-center rounded-md text-muted-foreground hover:bg-background hover:text-foreground hover:shadow-2xs transition-all duration-150 active:scale-[0.92] cursor-pointer group"
+              >
+                <Frame className="size-4 group-hover:scale-110 transition-transform" />
+              </button>
+            )}
+          </div>
 
           {/* Separador */}
           <div className="h-px bg-border/60 my-1" />
 
           {/* Ações da Área de Transferência */}
-          <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/75">
-            Área de Transferência
-          </div>
-
           {!readOnly && !canCommentOnly && (
             <button
               type="button"
@@ -512,7 +433,7 @@ export const BoardContextMenu: React.FC<BoardContextMenuProps> = ({
               className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer group"
             >
               <div className="flex items-center gap-2">
-                <ClipboardPaste className="size-4 text-primary group-hover:scale-105 transition-transform" />
+                <ClipboardPaste className="size-4 text-muted-foreground group-hover:scale-105 transition-transform" />
                 <span className="font-medium">Colar aqui</span>
               </div>
               <kbd className="px-1.5 py-0.5 text-[9px] font-mono bg-muted text-muted-foreground rounded border border-border/50">
@@ -542,10 +463,6 @@ export const BoardContextMenu: React.FC<BoardContextMenuProps> = ({
           <div className="h-px bg-border/60 my-1" />
 
           {/* Seção Explorar & Ferramentas */}
-          <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/75">
-            Recursos
-          </div>
-
           {onOpenTemplates && !readOnly && !canCommentOnly && (
             <button
               type="button"
@@ -556,7 +473,7 @@ export const BoardContextMenu: React.FC<BoardContextMenuProps> = ({
               className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer group"
             >
               <div className="flex items-center gap-2">
-                <LayoutTemplate className="size-4 text-purple-500 group-hover:scale-105 transition-transform" />
+                <LayoutTemplate className="size-4 text-muted-foreground group-hover:scale-105 transition-transform" />
                 <span className="font-medium">Modelos de Sprint...</span>
               </div>
               <kbd className="px-1.5 py-0.5 text-[9px] font-mono bg-muted text-muted-foreground rounded border border-border/50">
@@ -575,7 +492,7 @@ export const BoardContextMenu: React.FC<BoardContextMenuProps> = ({
               className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer group"
             >
               <div className="flex items-center gap-2">
-                <Smile className="size-4 text-amber-500 group-hover:scale-105 transition-transform" />
+                <Smile className="size-4 text-muted-foreground group-hover:scale-105 transition-transform" />
                 <span className="font-medium">Imagens, Stickers & Emojis...</span>
               </div>
               <kbd className="px-1.5 py-0.5 text-[9px] font-mono bg-muted text-muted-foreground rounded border border-border/50">
@@ -584,65 +501,100 @@ export const BoardContextMenu: React.FC<BoardContextMenuProps> = ({
             </button>
           )}
 
-          {/* Zoom e Grade */}
-          {onResetZoom && (
-            <button
-              type="button"
-              onClick={() => {
-                onResetZoom();
-                onClose();
-              }}
-              className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer group"
-            >
-              <div className="flex items-center gap-2">
-                <Maximize2 className="size-4 text-muted-foreground group-hover:scale-105 transition-transform" />
-                <span className="font-medium">Redefinir Zoom</span>
-              </div>
-              <kbd className="px-1.5 py-0.5 text-[9px] font-mono bg-muted text-muted-foreground rounded border border-border/50">
-                Ctrl+0
-              </kbd>
-            </button>
-          )}
+          {/* Separador */}
+          <div className="h-px bg-border/60 my-1" />
 
-          {onToggleGrid && (
+          {/* Submenu Visualização (Zoom, Grade, Guias) */}
+          <div
+            className="relative"
+            onMouseEnter={() => setActiveSubmenu('view')}
+            onMouseLeave={() => setActiveSubmenu(null)}
+          >
             <button
               type="button"
-              onClick={() => {
-                onToggleGrid();
-                onClose();
-              }}
               className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer group"
             >
               <div className="flex items-center gap-2">
-                <Grid className="size-4 text-muted-foreground group-hover:scale-105 transition-transform" />
-                <span className="font-medium">{showGrid ? 'Ocultar Grade' : 'Exibir Grade'}</span>
+                <Eye className="size-4 text-muted-foreground group-hover:scale-105 transition-transform" />
+                <span className="font-medium">Visualização</span>
               </div>
-              <kbd className="px-1.5 py-0.5 text-[9px] font-mono bg-muted text-muted-foreground rounded border border-border/50">
-                Shift+G
-              </kbd>
+              <ChevronRight className="size-3.5 text-muted-foreground/60" />
             </button>
-          )}
 
-          {onToggleSmartGuides && (
-            <button
-              type="button"
-              onClick={() => {
-                onToggleSmartGuides();
-                onClose();
-              }}
-              className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer group"
-            >
-              <div className="flex items-center gap-2">
-                <Magnet className="size-4 text-muted-foreground group-hover:scale-105 transition-transform" />
-                <span className="font-medium">
-                  {smartGuidesEnabled ? 'Desativar Guias Inteligentes' : 'Ativar Guias Inteligentes'}
-                </span>
+            {/* Submenu de Opções de Tela */}
+            {activeSubmenu === 'view' && (
+              <div
+                className="absolute top-0 z-50 min-w-[190px] rounded-xl border border-border/80 bg-popover/95 text-popover-foreground shadow-xl backdrop-blur-md p-1.5 text-xs animate-in fade-in zoom-in-95 duration-100 will-change-transform"
+                style={{
+                  [submenuSide === 'left' ? 'right' : 'left']: 'calc(100% + 4px)',
+                }}
+              >
+                <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/75">
+                  Opções de Tela
+                </div>
+                <div className="space-y-0.5 mt-0.5">
+                  {onResetZoom && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onResetZoom();
+                        onClose();
+                      }}
+                      className="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer text-left"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Maximize2 className="size-3.5 text-muted-foreground" />
+                        <span className="font-medium text-[11px]">Redefinir Zoom</span>
+                      </div>
+                      <kbd className="px-1 py-0.5 text-[9px] font-mono bg-muted text-muted-foreground rounded border border-border/50">
+                        Ctrl+0
+                      </kbd>
+                    </button>
+                  )}
+
+                  {onToggleGrid && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onToggleGrid();
+                        onClose();
+                      }}
+                      className="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer text-left"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Grid className="size-3.5 text-muted-foreground" />
+                        <span className="font-medium text-[11px]">{showGrid ? 'Ocultar Grade' : 'Exibir Grade'}</span>
+                      </div>
+                      <kbd className="px-1 py-0.5 text-[9px] font-mono bg-muted text-muted-foreground rounded border border-border/50">
+                        Shift+G
+                      </kbd>
+                    </button>
+                  )}
+
+                  {onToggleSmartGuides && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onToggleSmartGuides();
+                        onClose();
+                      }}
+                      className="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer text-left"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Magnet className="size-3.5 text-muted-foreground" />
+                        <span className="font-medium text-[11px]">
+                          {smartGuidesEnabled ? 'Desativar Guias' : 'Ativar Guias'}
+                        </span>
+                      </div>
+                      <span className="px-1 py-0.5 text-[9px] font-mono bg-muted text-muted-foreground rounded border border-border/50">
+                        {smartGuidesEnabled ? 'Ativo' : 'Inativo'}
+                      </span>
+                    </button>
+                  )}
+                </div>
               </div>
-              <span className="px-1.5 py-0.5 text-[9px] font-mono bg-muted text-muted-foreground rounded border border-border/50">
-                {smartGuidesEnabled ? 'Ativo' : 'Inativo'}
-              </span>
-            </button>
-          )}
+            )}
+          </div>
         </div>
       ) : (
         /* ========================================================= */
@@ -668,7 +620,7 @@ export const BoardContextMenu: React.FC<BoardContextMenuProps> = ({
               className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer group"
             >
               <div className="flex items-center gap-2">
-                <Edit3 className="size-4 text-primary group-hover:scale-105 transition-transform" />
+                <Edit3 className="size-4 text-muted-foreground group-hover:scale-105 transition-transform" />
                 <span className="font-medium">Editar Conteúdo</span>
               </div>
               <kbd className="px-1.5 py-0.5 text-[9px] font-mono bg-muted text-muted-foreground rounded border border-border/50">
@@ -738,32 +690,6 @@ export const BoardContextMenu: React.FC<BoardContextMenuProps> = ({
           {/* Separador */}
           <div className="h-px bg-border/60 my-1" />
 
-          {/* Bloquear / Desbloquear */}
-          {!readOnly && !canCommentOnly && (
-            <button
-              type="button"
-              onClick={() => {
-                onToggleLock();
-                onClose();
-              }}
-              className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer group"
-            >
-              <div className="flex items-center gap-2">
-                {allLocked ? (
-                  <Unlock className="size-4 text-emerald-500 group-hover:scale-105 transition-transform" />
-                ) : (
-                  <Lock className="size-4 text-amber-500 group-hover:scale-105 transition-transform" />
-                )}
-                <span className="font-medium">
-                  {allLocked ? 'Desbloquear' : 'Bloquear no Quadro'}
-                </span>
-              </div>
-              <kbd className="px-1.5 py-0.5 text-[9px] font-mono bg-muted text-muted-foreground rounded border border-border/50">
-                Ctrl+Shift+L
-              </kbd>
-            </button>
-          )}
-
           {/* Submenu de Camadas (oculto para imagens/GIFs, que não participam da pilha) */}
           {!readOnly && !canCommentOnly && canReorderLayers && (
             <div
@@ -802,7 +728,7 @@ export const BoardContextMenu: React.FC<BoardContextMenuProps> = ({
                       className="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer text-left"
                     >
                       <div className="flex items-center gap-2">
-                        <BringToFront className="size-3.5 text-blue-500" />
+                        <BringToFront className="size-3.5 text-muted-foreground group-hover:text-foreground" />
                         <span className="font-medium text-[11px]">Trazer para Frente</span>
                       </div>
                       <kbd className="px-1 py-0.5 text-[9px] font-mono bg-muted text-muted-foreground rounded border border-border/50">
@@ -819,7 +745,7 @@ export const BoardContextMenu: React.FC<BoardContextMenuProps> = ({
                       className="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer text-left"
                     >
                       <div className="flex items-center gap-2">
-                        <SendToBack className="size-3.5 text-blue-500" />
+                        <SendToBack className="size-3.5 text-muted-foreground group-hover:text-foreground" />
                         <span className="font-medium text-[11px]">Enviar para Trás</span>
                       </div>
                       <kbd className="px-1 py-0.5 text-[9px] font-mono bg-muted text-muted-foreground rounded border border-border/50">
@@ -1005,7 +931,7 @@ export const BoardContextMenu: React.FC<BoardContextMenuProps> = ({
                       }}
                       className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer text-left"
                     >
-                      <StickyNote className="size-3.5 text-amber-500" />
+                      <StickyNote className="size-3.5 text-muted-foreground group-hover:text-foreground" />
                       <span className="font-medium text-[11px]">Nota Adesiva</span>
                     </button>
 
@@ -1016,9 +942,9 @@ export const BoardContextMenu: React.FC<BoardContextMenuProps> = ({
                           onCreateShape('rect');
                           onClose();
                         }}
-                        className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer text-left"
+                        className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer text-left group"
                       >
-                        <Square className="size-3.5 text-blue-500" />
+                        <Square className="size-3.5 text-muted-foreground group-hover:text-foreground" />
                         <span className="font-medium text-[11px]">Retângulo</span>
                       </button>
                     )}
@@ -1030,9 +956,9 @@ export const BoardContextMenu: React.FC<BoardContextMenuProps> = ({
                           onCreateShape('circle');
                           onClose();
                         }}
-                        className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer text-left"
+                        className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer text-left group"
                       >
-                        <Circle className="size-3.5 text-indigo-500" />
+                        <Circle className="size-3.5 text-muted-foreground group-hover:text-foreground" />
                         <span className="font-medium text-[11px]">Círculo</span>
                       </button>
                     )}
@@ -1044,9 +970,9 @@ export const BoardContextMenu: React.FC<BoardContextMenuProps> = ({
                           onCreateText();
                           onClose();
                         }}
-                        className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer text-left"
+                        className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer text-left group"
                       >
-                        <Type className="size-3.5 text-violet-500" />
+                        <Type className="size-3.5 text-muted-foreground group-hover:text-foreground" />
                         <span className="font-medium text-[11px]">Texto</span>
                       </button>
                     )}

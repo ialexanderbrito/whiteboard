@@ -51,3 +51,22 @@ test('BoardPage wires smartGuides and onToggleSmartGuides to CommandPalette', ()
   assert.match(boardSrc, /smartGuides:\s*smartGuidesEnabled/);
   assert.match(boardSrc, /onToggleSmartGuides:\s*handleToggleSmartGuides/);
 });
+
+test('CommandPalette organizes tools into distinct navigation and creation groups', () => {
+  const src = readSource('src/components/command/CommandPalette.tsx');
+  assert.match(src, /heading="Navegação & Modos"/);
+  assert.match(src, /heading="Criação & Desenho"/);
+  assert.doesNotMatch(src, /heading="Ferramentas do Canvas"/);
+});
+
+test('CommandPalette adheres strictly to black-and-white monochrome design standard', () => {
+  const src = readSource('src/components/command/CommandPalette.tsx');
+  // No rainbow Tailwind palette colors in icon badges or text
+  assert.doesNotMatch(src, /(amber|blue|indigo|cyan|emerald|violet|rose|teal|purple|pink)-\d+/);
+  // Header indicator is subtle neutral ring instead of emerald pulse
+  assert.doesNotMatch(src, /bg-emerald-500/);
+  assert.match(src, /bg-foreground\/40\s+ring-2\s+ring-border\/50/);
+  // Neutral icon badges inverted on selection
+  assert.match(src, /const itemIconClass =/);
+  assert.match(src, /group-data-\[selected=true\]:bg-foreground/);
+});
