@@ -630,7 +630,7 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
                     y={4}
                     width={14}
                     height={14}
-                    cornerRadius={isMirio || isDitador ? 2 : 0}
+                    cornerRadius={0}
                     listening={false}
                     perfectDrawEnabled={false}
                   />
@@ -641,7 +641,7 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
                     width={14}
                     height={14}
                     fill={hasUserReacted ? '#86efac' : 'transparent'}
-                    cornerRadius={isMirio || isDitador ? 2 : 7}
+                    cornerRadius={7}
                     listening={false}
                   />
                 )}

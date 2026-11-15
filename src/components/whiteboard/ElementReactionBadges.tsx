@@ -330,7 +330,7 @@ export const ElementReactionBadges: React.FC<ElementReactionBadgesProps> = React
                 y={4}
                 width={14}
                 height={14}
-                cornerRadius={isMirio || isDitador ? 2 : 0}
+                cornerRadius={0}
                 listening={false}
                 perfectDrawEnabled={false}
               />
