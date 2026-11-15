@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { Group, Arrow, Line, Text, Rect } from 'react-konva';
+import { Group, Arrow, Line, Text, Rect, Circle } from 'react-konva';
 import type Konva from 'konva';
 import type { CanvasElement } from '../../types/element';
 
@@ -28,6 +28,14 @@ export const ArrowItem: React.FC<ArrowItemProps> = React.memo(({
   const strokeWidth = element.strokeWidth || 3;
   const isLine = element.type === 'line';
   const isItemDraggable = draggable !== undefined ? draggable && !element.locked : !element.locked;
+  const isCurved = element.connectorStyle === 'curved';
+  const isBezier = isCurved && points.length === 8;
+  const tension = isCurved && !isBezier ? 0.35 : 0;
+
+  const startX = points[0];
+  const startY = points[1];
+  const endX = points[points.length - 2];
+  const endY = points[points.length - 1];
 
   return (
     <Group
@@ -70,9 +78,11 @@ export const ArrowItem: React.FC<ArrowItemProps> = React.memo(({
             points={points}
             stroke={remoteSelector ? remoteSelector.color : userSelectionColor}
             strokeWidth={strokeWidth + 5}
-            opacity={0.3}
+            opacity={0.35}
             lineCap="round"
             lineJoin="round"
+            tension={tension}
+            bezier={isBezier}
             listening={false}
             perfectDrawEnabled={false}
             shadowForStrokeEnabled={false}
@@ -85,9 +95,11 @@ export const ArrowItem: React.FC<ArrowItemProps> = React.memo(({
             fill={remoteSelector ? remoteSelector.color : userSelectionColor}
             stroke={remoteSelector ? remoteSelector.color : userSelectionColor}
             strokeWidth={strokeWidth + 5}
-            opacity={0.3}
+            opacity={0.35}
             lineCap="round"
             lineJoin="round"
+            tension={tension}
+            bezier={isBezier}
             listening={false}
             perfectDrawEnabled={false}
             shadowForStrokeEnabled={false}
@@ -102,6 +114,8 @@ export const ArrowItem: React.FC<ArrowItemProps> = React.memo(({
           strokeWidth={strokeWidth}
           lineCap="round"
           lineJoin="round"
+          tension={tension}
+          bezier={isBezier}
           hitStrokeWidth={Math.max(16, strokeWidth + 10)}
           perfectDrawEnabled={false}
           shadowForStrokeEnabled={false}
@@ -116,10 +130,42 @@ export const ArrowItem: React.FC<ArrowItemProps> = React.memo(({
           strokeWidth={strokeWidth}
           lineCap="round"
           lineJoin="round"
+          tension={tension}
+          bezier={isBezier}
           hitStrokeWidth={Math.max(16, strokeWidth + 10)}
           perfectDrawEnabled={false}
           shadowForStrokeEnabled={false}
         />
+      )}
+
+      {/* Alças de extremidade quando o conector está selecionado (estilo Miro/FigJam) */}
+      {isSelected && (
+        <>
+          <Circle
+            x={startX}
+            y={startY}
+            radius={element.startBinding ? 5 : 4}
+            fill={element.startBinding ? stroke : '#ffffff'}
+            stroke={userSelectionColor}
+            strokeWidth={2}
+            shadowColor="rgba(0,0,0,0.25)"
+            shadowBlur={3}
+            shadowOffset={{ x: 0, y: 1 }}
+            listening={false}
+          />
+          <Circle
+            x={endX}
+            y={endY}
+            radius={element.endBinding ? 5 : 4}
+            fill={element.endBinding ? stroke : '#ffffff'}
+            stroke={userSelectionColor}
+            strokeWidth={2}
+            shadowColor="rgba(0,0,0,0.25)"
+            shadowBlur={3}
+            shadowOffset={{ x: 0, y: 1 }}
+            listening={false}
+          />
+        </>
       )}
 
       {/* Tag do colega que está com a linha/seta selecionada */}
