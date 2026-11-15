@@ -55,6 +55,8 @@ interface StickyNoteItemProps {
   onHover?: (isHovered: boolean) => void;
 }
 
+const EMPTY_REACTIONS: Record<string, string[]> = Object.freeze({});
+
 export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
   element,
   currentUserId,
@@ -193,7 +195,7 @@ export const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(({
   };
 
   // Processa reações ativas no post-it
-  const reactions = element.reactions || {};
+  const reactions = element.reactions || EMPTY_REACTIONS;
   const activeReactions = useMemo(() => {
     const map = new Map<string, string[]>();
     for (const [key, users] of Object.entries(reactions)) {

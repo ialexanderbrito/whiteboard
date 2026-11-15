@@ -53,6 +53,8 @@ interface ElementReactionBadgesProps {
  * (formas, texto, sticker/gif, checklist...). Renderiza a fileira de pílulas na
  * borda inferior externa do elemento, badge de overflow (+N) e botão '+' de adição.
  */
+const EMPTY_REACTIONS: Record<string, string[]> = Object.freeze({});
+
 export const ElementReactionBadges: React.FC<ElementReactionBadgesProps> = React.memo(({
   element,
   localLeftX,
@@ -68,7 +70,7 @@ export const ElementReactionBadges: React.FC<ElementReactionBadgesProps> = React
 }) => {
   const [, setReactionRenderVersion] = useState(0);
 
-  const reactions = element.reactions || {};
+  const reactions = element.reactions || EMPTY_REACTIONS;
   const activeReactions = useMemo(() => {
     const map = new Map<string, string[]>();
     for (const [key, users] of Object.entries(reactions)) {

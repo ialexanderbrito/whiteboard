@@ -102,20 +102,23 @@ export const CreateBoardModal: React.FC<CreateBoardModalProps> = ({
 
   useEffect(() => {
     if (open) {
-      // Gera ID curto, limpo e direto sem prefixo board_
-      const generated = Math.random().toString(36).substring(2, 10);
-      setPregeneratedId(generated);
-      if (initialTemplate) {
-        setSelectedTemplateId(initialTemplate.id);
-        setBoardTitle(initialTemplate.shortTitle || initialTemplate.title);
-      } else {
-        setSelectedTemplateId('');
-        setBoardTitle('');
-      }
-      setDefaultPermission('edit');
-      setIsPasswordProtected(false);
-      setPassword('');
-      setCopiedLink(false);
+      const timer = setTimeout(() => {
+        // Gera ID curto, limpo e direto sem prefixo board_
+        const generated = Math.random().toString(36).substring(2, 10);
+        setPregeneratedId(generated);
+        if (initialTemplate) {
+          setSelectedTemplateId(initialTemplate.id);
+          setBoardTitle(initialTemplate.shortTitle || initialTemplate.title);
+        } else {
+          setSelectedTemplateId('');
+          setBoardTitle('');
+        }
+        setDefaultPermission('edit');
+        setIsPasswordProtected(false);
+        setPassword('');
+        setCopiedLink(false);
+      }, 0);
+      return () => clearTimeout(timer);
     }
   }, [open, initialTemplate]);
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, Component, type ErrorInfo, type ReactNode } from 'react';
+import React, { useState, Component, type ErrorInfo, type ReactNode } from 'react';
 import { 
   Lock, 
   Unlock, 
@@ -94,14 +94,18 @@ export const BoardPasswordSettingsModal: React.FC<BoardPasswordSettingsModalProp
   board,
   onSavePasswordSettings,
 }) => {
-  const [isEnabled, setIsEnabled] = useState(false);
-  const [password, setPassword] = useState('');
+  const [isEnabled, setIsEnabled] = useState(() => Boolean(board?.isPasswordProtected));
+  const [password, setPassword] = useState(() => board?.password || '');
   const [showPassword, setShowPassword] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const [prevOpen, setPrevOpen] = useState(open);
+  const [prevBoardId, setPrevBoardId] = useState(board?.id);
+  if (open !== prevOpen || board?.id !== prevBoardId) {
+    setPrevOpen(open);
+    setPrevBoardId(board?.id);
     if (board && open) {
       setIsEnabled(Boolean(board.isPasswordProtected));
       setPassword(board.password || '');
@@ -109,7 +113,7 @@ export const BoardPasswordSettingsModal: React.FC<BoardPasswordSettingsModalProp
       setSuccessMessage(null);
       setError(null);
     }
-  }, [board, open]);
+  }
 
   if (!board) return null;
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, Component, type ErrorInfo, type ReactNode } from 'react';
+import React, { useState, useMemo, useCallback, Component, type ErrorInfo, type ReactNode } from 'react';
 import { 
   Users, 
   Copy, 
@@ -160,12 +160,14 @@ export const BoardPermissionsModal: React.FC<BoardPermissionsModalProps> = ({
   const { resolvedTheme } = useTheme();
   const [copiedLink, setCopiedLink] = useState(false);
   const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
+  const [prevOpen, setPrevOpen] = useState(open);
 
-  useEffect(() => {
+  if (open !== prevOpen) {
+    setPrevOpen(open);
     if (open) {
       setRemovedIds(new Set());
     }
-  }, [open]);
+  }
 
   // Garante permissão válida com fallback seguro para 'edit' (mesmo quando board for nulo)
   const rawDefaultPermission = String(board?.defaultPermission || 'edit');
@@ -239,8 +241,84 @@ export const BoardPermissionsModal: React.FC<BoardPermissionsModalProps> = ({
     return list;
   }, [board, currentUser, defaultPermission, removedIds]);
 
-  // Se não houver quadro selecionado, não renderiza o conteúdo do modal
-  // (executado APÓS todos os hooks para não violar as Regras de Hooks)
+  const handleUpdateMemberRole = useCallback(
+    async (member: MemberEntry, newRole: BoardPermission | 'remove') => {
+      if (!board || member.isOwner) return;
+
+      if (newRole === 'remove') {
+        const targetId = member.uid || member.id;
+        setRemovedIds((prev) => new Set(prev).add(targetId));
+
+        try {
+          if (member.uid) {
+            await boardService.removeBoardMember(board.id, member.uid);
+          }
+          if (member.email) {
+            await boardService.removeBoardCollaborator(board.id, member.email);
+          }
+        } catch (e) {
+          console.warn('Erro ao chamar boardService.remove:', e);
+        }
+
+        const updatedMembers = { ...(board.members || {}) };
+        if (member.uid) {
+          delete updatedMembers[member.uid];
+        }
+
+        const safeRemoved = Array.isArray(board.removedMemberIds) ? board.removedMemberIds : [];
+        const updatedRemovedIds = Array.from(new Set([...safeRemoved, targetId]));
+
+        const updatedJoinRequests = { ...(board.joinRequests || {}) };
+        if (member.uid && updatedJoinRequests[member.uid]) {
+          updatedJoinRequests[member.uid] = {
+            ...updatedJoinRequests[member.uid],
+            status: 'rejected',
+            respondedAt: Date.now(),
+          };
+        }
+
+        await onUpdateBoardSettings(board.id, {
+          members: updatedMembers,
+          joinRequests: updatedJoinRequests,
+          removedMemberIds: updatedRemovedIds,
+        });
+        return;
+      }
+
+      // Atualiza papel individual do membro
+      const updates: Partial<Pick<Board, 'collaborators' | 'collaboratorEmails' | 'members' | 'removedMemberIds' | 'joinRequests'>> = {};
+
+      if (member.uid) {
+        const updatedMembers = { ...(board.members || {}) };
+        const existing = updatedMembers[member.uid];
+        updatedMembers[member.uid] = {
+          ...(existing || { joinedAt: Date.now() }),
+          uid: member.uid,
+          name: member.name,
+          role: newRole,
+          hasCustomRole: true,
+          lastSeen: Date.now(),
+        };
+        updates.members = updatedMembers;
+
+        // Mantém joinRequests perfeitamente sincronizado com o novo papel
+        const updatedJoinRequests = { ...(board.joinRequests || {}) };
+        if (updatedJoinRequests[member.uid]) {
+          updatedJoinRequests[member.uid] = {
+            ...updatedJoinRequests[member.uid],
+            status: 'approved',
+            assignedRole: newRole,
+            respondedAt: Date.now(),
+          };
+          updates.joinRequests = updatedJoinRequests;
+        }
+      }
+
+      await onUpdateBoardSettings(board.id, updates);
+    },
+    [board, onUpdateBoardSettings]
+  );
+
   if (!board) return null;
 
   const CurrentGeneralConfig = PERMISSION_CONFIG[defaultPermission] || PERMISSION_CONFIG.edit;
@@ -281,81 +359,6 @@ export const BoardPermissionsModal: React.FC<BoardPermissionsModalProps> = ({
     } catch (err) {
       console.error('Erro ao atualizar permissão geral:', err);
     }
-  };
-
-  const handleUpdateMemberRole = async (member: MemberEntry, newRole: BoardPermission | 'remove') => {
-    if (member.isOwner) return;
-
-    if (newRole === 'remove') {
-      const targetId = member.uid || member.id;
-      setRemovedIds((prev) => new Set(prev).add(targetId));
-
-      try {
-        if (member.uid) {
-          await boardService.removeBoardMember(board.id, member.uid);
-        }
-        if (member.email) {
-          await boardService.removeBoardCollaborator(board.id, member.email);
-        }
-      } catch (e) {
-        console.warn('Erro ao chamar boardService.remove:', e);
-      }
-
-      const updatedMembers = { ...(board.members || {}) };
-      if (member.uid) {
-        delete updatedMembers[member.uid];
-      }
-
-      const safeRemoved = Array.isArray(board.removedMemberIds) ? board.removedMemberIds : [];
-      const updatedRemovedIds = Array.from(new Set([...safeRemoved, targetId]));
-
-      const updatedJoinRequests = { ...(board.joinRequests || {}) };
-      if (member.uid && updatedJoinRequests[member.uid]) {
-        updatedJoinRequests[member.uid] = {
-          ...updatedJoinRequests[member.uid],
-          status: 'rejected',
-          respondedAt: Date.now(),
-        };
-      }
-
-      await onUpdateBoardSettings(board.id, {
-        members: updatedMembers,
-        joinRequests: updatedJoinRequests,
-        removedMemberIds: updatedRemovedIds,
-      });
-      return;
-    }
-
-    // Atualiza papel individual do membro
-    const updates: Partial<Pick<Board, 'collaborators' | 'collaboratorEmails' | 'members' | 'removedMemberIds' | 'joinRequests'>> = {};
-
-    if (member.uid) {
-      const updatedMembers = { ...(board.members || {}) };
-      const existing = updatedMembers[member.uid];
-      updatedMembers[member.uid] = {
-        ...(existing || { joinedAt: Date.now() }),
-        uid: member.uid,
-        name: member.name,
-        role: newRole,
-        hasCustomRole: true,
-        lastSeen: Date.now(),
-      };
-      updates.members = updatedMembers;
-
-      // Mantém joinRequests perfeitamente sincronizado com o novo papel
-      const updatedJoinRequests = { ...(board.joinRequests || {}) };
-      if (updatedJoinRequests[member.uid]) {
-        updatedJoinRequests[member.uid] = {
-          ...updatedJoinRequests[member.uid],
-          status: 'approved',
-          assignedRole: newRole,
-          respondedAt: Date.now(),
-        };
-        updates.joinRequests = updatedJoinRequests;
-      }
-    }
-
-    await onUpdateBoardSettings(board.id, updates);
   };
 
   return (

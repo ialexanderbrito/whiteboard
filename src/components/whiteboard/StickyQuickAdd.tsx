@@ -23,15 +23,15 @@ const DIRECTIONS: QuickAddDirection[] = [
   { direction: 'bottom', label: 'abaixo' },
 ];
 
-/** Distância (em pixels de tela) entre a borda do post-it e o botão de adição. */
-const QUICK_ADD_SCREEN_GAP = 24;
-const QUICK_ADD_MIN_STICKY_SIZE = 48;
+/** Distância (em pixels de tela) entre a borda do elemento e o botão de adição. */
+const QUICK_ADD_SCREEN_GAP = 20;
+const QUICK_ADD_MIN_STICKY_SIZE = 40;
 
 /**
- * Quatro botões "+" ao redor de um post-it selecionado, estilo FigJam.
+ * Quatro botões "+" ao redor de um post-it ou forma geométrica selecionada.
  *
  * O posicionamento é escrito direto no DOM através do viewport compartilhado,
- * então pan/zoom não re-renderizam o board inteiro.
+ * garantindo navegação a 60 FPS sem re-renderizar o canvas.
  */
 export const StickyQuickAdd: React.FC<StickyQuickAddProps> = React.memo(({
   sticky,
@@ -55,7 +55,7 @@ export const StickyQuickAdd: React.FC<StickyQuickAddProps> = React.memo(({
         });
       };
 
-      // Evita poluição visual em zooms muito afastados ou com o post-it fora da tela.
+      // Evita poluição visual em zooms muito afastados ou com o elemento fora da tela.
       if (Math.min(width, height) < QUICK_ADD_MIN_STICKY_SIZE) {
         hideAll();
         return;
@@ -120,9 +120,9 @@ export const StickyQuickAdd: React.FC<StickyQuickAddProps> = React.memo(({
             e.stopPropagation();
             if (!disabled) onCreate(direction);
           }}
-          className="pointer-events-auto absolute hidden size-7 -translate-x-1/2 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full border border-border/80 bg-popover/95 text-muted-foreground shadow-md backdrop-blur-md transition-[transform,background-color,color,border-color] duration-150 ease-out hover:scale-110 hover:border-primary hover:bg-primary hover:text-primary-foreground active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+          className="pointer-events-auto absolute hidden size-5 -translate-x-1/2 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full border border-border/80 bg-background/95 dark:bg-card/95 text-muted-foreground shadow-xs backdrop-blur-xs transition-[transform,background-color,color,border-color,box-shadow] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] hover:scale-115 hover:border-foreground/50 hover:bg-background hover:text-foreground hover:shadow-xs active:scale-90 disabled:pointer-events-none disabled:opacity-40"
         >
-          <Plus className="size-3.5" strokeWidth={2.5} />
+          <Plus className="size-2.5" strokeWidth={2.2} />
         </button>
       ))}
     </div>

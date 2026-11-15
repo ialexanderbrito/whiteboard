@@ -60,27 +60,31 @@ export const WaitingRoomScreen: React.FC<WaitingRoomScreenProps> = ({
   // Atualiza cooldown regressivo quando rejeitado
   useEffect(() => {
     if (requestStatus !== 'rejected') {
-      setCooldownRemaining(0);
       return;
     }
 
-    if (currentRequest?.respondedAt) {
+    const calculateRemaining = () => {
+      if (!currentRequest?.respondedAt) return 0;
       const elapsed = Math.floor((Date.now() - currentRequest.respondedAt) / 1000);
-      const remaining = Math.max(0, 120 - elapsed);
-      setCooldownRemaining(remaining);
-    }
+      return Math.max(0, 120 - elapsed);
+    };
+
+    const initialTimer = setTimeout(() => {
+      setCooldownRemaining(calculateRemaining());
+    }, 0);
 
     const timer = setInterval(() => {
-      setCooldownRemaining((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          return 0;
-        }
-        return prev - 1;
-      });
+      const left = calculateRemaining();
+      setCooldownRemaining(left);
+      if (left <= 0) {
+        clearInterval(timer);
+      }
     }, 1000);
 
-    return () => clearInterval(timer);
+    return () => {
+      clearTimeout(initialTimer);
+      clearInterval(timer);
+    };
   }, [requestStatus, currentRequest?.respondedAt]);
 
   const handleRetryRequest = async () => {

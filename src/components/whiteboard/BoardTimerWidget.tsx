@@ -42,7 +42,7 @@ const MUSIC_PRESETS = [
   { id: 'nature', label: '🌿 Natureza Relax', url: 'https://www.youtube.com/watch?v=eKFTSSKCzWA' },
 ];
 
-export function extractYouTubeVideoId(url?: string): string | null {
+function extractYouTubeVideoId(url?: string): string | null {
   if (!url) return null;
   const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})/);
   return match ? match[1] : null;
@@ -101,44 +101,18 @@ export const BoardTimerWidget: React.FC<BoardTimerWidgetProps> = ({
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const chimeTriggeredRef = useRef(false);
 
-  // Se o usuário clicar para abrir via menu, reseta fechamento manual
-  useEffect(() => {
-    if (isOpen) {
-      setClosedTimestamp(null);
-    }
-  }, [isOpen]);
-
   // Assina sincronização em tempo real (Firestore + RTDB + BroadcastChannel)
   useEffect(() => {
     if (!boardId) return;
 
     const unsubscribe = timerService.subscribeTimer(boardId, (state) => {
       setTimerState(state);
+      setDisplaySeconds(state.remainingSeconds);
       chimeTriggeredRef.current = false;
     });
 
     return unsubscribe;
   }, [boardId]);
-
-  // Se houver uma nova ação de timer (iniciado, reiniciado, etc.) posterior ao fechamento manual, reabre o widget
-  useEffect(() => {
-    if (
-      timerState.lastActionTimestamp &&
-      closedTimestamp &&
-      timerState.lastActionTimestamp > closedTimestamp
-    ) {
-      setClosedTimestamp(null);
-    }
-  }, [timerState.lastActionTimestamp, closedTimestamp]);
-
-  // Se o timer estiver rodando e seu início for posterior ao fechamento, reabre
-  useEffect(() => {
-    if (timerState.isRunning && closedTimestamp && timerState.startedAt) {
-      if (timerState.startedAt > closedTimestamp) {
-        setClosedTimestamp(null);
-      }
-    }
-  }, [timerState.isRunning, timerState.startedAt, closedTimestamp]);
 
   const handleCloseWidget = () => {
     setClosedTimestamp(Date.now());
@@ -152,7 +126,6 @@ export const BoardTimerWidget: React.FC<BoardTimerWidgetProps> = ({
   // Loop de contagem regressiva baseado em timestamps reais sem desvio de tempo
   useEffect(() => {
     if (!timerState.isRunning || !timerState.endsAt) {
-      setDisplaySeconds(timerState.remainingSeconds);
       return;
     }
 
@@ -176,11 +149,14 @@ export const BoardTimerWidget: React.FC<BoardTimerWidgetProps> = ({
       }
     };
 
-    updateDisplay();
+    const initialTimer = setTimeout(updateDisplay, 0);
     const interval = setInterval(updateDisplay, 250);
 
-    return () => clearInterval(interval);
-  }, [timerState.isRunning, timerState.endsAt, timerState.remainingSeconds]);
+    return () => {
+      clearTimeout(initialTimer);
+      clearInterval(interval);
+    };
+  }, [timerState.isRunning, timerState.endsAt]);
 
   const videoId = useMemo(() => {
     return extractYouTubeVideoId(timerState.youtubeUrl || 'https://www.youtube.com/watch?v=wF2JZZPL7G4');
@@ -307,7 +283,8 @@ export const BoardTimerWidget: React.FC<BoardTimerWidgetProps> = ({
   // 3. isOpen local está ativo (o usuário abriu pelo menu)
   // E o usuário não fechou manualmente após a última ação desta sessão
   const isClosedManually = closedTimestamp !== null && (
-    !timerState.lastActionTimestamp || closedTimestamp >= timerState.lastActionTimestamp
+    (!timerState.lastActionTimestamp || closedTimestamp >= timerState.lastActionTimestamp) &&
+    (!timerState.startedAt || closedTimestamp >= timerState.startedAt)
   );
 
   const isWidgetVisible = (

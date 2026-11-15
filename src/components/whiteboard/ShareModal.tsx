@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { 
   Share2, 
   Copy, 
@@ -96,28 +96,31 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   const [showPasswordText, setShowPasswordText] = useState(false);
   const [passwordSaved, setPasswordSaved] = useState(false);
 
-  useEffect(() => {
-    if (board) {
-      setHasPassword(Boolean(board.isPasswordProtected));
-      setBoardPassword('');
-    }
-  }, [board]);
+  const [prevBoardId, setPrevBoardId] = useState(board?.id);
+  if (board?.id !== prevBoardId) {
+    setPrevBoardId(board?.id);
+    setHasPassword(Boolean(board?.isPasswordProtected));
+    setBoardPassword('');
+  }
 
-  useEffect(() => {
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
     if (open) {
       setRemovedIds(new Set());
     }
-  }, [open]);
+  }
 
   const defaultPermission: BoardPermission = board?.defaultPermission || 'edit';
   const isOwner = isBoardOwner(board, currentUser);
 
+  const joinRequests = board?.joinRequests;
   const pendingRequests = useMemo(() => {
-    if (!board?.joinRequests) return [];
-    return Object.values(board.joinRequests).filter(
+    if (!joinRequests) return [];
+    return Object.values(joinRequests).filter(
       (req): req is JoinRequest => Boolean(req && req.status === 'pending')
     );
-  }, [board?.joinRequests]);
+  }, [joinRequests]);
 
   const handleApproveRequest = async (uid: string, role: BoardPermission, req?: JoinRequest) => {
     if (!board) return;
@@ -195,141 +198,144 @@ export const ShareModal: React.FC<ShareModalProps> = ({
     }
   };
 
-  const handleUpdatePersonRole = async (person: AccessPerson, newRole: BoardPermission | 'remove') => {
-    if (!board || !onUpdateBoardSettings || person.isOwner) return;
+  const handleUpdatePersonRole = useCallback(
+    async (person: AccessPerson, newRole: BoardPermission | 'remove') => {
+      if (!board || !onUpdateBoardSettings || person.isOwner) return;
 
-    if (newRole === 'remove' || newRole === 'none') {
-      // 1. Marca imediatamente no estado local para remoção instantânea na UI do modal
-      const idKey = person.id;
-      const uidKey = person.uid || '';
-      const emailKey = person.email ? person.email.replace(/[.#$[\]]/g, '_') : '';
+      if (newRole === 'remove' || newRole === 'none') {
+        // 1. Marca imediatamente no estado local para remoção instantânea na UI do modal
+        const idKey = person.id;
+        const uidKey = person.uid || '';
+        const emailKey = person.email ? person.email.replace(/[.#$[\]]/g, '_') : '';
+        setRemovedIds((prev) => {
+          const next = new Set(prev);
+          if (idKey) next.add(idKey);
+          if (uidKey) next.add(uidKey);
+          if (emailKey) {
+            next.add(emailKey);
+            next.add(`email_${emailKey}`);
+          }
+          if (person.email) next.add(person.email);
+          return next;
+        });
+
+        // 2. Remove presença e atualiza Firestore
+        if (person.uid) {
+          await boardService.removeBoardMember(board.id, person.uid);
+        }
+
+        // 3. Remove colaborador de e-mail se houver
+        if (person.email) {
+          await boardService.removeBoardCollaborator(board.id, person.email);
+        }
+
+        // 4. Remove definitivamente da lista de membros
+        const updatedMembers = { ...(board.members || {}) };
+        if (person.uid) {
+          delete updatedMembers[person.uid];
+        }
+        const updatedRemoved = Array.from(
+          new Set([...(board.removedMemberIds || []), ...(person.uid ? [person.uid] : [])])
+        );
+
+        const updatedCollaborators = { ...(board.collaborators || {}) };
+        if (person.email) {
+          const cleanKey = person.email.replace(/[.#$[\]]/g, '_');
+          delete updatedCollaborators[cleanKey];
+        }
+        const collaboratorEmails = Object.values(updatedCollaborators)
+          .map((c) => (c?.email ? c.email.toLowerCase() : ''))
+          .filter(Boolean);
+
+        const updatedJoinRequests = { ...(board.joinRequests || {}) };
+        if (person.uid && updatedJoinRequests[person.uid]) {
+          updatedJoinRequests[person.uid] = {
+            ...updatedJoinRequests[person.uid],
+            status: 'rejected',
+            respondedAt: Date.now(),
+          };
+        }
+
+        await onUpdateBoardSettings({
+          members: updatedMembers,
+          joinRequests: updatedJoinRequests,
+          removedMemberIds: updatedRemoved,
+          collaborators: updatedCollaborators,
+          collaboratorEmails,
+        });
+        return;
+      }
+
+      // Se estiver re-atribuindo papel válido ('edit' | 'comment' | 'view'):
+      const updatedRemoved = (board.removedMemberIds || []).filter(
+        (id) => id !== person.uid && (!person.email || id !== person.email)
+      );
+
+      // Limpa do estado local de remoção do modal
       setRemovedIds((prev) => {
         const next = new Set(prev);
-        if (idKey) next.add(idKey);
-        if (uidKey) next.add(uidKey);
-        if (emailKey) {
-          next.add(emailKey);
-          next.add(`email_${emailKey}`);
+        if (person.id) next.delete(person.id);
+        if (person.uid) next.delete(person.uid);
+        if (person.email) {
+          next.delete(person.email);
+          next.delete(`email_${person.email.replace(/[.#$[\]]/g, '_')}`);
         }
-        if (person.email) next.add(person.email);
         return next;
       });
 
-      // 2. Remove presença e atualiza Firestore
-      if (person.uid) {
-        await boardService.removeBoardMember(board.id, person.uid);
-      }
-
-      // 3. Remove colaborador de e-mail se houver
-      if (person.email) {
-        await boardService.removeBoardCollaborator(board.id, person.email);
-      }
-
-      // 4. Remove definitivamente da lista de membros
-      const updatedMembers = { ...(board.members || {}) };
-      if (person.uid) {
-        delete updatedMembers[person.uid];
-      }
-      const updatedRemoved = Array.from(
-        new Set([...(board.removedMemberIds || []), ...(person.uid ? [person.uid] : [])])
-      );
-
-      const updatedCollaborators = { ...(board.collaborators || {}) };
-      if (person.email) {
-        const cleanKey = person.email.replace(/[.#$[\]]/g, '_');
-        delete updatedCollaborators[cleanKey];
-      }
-      const collaboratorEmails = Object.values(updatedCollaborators)
-        .map((c) => (c?.email ? c.email.toLowerCase() : ''))
-        .filter(Boolean);
-
-      const updatedJoinRequests = { ...(board.joinRequests || {}) };
-      if (person.uid && updatedJoinRequests[person.uid]) {
-        updatedJoinRequests[person.uid] = {
-          ...updatedJoinRequests[person.uid],
-          status: 'rejected',
-          respondedAt: Date.now(),
-        };
-      }
-
-      await onUpdateBoardSettings({
-        members: updatedMembers,
-        joinRequests: updatedJoinRequests,
+      const updates: Partial<Pick<Board, 'collaborators' | 'collaboratorEmails' | 'members' | 'removedMemberIds' | 'joinRequests'>> = {
         removedMemberIds: updatedRemoved,
-        collaborators: updatedCollaborators,
-        collaboratorEmails,
-      });
-      return;
-    }
-
-    // Se estiver re-atribuindo papel válido ('edit' | 'comment' | 'view'):
-    const updatedRemoved = (board.removedMemberIds || []).filter(
-      (id) => id !== person.uid && (!person.email || id !== person.email)
-    );
-
-    // Limpa do estado local de remoção do modal
-    setRemovedIds((prev) => {
-      const next = new Set(prev);
-      if (person.id) next.delete(person.id);
-      if (person.uid) next.delete(person.uid);
-      if (person.email) {
-        next.delete(person.email);
-        next.delete(`email_${person.email.replace(/[.#$[\]]/g, '_')}`);
-      }
-      return next;
-    });
-
-    const updates: Partial<Pick<Board, 'collaborators' | 'collaboratorEmails' | 'members' | 'removedMemberIds' | 'joinRequests'>> = {
-      removedMemberIds: updatedRemoved,
-    };
-
-    if (person.uid) {
-      await boardService.unremoveBoardMember(board.id, person.uid, newRole);
-      const updatedMembers = { ...(board.members || {}) };
-      const existing = updatedMembers[person.uid];
-      updatedMembers[person.uid] = {
-        uid: person.uid,
-        name: person.name,
-        email: person.email || null,
-        photoURL: person.photoURL || null,
-        role: newRole,
-        hasCustomRole: true,
-        joinedAt: existing?.joinedAt || Date.now(),
-        lastSeen: Date.now(),
-        isAnonymous: person.isAnonymous,
-        color: person.color || '#3b82f6',
       };
-      updates.members = updatedMembers;
 
-      // Mantém joinRequests perfeitamente sincronizado com o novo papel
-      const updatedJoinRequests = { ...(board.joinRequests || {}) };
-      if (updatedJoinRequests[person.uid]) {
-        updatedJoinRequests[person.uid] = {
-          ...updatedJoinRequests[person.uid],
-          status: 'approved',
-          assignedRole: newRole,
-          respondedAt: Date.now(),
+      if (person.uid) {
+        await boardService.unremoveBoardMember(board.id, person.uid, newRole);
+        const updatedMembers = { ...(board.members || {}) };
+        const existing = updatedMembers[person.uid];
+        updatedMembers[person.uid] = {
+          uid: person.uid,
+          name: person.name,
+          email: person.email || null,
+          photoURL: person.photoURL || null,
+          role: newRole,
+          hasCustomRole: true,
+          joinedAt: existing?.joinedAt || Date.now(),
+          lastSeen: Date.now(),
+          isAnonymous: person.isAnonymous,
+          color: person.color || '#3b82f6',
         };
-        updates.joinRequests = updatedJoinRequests;
+        updates.members = updatedMembers;
+
+        // Mantém joinRequests perfeitamente sincronizado com o novo papel
+        const updatedJoinRequests = { ...(board.joinRequests || {}) };
+        if (updatedJoinRequests[person.uid]) {
+          updatedJoinRequests[person.uid] = {
+            ...updatedJoinRequests[person.uid],
+            status: 'approved',
+            assignedRole: newRole,
+            respondedAt: Date.now(),
+          };
+          updates.joinRequests = updatedJoinRequests;
+        }
       }
-    }
 
-    if (person.email) {
-      const emailKey = person.email.replace(/[.#$[\]]/g, '_');
-      const updatedCollaborators = { ...(board.collaborators || {}) };
-      updatedCollaborators[emailKey] = {
-        email: person.email,
-        role: newRole,
-        addedAt: Date.now(),
-      };
-      updates.collaborators = updatedCollaborators;
-      updates.collaboratorEmails = Object.values(updatedCollaborators)
-        .map((c) => c?.email?.toLowerCase() || '')
-        .filter(Boolean);
-    }
+      if (person.email) {
+        const emailKey = person.email.replace(/[.#$[\]]/g, '_');
+        const updatedCollaborators = { ...(board.collaborators || {}) };
+        updatedCollaborators[emailKey] = {
+          email: person.email,
+          role: newRole,
+          addedAt: Date.now(),
+        };
+        updates.collaborators = updatedCollaborators;
+        updates.collaboratorEmails = Object.values(updatedCollaborators)
+          .map((c) => c?.email?.toLowerCase() || '')
+          .filter(Boolean);
+      }
 
-    await onUpdateBoardSettings(updates);
-  };
+      await onUpdateBoardSettings(updates);
+    },
+    [board, onUpdateBoardSettings]
+  );
 
   // Unifica e calcula todas as pessoas com acesso ao quadro (Dono, Membros registrados, Visitantes online e Convites)
   const peopleWithAccess = useMemo<AccessPerson[]>(() => {

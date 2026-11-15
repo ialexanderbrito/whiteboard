@@ -26,6 +26,8 @@ interface StickyReactionBarProps {
  * - Modo 'overflow': painel detalhado que lista todas as reações ativas do post-it com contagem,
  *   indicando quais o usuário votou e permitindo votar/desvotar ou adicionar novas reações.
  */
+const EMPTY_REACTIONS: Record<string, string[]> = Object.freeze({});
+
 export const StickyReactionBar: React.FC<StickyReactionBarProps> = React.memo(({
   sticky,
   currentUserId,
@@ -40,7 +42,7 @@ export const StickyReactionBar: React.FC<StickyReactionBarProps> = React.memo(({
   const isOverflowMode = mode === 'overflow';
 
   // Processa todas as reações ativas no post-it
-  const reactions = sticky.reactions || {};
+  const reactions = sticky.reactions || EMPTY_REACTIONS;
   const activeReactions = useMemo(() => {
     const map = new Map<string, string[]>();
     for (const [key, users] of Object.entries(reactions)) {
