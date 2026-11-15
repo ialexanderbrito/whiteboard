@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, Suspense, lazy } from 'react';
+import Konva from 'konva';
 import { useParams, useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { boardService, cleanBoardId } from '../services/boardService';
@@ -87,13 +88,15 @@ export const BoardPage: React.FC = () => {
   const { currentUser, loading: authLoading, updateGuestProfile, logout } = useAuth();
 
   const [board, setBoard] = useState<Board | null>(null);
-  const [boardLoading, setBoardLoading] = useState<boolean>(true);
-  const [boardNotFound, setBoardNotFound] = useState<boolean>(false);
+  const [boardLoading, setBoardLoading] = useState<boolean>(() => Boolean(boardId));
+  const [boardNotFound, setBoardNotFound] = useState<boolean>(() => !boardId);
   const [elements, setElements] = useState<CanvasElement[]>([]);
   // Espelho síncrono da lista para callbacks estáveis (evita recriar handlers
   // e re-renderizar todos os itens a cada alteração de elemento).
   const elementsRef = useRef(elements);
-  elementsRef.current = elements;
+  useLayoutEffect(() => {
+    elementsRef.current = elements;
+  }, [elements]);
   const [remoteUsers, setRemoteUsers] = useState<UserPresence[]>([]);
   const [currentTool, setCurrentTool] = useState<ToolType>('select');
   const [selectedColor, setSelectedColor] = useState(STICKY_COLORS[0].value);
@@ -101,7 +104,13 @@ export const BoardPage: React.FC = () => {
   const [isMobile, setIsMobile] = useState(() =>
     typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches
   );
-  const [isMobileNoticeOpen, setIsMobileNoticeOpen] = useState(false);
+  const [isMobileNoticeOpen, setIsMobileNoticeOpen] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    const isMob = window.matchMedia('(max-width: 767px)').matches;
+    if (!isMob) return false;
+    const dismissedKey = boardId ? `mirio_mobile_notice_${boardId}` : 'mirio_mobile_notice';
+    return sessionStorage.getItem(dismissedKey) !== '1';
+  });
   const [mirioReactionUnlocked, setMirioReactionUnlocked] = useState(isMirioReactionUnlocked);
   const [ditadorReactionUnlocked, setDitadorReactionUnlocked] = useState(isDitadorReactionUnlocked);
 
@@ -171,22 +180,20 @@ export const BoardPage: React.FC = () => {
 
   useEffect(() => {
     const mediaQuery = window.matchMedia('(max-width: 767px)');
-    const handleViewportChange = (event: MediaQueryListEvent) => setIsMobile(event.matches);
-    setIsMobile(mediaQuery.matches);
+    const handleViewportChange = (event: MediaQueryListEvent) => {
+      setIsMobile(event.matches);
+      if (!event.matches) {
+        setIsMobileNoticeOpen(false);
+      } else {
+        const dismissedKey = boardId ? `mirio_mobile_notice_${boardId}` : 'mirio_mobile_notice';
+        if (sessionStorage.getItem(dismissedKey) !== '1') {
+          setIsMobileNoticeOpen(true);
+        }
+      }
+    };
     mediaQuery.addEventListener('change', handleViewportChange);
     return () => mediaQuery.removeEventListener('change', handleViewportChange);
-  }, []);
-
-  useEffect(() => {
-    if (isMobile) {
-      const dismissedKey = boardId ? `mirio_mobile_notice_${boardId}` : 'mirio_mobile_notice';
-      const alreadyDismissed =
-        typeof sessionStorage !== 'undefined' && sessionStorage.getItem(dismissedKey) === '1';
-      setIsMobileNoticeOpen(!alreadyDismissed);
-    } else {
-      setIsMobileNoticeOpen(false);
-    }
-  }, [isMobile, boardId]);
+  }, [boardId]);
 
   const handleMobileNoticeOpenChange = useCallback(
     (nextOpen: boolean) => {
@@ -442,13 +449,35 @@ export const BoardPage: React.FC = () => {
   };
 
   const handleExportPNG = () => {
-    const canvas = document.querySelector('.konvajs-content canvas') as HTMLCanvasElement | null;
-    if (!canvas) return;
-    const dataUrl = canvas.toDataURL('image/png');
-    const a = document.createElement('a');
-    a.href = dataUrl;
-    a.download = `${(board?.title || 'quadro').replace(/\s+/g, '_')}_export.png`;
-    a.click();
+    try {
+      let dataUrl: string | null = null;
+      if (typeof Konva !== 'undefined' && Konva.stages && Konva.stages.length > 0) {
+        const stage = Konva.stages[0];
+        dataUrl = stage.toDataURL({ pixelRatio: 2 });
+      } else {
+        const canvas = document.querySelector('.konvajs-content canvas') as HTMLCanvasElement | null;
+        if (canvas) {
+          dataUrl = canvas.toDataURL('image/png');
+        }
+      }
+
+      if (!dataUrl) return;
+      const a = document.createElement('a');
+      a.href = dataUrl;
+      a.download = `${(board?.title || 'quadro').replace(/\s+/g, '_')}_export.png`;
+      a.click();
+    } catch (err) {
+      console.warn('Erro ao exportar canvas para PNG (imagem com restrição de CORS no navegador):', err);
+      try {
+        const canvas = document.querySelector('.konvajs-content canvas') as HTMLCanvasElement | null;
+        if (canvas) {
+          const a = document.createElement('a');
+          a.href = canvas.toDataURL('image/png');
+          a.download = `${(board?.title || 'quadro').replace(/\s+/g, '_')}_export.png`;
+          a.click();
+        }
+      } catch {}
+    }
   };
 
   const handleStartTimerQuick = (seconds: number) => {
@@ -478,16 +507,10 @@ export const BoardPage: React.FC = () => {
   };
 
   // Proteção por Senha do Quadro
-  const [isUnlocked, setIsUnlocked] = useState(false);
-
-  useEffect(() => {
-    if (boardId) {
-      const saved = sessionStorage.getItem(`mirio_unlocked_${boardId}`);
-      if (saved === 'true') {
-        setIsUnlocked(true);
-      }
-    }
-  }, [boardId]);
+  const [isUnlocked, setIsUnlocked] = useState(() => {
+    if (!boardId || typeof sessionStorage === 'undefined') return false;
+    return sessionStorage.getItem(`mirio_unlocked_${boardId}`) === 'true';
+  });
 
   const isPasswordRequired = Boolean(
     board?.isPasswordProtected &&
@@ -496,6 +519,14 @@ export const BoardPage: React.FC = () => {
     board.ownerId !== currentUser.uid &&
     !isUnlocked
   );
+
+  const isOwner = isBoardOwner(board, currentUser);
+  const isWaitingInRoom = shouldShowWaitingRoom(board, currentUser, isUnlocked);
+  const boardPermission = getUserBoardPermission(board, currentUser, isUnlocked);
+  const isCommentOnly = !isMobile && !isOwner && boardPermission === 'comment';
+  const isReadOnly = isMobile || (!isOwner && boardPermission === 'view');
+  const hasNoAccess = !isOwner && (boardPermission === 'none' || isWaitingInRoom || isPasswordRequired) && !isUnlocked;
+  const isAccessBlocked = isPasswordRequired || isWaitingInRoom || hasNoAccess;
 
   const handleUnlockPassword = async (passwordEntered: string): Promise<boolean> => {
     const isMatch = await verifyBoardPassword(passwordEntered, board?.password);
@@ -514,12 +545,12 @@ export const BoardPage: React.FC = () => {
   const [timerState, setTimerState] = useState<BoardTimerState | null>(null);
 
   useEffect(() => {
-    if (!boardId || !currentUser) return;
+    if (!boardId || !currentUser || isAccessBlocked) return;
     const unsubscribe = timerService.subscribeTimer(boardId, (state) => {
       setTimerState(state);
     });
     return unsubscribe;
-  }, [boardId, currentUser]);
+  }, [boardId, currentUser, isAccessBlocked]);
 
   const handleToggleTimer = () => {
     const isCurrentlyActive = isTimerOpen || Boolean(timerState?.isOpenForEveryone) || Boolean(timerState?.isRunning);
@@ -539,12 +570,12 @@ export const BoardPage: React.FC = () => {
   const [isVotingSetupOpen, setIsVotingSetupOpen] = useState(false);
 
   useEffect(() => {
-    if (!boardId) return;
+    if (!boardId || isAccessBlocked) return;
     const unsubscribe = votingService.subscribeVoting(boardId, (data) => {
       setVotingData(data);
     });
     return unsubscribe;
-  }, [boardId]);
+  }, [boardId, isAccessBlocked]);
 
   // Notificação com áudio quando uma nova sessão de votação é iniciada para alertar todos na sala
   const prevSessionIdRef = useRef<string | null>(null);
@@ -563,7 +594,7 @@ export const BoardPage: React.FC = () => {
       }
     }
     prevSessionIdRef.current = currentSession?.id || null;
-  }, [votingData?.session?.id, votingData?.session?.status]);
+  }, [votingData?.session]);
 
   // Monitora encerramento remoto ou por timer para abrir o pódio/resultados
   const prevSessionStatusRef = useRef<string | undefined>(undefined);
@@ -667,16 +698,16 @@ export const BoardPage: React.FC = () => {
     setHistoryMeta({ canUndo: true, canRedo: false });
   }, [elements]);
 
+  const [prevBoardId, setPrevBoardId] = useState(boardId);
+  if (boardId !== prevBoardId) {
+    setPrevBoardId(boardId);
+    setBoardLoading(Boolean(boardId));
+    setBoardNotFound(false);
+  }
+
   // Carrega e escuta metadados do quadro em tempo real
   useEffect(() => {
-    if (!boardId) {
-      setBoardNotFound(true);
-      setBoardLoading(false);
-      return;
-    }
-
-    setBoardLoading(true);
-    setBoardNotFound(false);
+    if (!boardId) return;
 
     const unsubscribe = boardService.subscribeBoard(boardId, (b) => {
       if (b) {
@@ -708,25 +739,22 @@ export const BoardPage: React.FC = () => {
     }
   }, [board?.title]);
 
-  const isOwner = isBoardOwner(board, currentUser);
-  const isWaitingInRoom = shouldShowWaitingRoom(board, currentUser, isUnlocked);
-  const boardPermission = getUserBoardPermission(board, currentUser, isUnlocked);
-  const isCommentOnly = !isMobile && !isOwner && boardPermission === 'comment';
-  const isReadOnly = isMobile || (!isOwner && boardPermission === 'view');
-  const hasNoAccess = !isOwner && (boardPermission === 'none' || isWaitingInRoom) && !isUnlocked;
-
   // Ajusta automaticamente a ferramenta ativa se as permissões do usuário mudarem em tempo real
-  useEffect(() => {
+  const [prevReadOnly, setPrevReadOnly] = useState(isReadOnly);
+  const [prevCommentOnly, setPrevCommentOnly] = useState(isCommentOnly);
+  if (isReadOnly !== prevReadOnly || isCommentOnly !== prevCommentOnly) {
+    setPrevReadOnly(isReadOnly);
+    setPrevCommentOnly(isCommentOnly);
     if (isReadOnly && !['select', 'pan', 'laser'].includes(currentTool)) {
       setCurrentTool('select');
     } else if (isCommentOnly && !['select', 'pan', 'laser', 'sticky'].includes(currentTool)) {
       setCurrentTool('select');
     }
-  }, [isReadOnly, isCommentOnly, currentTool]);
+  }
 
-  // Registra que o usuário acessou o quadro através do link (se tiver permissão e não for o dono nem estiver na sala de espera)
+  // Registra que o usuário acessou o quadro através do link (se tiver permissão e não estiver com acesso bloqueado)
   useEffect(() => {
-    if (boardId && currentUser && board && !hasNoAccess && !boardNotFound && !isWaitingInRoom) {
+    if (boardId && currentUser && board && !isAccessBlocked && !boardNotFound) {
       boardService.recordVisitedBoard(boardId, currentUser.uid);
       if (!isOwner) {
         if (!board.members || !board.members[currentUser.uid]) {
@@ -734,7 +762,7 @@ export const BoardPage: React.FC = () => {
         }
       }
     }
-  }, [boardId, currentUser, board, hasNoAccess, isOwner, boardNotFound, isWaitingInRoom]);
+  }, [boardId, currentUser, board, isAccessBlocked, isOwner, boardNotFound]);
 
   // Limpa members caso o proprietário estivesse duplicado na lista de participantes
   useEffect(() => {
@@ -753,7 +781,7 @@ export const BoardPage: React.FC = () => {
   const currentUid = currentUser?.uid;
 
   useEffect(() => {
-    if (!boardId || !currentUid || hasNoAccess || boardNotFound || !isBoardReady) return;
+    if (!boardId || !currentUid || isAccessBlocked || boardNotFound || !isBoardReady) return;
     const unsubscribe = elementService.subscribeElements(boardId, (elems) => {
       // LWW com sinal: quando outro usuário sobrescreve um elemento que eu
       // editei recentemente, exibe um aviso discreto (o estado remoto prevalece).
@@ -780,11 +808,11 @@ export const BoardPage: React.FC = () => {
       setElements(elems);
     });
     return () => unsubscribe();
-  }, [boardId, currentUser, hasNoAccess, boardNotFound, isBoardReady]);
+  }, [boardId, currentUid, isAccessBlocked, boardNotFound, isBoardReady]);
 
   // Conecta ao serviço de presença e cursores em tempo real
   useEffect(() => {
-    if (!boardId || !currentUser || hasNoAccess || boardNotFound || !isBoardReady) return;
+    if (!boardId || !currentUser || isAccessBlocked || boardNotFound || !isBoardReady) return;
 
     const controls = presenceService.joinBoard(boardId, currentUser, (users) => {
       setRemoteUsers((prev) => {
@@ -802,7 +830,7 @@ export const BoardPage: React.FC = () => {
       controls.leaveBoard();
       presenceControls.current = null;
     };
-  }, [boardId, currentUser, hasNoAccess, boardNotFound, isBoardReady, isMobile]);
+  }, [boardId, currentUser, isAccessBlocked, boardNotFound, isBoardReady, isMobile]);
 
   // Acompanhamento suave da câmera quando seguindo outro usuário
   useEffect(() => {
@@ -810,23 +838,26 @@ export const BoardPage: React.FC = () => {
 
     const targetUser = remoteUsers.find((u) => u.userId === followingUserId);
     if (!targetUser) {
-      setFollowingUserId(null);
-      return;
+      const timer = window.setTimeout(() => setFollowingUserId(null), 0);
+      return () => window.clearTimeout(timer);
     }
 
     if (targetUser.cursor) {
       const targetX = Math.round(window.innerWidth / 2 - targetUser.cursor.x * scale);
       const targetY = Math.round(window.innerHeight / 2 - targetUser.cursor.y * scale);
 
-      setStagePos((prev) => {
-        const dx = targetX - prev.x;
-        const dy = targetY - prev.y;
-        if (Math.abs(dx) < 2 && Math.abs(dy) < 2) return prev;
-        return {
-          x: prev.x + dx * 0.4,
-          y: prev.y + dy * 0.4,
-        };
+      const raf = requestAnimationFrame(() => {
+        setStagePos((prev) => {
+          const dx = targetX - prev.x;
+          const dy = targetY - prev.y;
+          if (Math.abs(dx) < 2 && Math.abs(dy) < 2) return prev;
+          return {
+            x: prev.x + dx * 0.4,
+            y: prev.y + dy * 0.4,
+          };
+        });
       });
+      return () => cancelAnimationFrame(raf);
     }
   }, [remoteUsers, followingUserId, scale]);
 
@@ -1079,6 +1110,7 @@ export const BoardPage: React.FC = () => {
         currentEl.fill !== targetEl.fill ||
         currentEl.stroke !== targetEl.stroke ||
         currentEl.strokeWidth !== targetEl.strokeWidth ||
+        currentEl.dash?.join(',') !== targetEl.dash?.join(',') ||
         currentEl.opacity !== targetEl.opacity ||
         currentEl.zIndex !== targetEl.zIndex ||
         currentEl.locked !== targetEl.locked ||
@@ -1087,7 +1119,13 @@ export const BoardPage: React.FC = () => {
         currentEl.fontWeight !== targetEl.fontWeight ||
         currentEl.fontStyle !== targetEl.fontStyle ||
         currentEl.textDecoration !== targetEl.textDecoration ||
+        currentEl.textAlign !== targetEl.textAlign ||
         currentEl.textColor !== targetEl.textColor ||
+        currentEl.checklistTitle !== targetEl.checklistTitle ||
+        JSON.stringify(currentEl.checklistItems) !== JSON.stringify(targetEl.checklistItems) ||
+        JSON.stringify(currentEl.startBinding) !== JSON.stringify(targetEl.startBinding) ||
+        JSON.stringify(currentEl.endBinding) !== JSON.stringify(targetEl.endBinding) ||
+        currentEl.connectorStyle !== targetEl.connectorStyle ||
         JSON.stringify(currentEl.richText) !== JSON.stringify(targetEl.richText) ||
         currentEl.src !== targetEl.src ||
         currentEl.alt !== targetEl.alt ||
@@ -1182,7 +1220,7 @@ export const BoardPage: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleUndo, handleRedo]);
+  }, [handleUndo, handleRedo, handleToggleGrid]);
 
   // Adição de elemento (otimista, 0ms de latência para a UI)
   const handleAddElement = useCallback(async (elem: Omit<CanvasElement, 'id' | 'updatedAt'>) => {
@@ -1324,16 +1362,22 @@ export const BoardPage: React.FC = () => {
     }
   };
 
-  // Duplicação em lote
+  // Duplicação em lote com preservação inteligente de conexões de setas
   const handleBatchDuplicateElements = useCallback(async (elemsToDup: CanvasElement[]) => {
     if (!boardId || !currentUser || elemsToDup.length === 0 || isReadOnly || isCommentOnly) return;
     recordSnapshot();
     const now = Date.now();
+    const idMap = new Map<string, string>();
+    elemsToDup.forEach((elem, idx) => {
+      idMap.set(elem.id, 'elem_' + Math.random().toString(36).substring(2, 11) + idx);
+    });
+
     const duplicates: CanvasElement[] = elemsToDup.map((elem, idx) => {
       const { id: _id, updatedAt: _up, ...rest } = elem;
-      return {
+      const newId = idMap.get(elem.id)!;
+      const dup: CanvasElement = {
         ...rest,
-        id: 'elem_' + Math.random().toString(36).substring(2, 11) + idx,
+        id: newId,
         x: elem.x + 30,
         y: elem.y + 30,
         zIndex: getNextZIndex(elementsRef.current) + idx,
@@ -1341,6 +1385,21 @@ export const BoardPage: React.FC = () => {
         updatedByName: currentUser.displayName,
         updatedAt: now,
       };
+
+      // Remapeia conectores se ambos os elementos ou um deles foi duplicado junto
+      if (dup.startBinding && idMap.has(dup.startBinding.elementId)) {
+        dup.startBinding = {
+          ...dup.startBinding,
+          elementId: idMap.get(dup.startBinding.elementId)!,
+        };
+      }
+      if (dup.endBinding && idMap.has(dup.endBinding.elementId)) {
+        dup.endBinding = {
+          ...dup.endBinding,
+          elementId: idMap.get(dup.endBinding.elementId)!,
+        };
+      }
+      return dup;
     });
 
     setElements((prev) => [...prev, ...duplicates]);

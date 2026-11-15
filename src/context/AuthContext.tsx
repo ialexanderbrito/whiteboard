@@ -1,3 +1,4 @@
+/* oxlint-disable react/only-export-components */
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { 
   signInWithPopup, 
@@ -29,8 +30,21 @@ const COLOR_STORAGE_KEY = 'mirio_user_color';
 const GUEST_STORAGE_KEY = 'mirio_guest_user';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(() => {
+    if (!isFirebaseConfigured || !auth) {
+      if (typeof window === 'undefined') return null;
+      const savedGuest = localStorage.getItem(GUEST_STORAGE_KEY);
+      if (savedGuest) {
+        try {
+          return JSON.parse(savedGuest);
+        } catch {
+          return null;
+        }
+      }
+    }
+    return null;
+  });
+  const [loading, setLoading] = useState(() => Boolean(isFirebaseConfigured && auth));
 
   const getSavedColor = () => {
     let color = localStorage.getItem(COLOR_STORAGE_KEY);
@@ -43,17 +57,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     if (!isFirebaseConfigured || !auth) {
-      // Modo Mock Local / Preview se o Firebase não estiver preenchido no .env
-      const savedGuest = localStorage.getItem(GUEST_STORAGE_KEY);
-      if (savedGuest) {
-        try {
-          const parsed = JSON.parse(savedGuest);
-          setCurrentUser(parsed);
-        } catch {
-          setCurrentUser(null);
-        }
-      }
-      setLoading(false);
       return;
     }
 

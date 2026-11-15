@@ -20,12 +20,12 @@ export interface ElementZIndexUpdate {
 }
 
 /**
- * Tipos que não participam da pilha de camadas: imagens (salvas como sticker)
- * e GIFs (overlay HTML sempre acima do canvas) não respeitam zIndex visual,
- * então as opções de trazer/enviar camada ficam desabilitadas para eles.
+ * Tipos que não participam da pilha de camadas: GIFs (overlay HTML sempre acima do canvas)
+ * não respeitam zIndex do Konva, portanto a opção de reordenar fica desabilitada para eles.
+ * Stickers (imagens) estão no canvas e participam normalmente do zIndex.
  */
 export function supportsLayerReorder(type: string): boolean {
-  return type !== 'sticker' && type !== 'gif';
+  return type !== 'gif';
 }
 
 /** Uma seleção só pode reordenar camadas se TODOS os elementos forem reordenáveis. */

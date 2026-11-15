@@ -21,6 +21,16 @@ const boardSubscribers = new Map<string, Set<(elements: CanvasElement[]) => void
 // Canais de transmissão ativos por board
 const broadcastChannels = new Map<string, BroadcastChannel>();
 
+function cleanFirestoreData<T extends Record<string, any>>(data: T): Record<string, any> {
+  const result: Record<string, any> = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (value !== undefined) {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
 function getBroadcastChannel(rawBoardId: string): BroadcastChannel | null {
   if (typeof BroadcastChannel === 'undefined') return null;
   const boardId = rawBoardId.replace(/^board_/, '');
@@ -134,8 +144,9 @@ export const elementService = {
     callback(initial);
 
     const channel = getBroadcastChannel(boardId);
+    let handleChannelMessage: ((event: MessageEvent) => void) | null = null;
     if (channel) {
-      channel.onmessage = (event) => {
+      handleChannelMessage = (event: MessageEvent) => {
         if (event.data?.type === 'sync' && Array.isArray(event.data.elements)) {
           memoryCache.set(boardId, event.data.elements);
           callback(event.data.elements);
@@ -143,6 +154,7 @@ export const elementService = {
           callback(getCachedElements(boardId));
         }
       };
+      channel.addEventListener('message', handleChannelMessage);
     }
 
     const handleStorageEvent = (e: StorageEvent) => {
@@ -160,6 +172,9 @@ export const elementService = {
       return () => {
         boardSubscribers.get(boardId)?.delete(callback);
         window.removeEventListener('storage', handleStorageEvent);
+        if (channel && handleChannelMessage) {
+          channel.removeEventListener('message', handleChannelMessage);
+        }
       };
     }
 
@@ -183,6 +198,9 @@ export const elementService = {
     return () => {
       boardSubscribers.get(boardId)?.delete(callback);
       window.removeEventListener('storage', handleStorageEvent);
+      if (channel && handleChannelMessage) {
+        channel.removeEventListener('message', handleChannelMessage);
+      }
       unsubscribeFirestore();
     };
   },
@@ -275,7 +293,7 @@ export const elementService = {
     if (isFirebaseConfigured && db) {
       try {
         const docRef = doc(db, 'boards', boardId, 'elements', elementId);
-        await updateDoc(docRef, payload);
+        await updateDoc(docRef, cleanFirestoreData(payload));
       } catch (err) {
         console.warn('Erro ao atualizar elemento no Firestore:', err);
       }
@@ -349,7 +367,7 @@ export const elementService = {
           const batch = writeBatch(db);
           chunk.forEach(({ id, updates: elemUpdates }) => {
             const docRef = doc(db!, 'boards', boardId, 'elements', id);
-            batch.update(docRef, { ...elemUpdates, updatedAt: now });
+            batch.update(docRef, cleanFirestoreData({ ...elemUpdates, updatedAt: now }));
           });
           await batch.commit();
         }

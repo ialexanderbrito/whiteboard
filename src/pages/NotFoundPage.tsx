@@ -38,7 +38,33 @@ export const NotFoundPage: React.FC<NotFoundPageProps> = ({
 
   const [copied, setCopied] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
-  const [recentBoardIds, setRecentBoardIds] = useState<string[]>([]);
+  const [recentBoardIds, setRecentBoardIds] = useState<string[]>(() => {
+    if (currentUser?.uid) {
+      try {
+        const ids = boardService.getVisitedBoardIds(currentUser.uid);
+        return ids.filter((id) => id !== requestedBoardId).slice(0, 3);
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  });
+
+  const userKey = `${currentUser?.uid || ''}_${requestedBoardId || ''}`;
+  const [prevUserKey, setPrevUserKey] = useState(userKey);
+  if (userKey !== prevUserKey) {
+    setPrevUserKey(userKey);
+    if (currentUser?.uid) {
+      try {
+        const ids = boardService.getVisitedBoardIds(currentUser.uid);
+        setRecentBoardIds(ids.filter((id) => id !== requestedBoardId).slice(0, 3));
+      } catch {
+        setRecentBoardIds([]);
+      }
+    } else {
+      setRecentBoardIds([]);
+    }
+  }
 
   // Atualiza título da aba no navegador com elegância
   useEffect(() => {
@@ -48,19 +74,6 @@ export const NotFoundPage: React.FC<NotFoundPageProps> = ({
       document.title = '404 - Página Não Encontrada - Mirio';
     }
   }, [requestedBoardId]);
-
-  // Carrega histórico recente para oferecer rota de saída imediata (Revenue-Centric Retention)
-  useEffect(() => {
-    if (currentUser?.uid) {
-      try {
-        const ids = boardService.getVisitedBoardIds(currentUser.uid);
-        const validIds = ids.filter((id) => id !== requestedBoardId).slice(0, 3);
-        setRecentBoardIds(validIds);
-      } catch {
-        setRecentBoardIds([]);
-      }
-    }
-  }, [currentUser, requestedBoardId]);
 
   const displayPath = requestedBoardId 
     ? `/b/${requestedBoardId}`

@@ -1104,7 +1104,7 @@ export const boardService = {
     if (!board || !board.joinRequests) return;
 
     const pendingUids = Object.entries(board.joinRequests)
-      .filter(([_, req]) => req && req.status === 'pending')
+      .filter(([, req]) => req && req.status === 'pending')
       .map(([uid]) => uid);
 
     if (pendingUids.length === 0) return;

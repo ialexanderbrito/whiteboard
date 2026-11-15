@@ -223,7 +223,7 @@ export const timerService = {
       try {
         const timerRef = ref(rtdb, `board_timer/${boardId}`);
         await set(timerRef, cleanState);
-      } catch (err) {
+      } catch {
         // Fallback silencioso pois o Firestore já sincronizou com sucesso
       }
     }

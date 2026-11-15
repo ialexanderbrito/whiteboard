@@ -3,10 +3,7 @@ import assert from 'node:assert/strict';
 import { 
   SHAPE_FILL_COLORS, 
   SHAPE_FILL_CATEGORIES, 
-  SHAPE_QUICK_SWATCHES,
-  STICKY_COLORS,
-  STROKE_COLORS,
-  TEXT_COLORS 
+  SHAPE_QUICK_SWATCHES 
 } from '../src/utils/colors.ts';
 
 test('Shape Fill Colors: expanded palette contains significantly more than standard 8 colors', () => {
