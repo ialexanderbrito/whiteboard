@@ -127,6 +127,8 @@ export interface CommandPaletteBoardContext {
   onToggleRemoteCursors?: (show?: boolean) => void;
   smartGuides?: boolean;
   onToggleSmartGuides?: (enabled?: boolean) => void;
+  smartDrawing?: boolean;
+  onToggleSmartDrawing?: (enabled?: boolean) => void;
 }
 
 export interface CommandPaletteDashboardContext {
@@ -533,6 +535,29 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                       <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] font-bold">P</kbd>
                     </CommandShortcut>
                   </CommandItem>
+
+                  {boardContext.onToggleSmartDrawing && (
+                    <CommandItem
+                      value="desenho inteligente smart drawing caneta pen formas geometricas varinha magica reconhecer forma toggle ativar desativar shift p"
+                      onSelect={() => handleSelect(() => boardContext.onToggleSmartDrawing?.(!boardContext.smartDrawing))}
+                      className="group"
+                    >
+                      <div className="flex size-6 items-center justify-center rounded-lg bg-purple-500/10 text-purple-500 group-data-[selected=true]:bg-purple-500 group-data-[selected=true]:text-white transition-colors">
+                        <Wand2 className="size-3.5" />
+                      </div>
+                      <span>
+                        {boardContext.smartDrawing
+                          ? 'Desativar Desenho Inteligente (Formas Automáticas)'
+                          : 'Ativar Desenho Inteligente (Formas Automáticas)'}
+                      </span>
+                      <CommandShortcut className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-muted-foreground font-mono">
+                          {boardContext.smartDrawing ? 'Ativo' : 'Inativo'}
+                        </span>
+                        <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] font-bold">Shift+P</kbd>
+                      </CommandShortcut>
+                    </CommandItem>
+                  )}
 
                   <CommandItem
                     onSelect={() => handleSelect(() => boardContext.onSelectTool?.('text'))}

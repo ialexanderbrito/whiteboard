@@ -120,6 +120,7 @@ interface WhiteboardCanvasProps {
   penMode?: 'pen' | 'highlighter' | 'eraser';
   penStrokeWidth?: number;
   smartDrawing?: boolean;
+  onToggleSmartDrawing?: () => void;
   eraserMode?: 'whole' | 'partial';
   eraserSize?: number;
   onCanvasClick?: () => void;
@@ -317,6 +318,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
   penMode = 'pen',
   penStrokeWidth = 4,
   smartDrawing = true,
+  onToggleSmartDrawing,
   eraserMode = 'whole',
   eraserSize = 22,
   onCanvasClick,
@@ -1768,6 +1770,22 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         return;
       }
 
+      // Alternar Desenho Inteligente (Formas Automáticas): Shift+P
+      if (!e.ctrlKey && !e.metaKey && !e.altKey && e.shiftKey && (e.key === 'P' || e.key === 'p')) {
+        e.preventDefault();
+        const nextState = !smartDrawing;
+        onToggleSmartDrawing?.();
+        showCanvasToast(
+          nextState ? 'Desenho Inteligente: Ativado' : 'Desenho Inteligente: Desativado',
+          nextState
+            ? 'Rabiscos de círculos, retângulos, triângulos e setas serão convertidos em formas perfeitas.'
+            : 'Seus traços livres serão preservados exatamente como desenhados.',
+          'info',
+          2500
+        );
+        return;
+      }
+
       // Atalhos de ferramentas (sem Ctrl/Meta/Alt)
       if (!e.ctrlKey && !e.metaKey && !e.altKey) {
         if (e.key === 'l' || e.key === 'L') {
@@ -1796,7 +1814,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
               onSelectTool('arrow');
             }
           }
-          if (e.key === 'p' || e.key === 'P') onSelectTool('pen');
+          if (!e.shiftKey && (e.key === 'p' || e.key === 'P')) onSelectTool('pen');
           if (e.key === 't' || e.key === 'T') {
             if (e.shiftKey && onOpenTemplates) {
               e.preventDefault();

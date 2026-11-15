@@ -203,10 +203,21 @@ export const BoardPage: React.FC = () => {
     setIsMobileNoticeOpen(true);
   }, []);
 
-  // Configurações avançadas da caneta estilo Miro
+  // Configurações avançadas da caneta e desenho inteligente (persistido no localStorage)
   const [penMode, setPenMode] = useState<'pen' | 'highlighter' | 'eraser'>('pen');
   const [penStrokeWidth, setPenStrokeWidth] = useState<number>(4);
-  const [smartDrawing, setSmartDrawing] = useState<boolean>(true);
+  const [smartDrawing, setSmartDrawing] = useState<boolean>(() => {
+    const saved = localStorage.getItem('mirio_smart_drawing_enabled');
+    return saved !== null ? saved !== 'false' : true;
+  });
+
+  const handleToggleSmartDrawing = useCallback((enabled?: boolean) => {
+    setSmartDrawing((prev) => {
+      const next = typeof enabled === 'boolean' ? enabled : !prev;
+      localStorage.setItem('mirio_smart_drawing_enabled', String(next));
+      return next;
+    });
+  }, []);
   const [eraserMode, setEraserMode] = useState<'whole' | 'partial'>('whole');
   const [eraserSize, setEraserSize] = useState<number>(22);
 
@@ -1929,7 +1940,7 @@ export const BoardPage: React.FC = () => {
             }
           }}
           smartDrawing={smartDrawing}
-          onToggleSmartDrawing={() => setSmartDrawing((prev) => !prev)}
+          onToggleSmartDrawing={handleToggleSmartDrawing}
           eraserMode={eraserMode}
           onSelectEraserMode={setEraserMode}
           eraserSize={eraserSize}
@@ -2065,6 +2076,8 @@ export const BoardPage: React.FC = () => {
           onToggleGrid: handleToggleGrid,
           smartGuides: smartGuidesEnabled,
           onToggleSmartGuides: handleToggleSmartGuides,
+          smartDrawing,
+          onToggleSmartDrawing: handleToggleSmartDrawing,
           showRemoteCursors,
           onToggleRemoteCursors: handleToggleRemoteCursors,
           gridType,
@@ -2134,6 +2147,7 @@ export const BoardPage: React.FC = () => {
         penMode={penMode}
         penStrokeWidth={penStrokeWidth}
         smartDrawing={smartDrawing}
+        onToggleSmartDrawing={handleToggleSmartDrawing}
         eraserMode={eraserMode}
         eraserSize={eraserSize}
         onStartPartialErase={handleStartPartialErase}

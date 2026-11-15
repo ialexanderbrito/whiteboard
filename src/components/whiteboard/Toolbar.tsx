@@ -525,7 +525,13 @@ export const Toolbar: React.FC<ToolbarProps> = React.memo(({
                 </button>
               </TooltipTrigger>
               <TooltipContent side={tooltipSide}>
-                <p className="font-medium text-xs">Desenho Livre Miro <span className="opacity-60 text-[10px]">(P)</span></p>
+                <p className="font-medium text-xs">Desenho Livre <span className="opacity-60 text-[10px]">(P)</span></p>
+                {smartDrawing && (
+                  <p className="text-[10px] text-primary flex items-center gap-1 mt-0.5 font-medium">
+                    <Wand2 className="size-2.5" />
+                    <span>Desenho Inteligente ativo</span>
+                  </p>
+                )}
               </TooltipContent>
             </Tooltip>
 
@@ -676,26 +682,58 @@ export const Toolbar: React.FC<ToolbarProps> = React.memo(({
                   </div>
                 )}
 
-                {/* 4. Smart Drawing (Reconhecimento Inteligente de Formas & Linhas Estilo Miro) */}
+                {/* 4. Desenho Inteligente (Reconhecimento Automático de Formas Geométricas) */}
                 {penMode !== 'eraser' && (
                   <div className="pt-2 border-t border-border/80">
                     <button
                       type="button"
+                      role="switch"
+                      aria-checked={smartDrawing}
                       onClick={onToggleSmartDrawing}
-                      className={`w-full flex items-center justify-between px-2 py-1.5 rounded-md text-[11px] font-medium transition ${
+                      className={`group w-full flex items-center justify-between p-2 rounded-lg text-left transition-[background-color,border-color,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.97] cursor-pointer border ${
                         smartDrawing
-                          ? 'bg-primary/10 text-primary border border-primary/30 font-semibold shadow-xs'
-                          : 'text-muted-foreground hover:bg-muted hover:text-foreground border border-transparent'
+                          ? 'bg-primary/10 border-primary/30 hover:bg-primary/15'
+                          : 'bg-muted/30 border-border/70 hover:bg-muted/60'
                       }`}
-                      title="Converte círculos, retângulos, triângulos e setas desenhados à mão em formas perfeitas"
+                      title="Converte círculos, retângulos, triângulos e setas desenhados à mão em formas perfeitas (Shift+P)"
                     >
-                      <span className="flex items-center gap-1.5">
-                        <Wand2 className={`size-3.5 ${smartDrawing ? 'text-primary' : 'text-muted-foreground'}`} />
-                        <span>Smart Drawing</span>
-                      </span>
-                      <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-bold ${smartDrawing ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
-                        {smartDrawing ? 'ATIVO' : 'OFF'}
-                      </span>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div
+                          className={`size-6 rounded-md flex items-center justify-center shrink-0 transition-colors duration-150 ${
+                            smartDrawing
+                              ? 'bg-primary text-primary-foreground shadow-xs'
+                              : 'bg-muted text-muted-foreground group-hover:text-foreground'
+                          }`}
+                        >
+                          <Wand2 className="size-3.5" />
+                        </div>
+                        <div className="flex flex-col min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[11px] font-semibold text-foreground tracking-tight">
+                              Desenho Inteligente
+                            </span>
+                            <kbd className="text-[9px] font-mono font-medium px-1 py-0.2 rounded bg-muted/80 text-muted-foreground border border-border/60">
+                              ⇧P
+                            </kbd>
+                          </div>
+                          <span className="text-[9px] text-muted-foreground leading-tight truncate">
+                            Converte rabiscos em formas
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Switch track & thumb animado (Emil Kowalski micro-motion) */}
+                      <div
+                        className={`relative shrink-0 w-8 h-4.5 rounded-full transition-colors duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] p-0.5 ml-1.5 ${
+                          smartDrawing ? 'bg-primary' : 'bg-muted-foreground/30'
+                        }`}
+                      >
+                        <div
+                          className={`size-3.5 rounded-full bg-white dark:bg-card shadow-xs transition-transform duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] ${
+                            smartDrawing ? 'translate-x-3.5' : 'translate-x-0'
+                          }`}
+                        />
+                      </div>
                     </button>
                   </div>
                 )}

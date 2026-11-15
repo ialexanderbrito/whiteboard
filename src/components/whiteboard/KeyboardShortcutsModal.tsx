@@ -36,6 +36,7 @@ const SHORTCUTS: ShortcutItem[] = [
   { keys: ['A'], description: 'Criar Seta Conectora', category: 'tools' },
   { keys: ['Shift', 'A'], description: 'Criar Linha Reta', category: 'tools' },
   { keys: ['P'], description: 'Caneta / Desenho Livre', category: 'tools' },
+  { keys: ['Shift', 'P'], description: 'Alternar Desenho Inteligente (Formas Automáticas)', category: 'tools' },
   { keys: ['T'], description: 'Caixa de Texto', category: 'tools' },
   { keys: ['F'], description: 'Moldura / Raia de Sprint', category: 'tools' },
   { keys: ['S'], description: 'Templates de Sprint (Scrum, Retro, Kanban)', category: 'tools' },

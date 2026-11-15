@@ -90,6 +90,47 @@ export function simplifyRDP(pts: Point2D[], epsilon: number): Point2D[] {
 }
 
 /**
+ * Analisa o perfil radial e detecta picos locais (cantos / vértices) em relação ao centróide.
+ */
+function analyzeRadialProfile(
+  pts: Point2D[],
+  cx: number,
+  cy: number
+): { peaks: number; ratio: number } {
+  const rads = pts.map((p) => dist(p, { x: cx, y: cy }));
+  const n = rads.length;
+  if (n < 8) return { peaks: 0, ratio: 1 };
+
+  // Suavização por média móvel circular para filtrar micro-tremores de mouse/caneta
+  const windowSize = Math.max(2, Math.floor(n * 0.06));
+  const smoothed: number[] = [];
+  for (let i = 0; i < n; i++) {
+    let s = 0;
+    for (let k = -windowSize; k <= windowSize; k++) {
+      s += rads[(i + k + n) % n];
+    }
+    smoothed.push(s / (2 * windowSize + 1));
+  }
+
+  const avg = smoothed.reduce((a, b) => a + b, 0) / n;
+  const minR = Math.min(...smoothed);
+  const maxR = Math.max(...smoothed);
+  const ratio = maxR / Math.max(1, minR);
+
+  let peaks = 0;
+  for (let i = 0; i < n; i++) {
+    const prev = smoothed[(i - 1 + n) % n];
+    const curr = smoothed[i];
+    const next = smoothed[(i + 1) % n];
+    if (curr > prev && curr > next && curr > avg * 1.04) {
+      peaks++;
+    }
+  }
+
+  return { peaks, ratio };
+}
+
+/**
  * Detecta se o desenho feito pelo usuário forma uma forma geométrica conhecida ou linha reta
  */
 export function recognizeSmartShape(flatPoints: number[]): DetectedShape {
@@ -135,8 +176,8 @@ export function recognizeSmartShape(flatPoints: number[]): DetectedShape {
   const maxDim = Math.max(bbWidth, bbHeight);
 
   // 2. DETECÇÃO DE LINHA RETA OU SETA
-  // Se a distância entre o início e o fim representa mais de 90% de todo o caminho percorrido
-  if (startEndDist / totalLength > 0.88 && startEndDist > 50) {
+  // Se a distância entre o início e o fim representa mais de 86% de todo o caminho percorrido
+  if (startEndDist / totalLength > 0.86 && startEndDist > 40) {
     return {
       type: 'arrow',
       points: [
@@ -150,9 +191,9 @@ export function recognizeSmartShape(flatPoints: number[]): DetectedShape {
 
   // 3. DETECÇÃO DE FORMAS FECHADAS (Círculo, Triângulo e Retângulo)
   // Se a ponta final termina próxima do ponto inicial (loop fechado)
-  const isClosedLoop = startEndDist < Math.max(45, maxDim * 0.35);
+  const isClosedLoop = startEndDist < Math.max(45, maxDim * 0.40);
 
-  if (isClosedLoop && maxDim > 35) {
+  if (isClosedLoop && maxDim > 30) {
     const cx = sumX / pts.length;
     const cy = sumY / pts.length;
 
@@ -165,44 +206,76 @@ export function recognizeSmartShape(flatPoints: number[]): DetectedShape {
     const polygonArea = Math.abs(areaSum) / 2;
     const bbArea = Math.max(1, bbWidth * bbHeight);
     const areaRatio = polygonArea / bbArea;
-
-    // Distâncias dos pontos ao centróide
-    const rads = pts.map((p) => dist(p, { x: cx, y: cy }));
-    const avgRadius = rads.reduce((a, b) => a + b, 0) / rads.length;
-    const variance =
-      rads.reduce((acc, r) => acc + (r - avgRadius) ** 2, 0) / rads.length;
-    const stdDev = Math.sqrt(variance);
-    const radialCoeff = stdDev / (avgRadius || 1);
     const aspectRatio = bbWidth / (bbHeight || 1);
 
-    // Simplificação com epsilon moderado para contagem de vértices nítidos
-    const simplified = simplifyRDP(pts, Math.max(14, maxDim * 0.09));
-    const vertexCount = simplified.length - 1; // remove início/fim coincidente
+    // Isoperimetric quotient (Circularity / Roundness): 4 * pi * Area / Perimeter^2
+    // Para um círculo perfeito, circularity = 1.0; para um quadrado, circularity = pi/4 ~= 0.785
+    const circularity =
+      (4 * Math.PI * polygonArea) / Math.max(1, totalLength * totalLength);
 
-    // A. CÍRCULO / BOLA:
-    // Aspect ratio equilibrado (0.68 a 1.45)
-    // Razão de área próxima da geometria teórica do círculo (pi/4 ~= 0.785)
-    // Variação radial suave (radialCoeff <= 0.30)
-    // NÃO possui 4 cantos retos como um retângulo
-    if (
-      aspectRatio >= 0.68 &&
-      aspectRatio <= 1.45 &&
-      areaRatio >= 0.58 &&
-      areaRatio <= 0.86 &&
-      radialCoeff <= 0.30
-    ) {
-      const radius = Math.round((bbWidth + bbHeight) / 4);
+    // Perfil radial e contagem de picos (cantos salientes)
+    const { peaks, ratio: radialRatio } = analyzeRadialProfile(pts, cx, cy);
+
+    // Alcance dos 4 cantos da Bounding Box:
+    // Em um retângulo/quadrado, o traço desenhado passa muito próximo dos 4 cantos da caixa delimitadora.
+    // Em um círculo, os 4 cantos da caixa delimitadora são geometricamente vazios (distância teórica ~= 0.207 * diâmetro).
+    const corners: Point2D[] = [
+      { x: minX, y: minY },
+      { x: maxX, y: minY },
+      { x: maxX, y: maxY },
+      { x: minX, y: maxY },
+    ];
+    const cornerDists = corners.map((c) => {
+      let minD = Infinity;
+      for (const p of pts) {
+        const d = dist(p, c);
+        if (d < minD) minD = d;
+      }
+      return minD / maxDim;
+    });
+    const avgCornerDist = cornerDists.reduce((a, b) => a + b, 0) / 4;
+    const minCornerDist = Math.min(...cornerDists);
+    const maxCornerDist = Math.max(...cornerDists);
+    const cornersReached = cornerDists.filter((d) => d <= 0.16).length;
+
+    // Simplificação RDP com tolerância adaptativa para contagem de vértices
+    const simplified = simplifyRDP(pts, Math.max(8, maxDim * 0.08));
+    const vertexCount = Math.max(0, simplified.length - 1);
+
+    // 1. DETECÇÃO DE RETÂNGULO / QUADRADO (Avaliamos antes de círculo para evitar falsos círculos):
+    // Critérios calibrados:
+    // - Preenchimento substancial da bounding box (areaRatio >= 0.66)
+    // - Presença de cantos bem definidos (avgCornerDist <= 0.13 ou cornersReached >= 3)
+    // - Ou 4 vértices / 4 picos radiais detectados com alcance consistente aos cantos
+    // - Circularidade estritamente menor que a de um círculo (circularity < 0.94)
+    const isRectangular =
+      (areaRatio >= 0.66 && (avgCornerDist <= 0.13 || (cornersReached >= 3 && maxCornerDist <= 0.22))) ||
+      (areaRatio >= 0.70 && (vertexCount === 4 || peaks === 4) && avgCornerDist <= 0.15) ||
+      (areaRatio >= 0.84 && avgCornerDist <= 0.15) ||
+      (areaRatio >= 0.75 && radialRatio > 1.25 && avgCornerDist <= 0.16);
+
+    if (isRectangular && circularity < 0.94) {
+      // Se for quase perfeitamente quadrado (proporção próxima de 1:1), regulariza para lados iguais
+      const isNearlySquare = Math.abs(bbWidth - bbHeight) / maxDim < 0.10;
+      const finalWidth = isNearlySquare ? Math.max(bbWidth, bbHeight) : bbWidth;
+      const finalHeight = isNearlySquare ? Math.max(bbWidth, bbHeight) : bbHeight;
+
       return {
-        type: 'circle',
-        x: Math.round(cx),
-        y: Math.round(cy),
-        radius: Math.max(18, radius),
+        type: 'rect',
+        x: Math.round(minX),
+        y: Math.round(minY),
+        width: Math.max(40, Math.round(finalWidth)),
+        height: Math.max(40, Math.round(finalHeight)),
       };
     }
 
-    // B. TRIÂNGULO:
-    // Área nitidamente inferior (teórico = 0.50) e 3 vértices nítidos
-    if (areaRatio < 0.62 && (vertexCount === 3 || areaRatio < 0.56)) {
+    // 2. DETECÇÃO DE TRIÂNGULO:
+    // - Área compatível com triângulo (areaRatio < 0.64)
+    // - 3 vértices / 3 picos radiais ou área triangular com no máximo 2 cantos atingidos
+    if (
+      areaRatio < 0.64 &&
+      (vertexCount === 3 || peaks === 3 || (areaRatio <= 0.58 && cornersReached <= 2))
+    ) {
       return {
         type: 'triangle',
         x: Math.round(minX),
@@ -212,16 +285,31 @@ export function recognizeSmartShape(flatPoints: number[]): DetectedShape {
       };
     }
 
-    // C. RETÂNGULO / QUADRADO:
-    // Preenchimento de quase toda a bounding box (área >= 0.85)
-    // e 4 cantos nítidos
-    if (areaRatio >= 0.85 && (vertexCount === 4 || areaRatio >= 0.90)) {
+    // 3. DETECÇÃO DE CÍRCULO:
+    // Critérios rigorosamente calibrados contra falsos positivos:
+    // - Aspect ratio equilibrado (0.72 a 1.38)
+    // - Área proporcional ao círculo (pi/4 ~= 0.785, faixa 0.60 a 0.88)
+    // - Variação radial suave (radialRatio <= 1.22)
+    // - Alta circularidade isoperimétrica (circularity >= 0.80)
+    // - Cantos da bounding box desocupados (avgCornerDist >= 0.14 e minCornerDist >= 0.05)
+    // - Sem 4 cantos/picos de retângulo (peaks <= 2)
+    if (
+      aspectRatio >= 0.72 &&
+      aspectRatio <= 1.38 &&
+      areaRatio >= 0.60 &&
+      areaRatio <= 0.88 &&
+      radialRatio <= 1.22 &&
+      circularity >= 0.80 &&
+      avgCornerDist >= 0.14 &&
+      minCornerDist >= 0.05 &&
+      peaks <= 2
+    ) {
+      const radius = Math.round((bbWidth + bbHeight) / 4);
       return {
-        type: 'rect',
-        x: Math.round(minX),
-        y: Math.round(minY),
-        width: Math.max(40, Math.round(bbWidth)),
-        height: Math.max(40, Math.round(bbHeight)),
+        type: 'circle',
+        x: Math.round(cx),
+        y: Math.round(cy),
+        radius: Math.max(18, radius),
       };
     }
   }
