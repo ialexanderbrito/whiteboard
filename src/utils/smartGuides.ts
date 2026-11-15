@@ -39,6 +39,8 @@ export interface CalculateSmartGuidesOptions {
   snapCenter?: boolean;
   /** Se deve alinhar pelas bordas (início e fim) */
   snapEdges?: boolean;
+  /** Alvos pré-computados com caixas delimitadoras já calculadas (otimização O(1) para arrasto a 60/120 FPS) */
+  precomputedTargets?: Array<{ element: CanvasElement; bounds: WorldBounds }>;
 }
 
 interface SnapCandidateX {
@@ -63,8 +65,12 @@ export function calculateSmartGuidesAndSnap({
   tolerance,
   snapCenter = true,
   snapEdges = true,
+  precomputedTargets,
 }: CalculateSmartGuidesOptions): SmartGuideResult {
-  if (!candidateElements || candidateElements.length === 0 || tolerance <= 0) {
+  const hasCandidates =
+    (precomputedTargets && precomputedTargets.length > 0) ||
+    (candidateElements && candidateElements.length > 0);
+  if (!hasCandidates || tolerance <= 0) {
     return {
       snappedX: draggedBounds.x,
       snappedY: draggedBounds.y,
@@ -96,11 +102,14 @@ export function calculateSmartGuidesAndSnap({
     movingYStops.push({ coord: draggedBounds.y + draggedBounds.h / 2, type: 'center' }); // Centro vertical
   }
 
-  // Extrai caixas delimitadoras mundiais dos candidatos
-  const targets = candidateElements.map((el) => ({
-    element: el,
-    bounds: getElementWorldBounds(el),
-  }));
+  // Extrai caixas delimitadoras mundiais dos candidatos (usa alvos pré-computados se fornecidos para O(1))
+  const targets =
+    precomputedTargets && precomputedTargets.length > 0
+      ? precomputedTargets
+      : candidateElements.map((el) => ({
+          element: el,
+          bounds: getElementWorldBounds(el),
+        }));
 
   // --- 1. Encontra o melhor snap no eixo X (Linhas Verticais) ---
   let bestSnapX: SnapCandidateX | null = null;
