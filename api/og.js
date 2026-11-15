@@ -35,13 +35,9 @@ export default function handler(req, res) {
     }
   }
 
-  // Redirecionamento de contingência absoluto caso os arquivos locais não estejam acessíveis
-  const host = req.headers?.['x-forwarded-host'] || req.headers?.host || 'mirio-wb.vercel.app';
-  const proto = req.headers?.['x-forwarded-proto'] || 'https';
-  const absoluteTarget = `${proto}://${host}${target}`;
-
+  // Redirecionamento de contingência seguro relativo (imune a Host Header Injection / Open Redirect)
   res.writeHead(307, {
-    Location: absoluteTarget,
+    Location: target,
     'Cache-Control': 'public, max-age=60, s-maxage=3600',
     'Vary': 'Sec-CH-Prefers-Color-Scheme',
     'Access-Control-Allow-Origin': '*'

@@ -30,19 +30,63 @@
     "board_timer": {
       "$boardId": {
         ".read": "auth != null",
-        ".write": "auth != null"
+        ".write": "auth != null",
+        ".validate": "newData.hasChildren(['durationSeconds', 'remainingSeconds', 'isRunning'])",
+        "durationSeconds": {
+          ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 86400"
+        },
+        "remainingSeconds": {
+          ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 86400"
+        },
+        "isRunning": {
+          ".validate": "newData.isBoolean()"
+        },
+        "startedAt": {
+          ".validate": "newData.val() === null || newData.isNumber()"
+        },
+        "endsAt": {
+          ".validate": "newData.val() === null || newData.isNumber()"
+        },
+        "updatedByName": {
+          ".validate": "newData.val() === null || (newData.isString() && newData.val().length <= 50)"
+        },
+        "youtubeUrl": {
+          ".validate": "newData.val() === null || (newData.isString() && newData.val().length <= 256)"
+        },
+        "musicEnabled": {
+          ".validate": "newData.val() === null || newData.isBoolean()"
+        },
+        "volume": {
+          ".validate": "newData.val() === null || (newData.isNumber() && newData.val() >= 0 && newData.val() <= 100)"
+        },
+        "isOpenForEveryone": {
+          ".validate": "newData.val() === null || newData.isBoolean()"
+        },
+        "lastAction": {
+          ".validate": "newData.val() === null || newData.isString()"
+        },
+        "lastActionTimestamp": {
+          ".validate": "newData.val() === null || newData.isNumber()"
+        }
       }
     },
     "board_voting": {
       "$boardId": {
         ".read": "auth != null",
-        ".write": "auth != null"
+        ".write": "auth != null",
+        ".validate": "newData.val() === null || newData.hasChildren()",
+        "session": {
+          ".validate": "newData.val() === null || (newData.hasChildren(['id', 'status']) && newData.child('id').isString() && newData.child('status').isString())"
+        }
       }
     },
     "global_reactions": {
       "$boardId": {
         ".read": "auth != null",
-        ".write": "auth != null"
+        "$eventId": {
+          ".write": "auth != null && (newData.child('userId').val() === auth.uid || (data.exists() && !newData.exists()))",
+          ".validate": "newData.val() === null || (newData.hasChildren(['userId', 'reaction', 'timestamp']) && newData.child('userId').val() === auth.uid && newData.child('reaction').isString() && newData.child('reaction').val().length <= 32 && newData.child('timestamp').isNumber())"
+        }
       }
     }
   }

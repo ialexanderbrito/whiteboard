@@ -20,7 +20,7 @@ service cloud.firestore {
 
     // Coleção de quadros (/boards/{boardId})
     match /boards/{boardId} {
-      // Leitura permitida para o dono, colaboradores por e-mail, membros ou links abertos
+      // Leitura permitida para usuários autenticados
       allow read: if isAuthenticated();
       
       // Criação: apenas autenticados e o ownerId DEVE coincidir com o UID do criador
@@ -30,19 +30,20 @@ service cloud.firestore {
         && request.resource.data.ownerId == request.auth.uid;
       
       // Atualização:
-      // 1. O proprietário pode atualizar o quadro (mas NUNCA alterar o ownerId para outro usuário)
-      // 2. Participantes/convidados só podem atualizar seus próprios nós (members/joinRequests) e NUNCA alterar:
-      //    ownerId, defaultPermission, waitingRoomEnabled, password, isPasswordProtected, removedMemberIds
+      // 1. O proprietário pode atualizar o quadro (mas NUNCA transferir o ownerId para outro usuário)
+      // 2. Participantes/convidados só podem atualizar seus próprios nós (members/joinRequests/timer/updatedAt)
+      //    e NUNCA alterar: ownerId, title, defaultPermission, waitingRoomEnabled, password, isPasswordProtected, removedMemberIds
       allow update: if isAuthenticated() && (
-        isBoardOwner(resource.data) && request.resource.data.ownerId == resource.data.ownerId
-      ) || (
-        // Participante atualizando sua própria presença/entrada ou renomeação por colaborador autorizado:
-        request.resource.data.ownerId == resource.data.ownerId
-        && (!('password' in request.resource.data) || request.resource.data.password == resource.data.password)
-        && (!('isPasswordProtected' in request.resource.data) || request.resource.data.isPasswordProtected == resource.data.isPasswordProtected)
-        && (!('defaultPermission' in request.resource.data) || request.resource.data.defaultPermission == resource.data.defaultPermission)
-        && (!('waitingRoomEnabled' in request.resource.data) || request.resource.data.waitingRoomEnabled == resource.data.waitingRoomEnabled)
-        && (!('removedMemberIds' in request.resource.data) || request.resource.data.removedMemberIds == resource.data.removedMemberIds)
+        (isBoardOwner(resource.data) && request.resource.data.ownerId == resource.data.ownerId) ||
+        (
+          request.resource.data.ownerId == resource.data.ownerId
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'joinRequests', 'timer', 'updatedAt'])
+          && (!('password' in request.resource.data) || request.resource.data.password == resource.data.password)
+          && (!('isPasswordProtected' in request.resource.data) || request.resource.data.isPasswordProtected == resource.data.isPasswordProtected)
+          && (!('defaultPermission' in request.resource.data) || request.resource.data.defaultPermission == resource.data.defaultPermission)
+          && (!('waitingRoomEnabled' in request.resource.data) || request.resource.data.waitingRoomEnabled == resource.data.waitingRoomEnabled)
+          && (!('removedMemberIds' in request.resource.data) || request.resource.data.removedMemberIds == resource.data.removedMemberIds)
+        )
       );
 
       // Exclusão: ESTRITAMENTE o proprietário do quadro comprovado por UID
@@ -51,14 +52,17 @@ service cloud.firestore {
       
       // Subcoleção de elementos do canvas (/boards/{boardId}/elements/{elementId})
       match /elements/{elementId} {
-        // Leitura para usuários autenticados com acesso ao quadro
-        allow read: if isAuthenticated();
+        // Leitura para usuários autenticados que não tenham sido removidos do quadro
+        allow read: if isAuthenticated() && (
+          isBoardOwner(get(/databases/$(database)/documents/boards/$(boardId)).data) ||
+          !isMemberRemoved(get(/databases/$(database)/documents/boards/$(boardId)).data)
+        );
         
         // Escrita: permitida apenas se o usuário não tiver sido removido do quadro
         // e possuir privilégio de edição (dono ou permissão do quadro)
         allow create, update, delete: if isAuthenticated() && (
           // O proprietário sempre pode editar elementos
-          get(/databases/$(database)/documents/boards/$(boardId)).data.ownerId == request.auth.uid ||
+          isBoardOwner(get(/databases/$(database)/documents/boards/$(boardId)).data) ||
           // Participante não removido com papel de edição
           (
             !isMemberRemoved(get(/databases/$(database)/documents/boards/$(boardId)).data) &&
@@ -68,15 +72,23 @@ service cloud.firestore {
         );
       }
     }
+
     // Snapshot público do convite (/invites/{boardId}):
     // contém APENAS título e nome do proprietário (nunca senha, membros ou permissões).
     // Leitura pública alimenta a tela de convite de quem ainda não está autenticado.
     match /invites/{boardId} {
       allow read: if true;
 
-      // Escrita: apenas o próprio proprietário do quadro pode criar/atualizar/remover
-      allow create: if isAuthenticated() && request.resource.data.ownerId == request.auth.uid;
-      allow update, delete: if isAuthenticated() && resource.data.ownerId == request.auth.uid;
+      // Escrita: apenas o legítimo proprietário comprovado do quadro pai (/boards/{boardId}) pode criar/atualizar/remover
+      allow create: if isAuthenticated() 
+        && request.resource.data.ownerId == request.auth.uid
+        && exists(/databases/$(database)/documents/boards/$(boardId))
+        && get(/databases/$(database)/documents/boards/$(boardId)).data.ownerId == request.auth.uid;
+
+      allow update, delete: if isAuthenticated() 
+        && resource.data.ownerId == request.auth.uid
+        && exists(/databases/$(database)/documents/boards/$(boardId))
+        && get(/databases/$(database)/documents/boards/$(boardId)).data.ownerId == request.auth.uid;
     }
   }
 }
