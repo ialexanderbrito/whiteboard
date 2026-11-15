@@ -37,7 +37,9 @@ import {
   CheckSquare,
   StickyNote
 } from '@/components/ui/icons';
-import type { CanvasElement } from '../../types/element';
+import type { CanvasElement, ConnectorStyle } from '../../types/element';
+import { isGeometricShape } from '../../types/element';
+import { resolveConnectorGeometry } from '../../utils/connectors.ts';
 import { 
   convertStickyToChecklist,
   convertChecklistToSticky,
@@ -130,6 +132,7 @@ interface SelectionContextBarProps {
   userRemainingVotes?: number;
   isSessionActive?: boolean;
   isElementEligible?: boolean;
+  allElements?: CanvasElement[];
 }
 
 // Escala visual do número do preset (log): 10px→~10, 144px→~15 — dá leitura de proporção sem estourar a linha.
@@ -159,6 +162,45 @@ const FontSizeSelectItem: React.FC<FontSizeSelectItemProps> = ({ value, currentF
         {children}
       </span>
       <span className="ml-auto text-[10px] text-muted-foreground">px</span>
+    </SelectItem>
+  );
+};
+
+const STROKE_WIDTH_PRESETS = [1, 2, 3, 4, 6, 8, 12, 16, 20, 24, 32, 48];
+
+interface StrokeWidthSelectItemProps {
+  value: string;
+  currentStrokeWidth: number;
+  children: number;
+}
+
+const StrokeWidthSelectItem: React.FC<StrokeWidthSelectItemProps> = ({
+  value,
+  currentStrokeWidth,
+  children,
+}) => {
+  const w = Number(value);
+  const isSelected = currentStrokeWidth === w;
+  // Escala visual suave da linha de espessura (1px a 8px)
+  const lineThickness = Math.max(1, Math.min(8, Math.round(1 + Math.log2(w) * 1.3)));
+
+  return (
+    <SelectItem
+      value={value}
+      className="py-1 pl-8 pr-2 font-mono text-xs tabular-nums cursor-pointer"
+    >
+      <div className="flex items-center gap-2.5 w-full">
+        <span className={isSelected ? 'font-bold text-foreground' : 'text-foreground/90'}>
+          {children}
+        </span>
+        <span
+          className={`flex-1 max-w-[26px] rounded-full transition-colors ${
+            isSelected ? 'bg-primary' : 'bg-muted-foreground/40'
+          }`}
+          style={{ height: `${lineThickness}px` }}
+        />
+        <span className="ml-auto text-[10px] text-muted-foreground">px</span>
+      </div>
     </SelectItem>
   );
 };
@@ -321,6 +363,7 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
   userRemainingVotes,
   isSessionActive,
   isElementEligible,
+  allElements,
 }) => {
   const [linkInput, setLinkInput] = useState('');
   const [linkTextLabel, setLinkTextLabel] = useState('');
@@ -331,9 +374,9 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
 
   const [isFontSizeSelectOpen, setIsFontSizeSelectOpen] = useState(false);
   const [customFontSizeInput, setCustomFontSizeInput] = useState('');
-  const [isStrokeWidthPopoverOpen, setIsStrokeWidthPopoverOpen] = useState(false);
+  const [isStrokeWidthSelectOpen, setIsStrokeWidthSelectOpen] = useState(false);
   const [customStrokeWidthInput, setCustomStrokeWidthInput] = useState('');
-  const [isBatchStrokeWidthPopoverOpen, setIsBatchStrokeWidthPopoverOpen] = useState(false);
+  const [isBatchStrokeWidthSelectOpen, setIsBatchStrokeWidthSelectOpen] = useState(false);
   const [customBatchStrokeWidthInput, setCustomBatchStrokeWidthInput] = useState('');
   const [customFillInput, setCustomFillInput] = useState('');
   const [customStrokeInput, setCustomStrokeInput] = useState('');
@@ -357,6 +400,27 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
     if (!primaryElement) return [];
     return extractAllLinks(primaryElement.text, primaryElement.linkUrl, primaryElement.links);
   }, [primaryElement, primaryElement?.text, primaryElement?.linkUrl, primaryElement?.links]);
+
+  const handleSelectConnectorStyle = useCallback((style: ConnectorStyle) => {
+    if (!primaryElement) return;
+    const elementMap = new Map<string, CanvasElement>();
+    if (allElements) {
+      for (const el of allElements) {
+        elementMap.set(el.id, el);
+      }
+    }
+    const updated = { ...primaryElement, connectorStyle: style };
+    const geom = resolveConnectorGeometry(updated, elementMap);
+    const relativePoints = geom.routePoints.map((val, idx) =>
+      idx % 2 === 0 ? Math.round(val - geom.worldStart.x) : Math.round(val - geom.worldStart.y)
+    );
+    onUpdateElement(primaryElement.id, {
+      connectorStyle: style,
+      x: Math.round(geom.worldStart.x),
+      y: Math.round(geom.worldStart.y),
+      points: relativePoints,
+    });
+  }, [primaryElement, allElements, onUpdateElement]);
 
   // Posição flutuante na tela logo acima da seleção (acompanha pan/zoom ao vivo).
   // Usa o bounding box rotation-aware (getElementWorldBounds) para que a barra
@@ -405,9 +469,13 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
   const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
   const modKey = isMac ? '⌘' : 'Ctrl';
 
-  const STROKE_WIDTH_PRESETS = [1, 2, 3, 4, 6, 8, 12, 16, 20, 24, 32, 48];
-  const hasLineOrArrowSelected = selectedElements.some((e) => ['pen', 'line', 'arrow'].includes(e.type));
-  const batchStrokeWidth = selectedElements.find((e) => ['pen', 'line', 'arrow'].includes(e.type))?.strokeWidth || 3;
+  const hasStrokeWidthElements = selectedElements.some(
+    (e) => ['pen', 'line', 'arrow'].includes(e.type) || isGeometricShape(e.type)
+  );
+  const batchStrokeWidth =
+    selectedElements.find(
+      (e) => ['pen', 'line', 'arrow'].includes(e.type) || isGeometricShape(e.type)
+    )?.strokeWidth || 2;
 
   const handleBatchColor = (color: string) => {
     const getColorUpdates = (e: CanvasElement): Partial<CanvasElement> => {
@@ -439,48 +507,51 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
     }
   };
 
-  const handleDecrementBatchStrokeWidth = () => {
-    selectedElements.forEach((e) => {
-      if (['pen', 'line', 'arrow'].includes(e.type)) {
-        const cur = e.strokeWidth || 3;
-        const prevWidths = STROKE_WIDTH_PRESETS.filter((w) => w < cur);
-        const next = prevWidths.length > 0 ? prevWidths[prevWidths.length - 1] : Math.max(1, cur - 1);
-        onUpdateElement(e.id, { strokeWidth: next });
-      }
-    });
-  };
-
-  const handleIncrementBatchStrokeWidth = () => {
-    selectedElements.forEach((e) => {
-      if (['pen', 'line', 'arrow'].includes(e.type)) {
-        const cur = e.strokeWidth || 3;
-        const nextWidths = STROKE_WIDTH_PRESETS.filter((w) => w > cur);
-        const next = nextWidths.length > 0 ? nextWidths[0] : cur + 2;
-        onUpdateElement(e.id, { strokeWidth: next });
-      }
-    });
-  };
-
-  const handleSelectBatchStrokeWidth = (w: number) => {
-    selectedElements.forEach((e) => {
-      if (['pen', 'line', 'arrow'].includes(e.type)) {
-        onUpdateElement(e.id, { strokeWidth: w });
-      }
-    });
-    setIsBatchStrokeWidthPopoverOpen(false);
-  };
-
-  const handleApplyCustomBatchStrokeWidth = () => {
-    const parsed = parseInt(customBatchStrokeWidthInput, 10);
-    if (!isNaN(parsed) && parsed >= 1 && parsed <= 100) {
+  const applyBatchStrokeWidth = (w: number) => {
+    if (onBatchUpdateElements) {
+      const updates = selectedElements
+        .filter((e) => ['pen', 'line', 'arrow'].includes(e.type) || isGeometricShape(e.type))
+        .map((e) => ({ id: e.id, updates: { strokeWidth: w } }));
+      if (updates.length > 0) onBatchUpdateElements(updates);
+    } else {
       selectedElements.forEach((e) => {
-        if (['pen', 'line', 'arrow'].includes(e.type)) {
-          onUpdateElement(e.id, { strokeWidth: parsed });
+        if (['pen', 'line', 'arrow'].includes(e.type) || isGeometricShape(e.type)) {
+          onUpdateElement(e.id, { strokeWidth: w });
         }
       });
-      setIsBatchStrokeWidthPopoverOpen(false);
-      setCustomBatchStrokeWidthInput('');
     }
+  };
+
+  const handleSelectBatchStrokeWidth = (value: string) => {
+    const sz = parseInt(value, 10);
+    if (!isNaN(sz)) applyBatchStrokeWidth(sz);
+  };
+
+  const handleApplyCustomBatchStrokeWidth = (closeSelect = true) => {
+    const parsed = parseInt(customBatchStrokeWidthInput, 10);
+    if (!isNaN(parsed) && parsed >= 1 && parsed <= 100) {
+      applyBatchStrokeWidth(parsed);
+      if (closeSelect) {
+        setIsBatchStrokeWidthSelectOpen(false);
+        setCustomBatchStrokeWidthInput('');
+      }
+      return true;
+    }
+    return false;
+  };
+
+  // Stepper ±1 (segura Shift para ±5): lê o campo digitado se houver, senão a espessura atual.
+  const stepBatchStrokeWidth = (delta: number) => {
+    const parsed = parseInt(customBatchStrokeWidthInput, 10);
+    const base = !isNaN(parsed) && parsed >= 1 && parsed <= 100 ? parsed : batchStrokeWidth;
+    const next = Math.min(100, Math.max(1, base + delta));
+    setCustomBatchStrokeWidthInput(String(next));
+    applyBatchStrokeWidth(next);
+  };
+
+  // Commit ao sair do campo (sem fechar o Select): aplica se válido, senão limpa.
+  const handleCommitBatchStrokeWidthOnBlur = () => {
+    if (!handleApplyCustomBatchStrokeWidth(false)) setCustomBatchStrokeWidthInput('');
   };
 
   const handleBatchLock = (lockState: boolean) => {
@@ -624,115 +695,93 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
           </Popover>
         </div>
 
-        {/* Seletor de Espessura em Lote (quando há linhas, setas ou desenhos com caneta) */}
-        {hasLineOrArrowSelected && (
-          <div className="flex items-center pr-1 border-r border-border">
-            <div className="flex items-center bg-muted/40 rounded-md border border-border/60 p-0.5">
+        {/* Seletor de Espessura em Lote (padronizado com o Select de fonte e traço individual) */}
+        {hasStrokeWidthElements && (
+          <div className="flex items-center gap-0.5 pr-1 border-r border-border">
+            <Select
+              value={String(batchStrokeWidth)}
+              onValueChange={handleSelectBatchStrokeWidth}
+              open={isBatchStrokeWidthSelectOpen}
+              onOpenChange={(open) => {
+                setIsBatchStrokeWidthSelectOpen(open);
+                if (!open) {
+                  setCustomBatchStrokeWidthInput('');
+                  if (typeof window !== 'undefined') (window as any).__mirio_menu_dismissed_at = Date.now();
+                }
+              }}
+            >
               <Tooltip>
                 <TooltipTrigger asChild>
+                  <SelectTrigger
+                    aria-label="Espessura dos traços/bordas em lote"
+                    className="h-7 w-auto gap-1 rounded-md border-none bg-transparent px-1.5 font-mono text-xs font-semibold text-foreground shadow-none hover:bg-muted focus:ring-1 focus:ring-ring focus:ring-offset-0 data-[state=open]:bg-muted [&_svg]:size-2.5 [&_svg]:opacity-60"
+                  >
+                    <span className="tabular-nums">{batchStrokeWidth}px</span>
+                  </SelectTrigger>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  Espessura dos traços/bordas ({batchStrokeWidth}px)
+                </TooltipContent>
+              </Tooltip>
+
+              <SelectContent
+                side="top"
+                align="center"
+                className="w-36"
+              >
+                {/* Stepper − / valor / + (Shift para ±5) */}
+                <div className="flex items-stretch gap-1 px-1 pb-1" onKeyDown={(e) => e.stopPropagation()}>
                   <button
                     type="button"
-                    onClick={handleDecrementBatchStrokeWidth}
-                    className="size-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-background transition active:scale-95"
-                    aria-label="Diminuir espessura do traço"
+                    onClick={(e) => stepBatchStrokeWidth(e.shiftKey ? -5 : -1)}
+                    disabled={batchStrokeWidth <= 1}
+                    className="size-7 shrink-0 rounded-md border border-border bg-muted/40 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-40 disabled:pointer-events-none transition cursor-pointer active:scale-[0.95]"
+                    aria-label="Diminuir espessura (Shift: −5)"
                   >
                     <Minus className="size-3" />
                   </button>
-                </TooltipTrigger>
-                <TooltipContent side="top">Diminuir espessura (-)</TooltipContent>
-              </Tooltip>
-
-              <Popover open={isBatchStrokeWidthPopoverOpen} onOpenChange={setIsBatchStrokeWidthPopoverOpen}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <PopoverTrigger asChild>
-                      <button
-                        type="button"
-                        className="px-1.5 h-5 text-xs font-mono font-semibold flex items-center gap-0.5 text-foreground hover:bg-background rounded transition cursor-pointer"
-                        aria-label="Espessura do traço"
-                      >
-                        <span>{batchStrokeWidth}px</span>
-                        <ChevronDown className="size-2.5 opacity-60" />
-                      </button>
-                    </PopoverTrigger>
-                  </TooltipTrigger>
-                  <TooltipContent side="top">Espessura dos traços ({batchStrokeWidth}px)</TooltipContent>
-                </Tooltip>
-
-                <PopoverContent
-                  side="top"
-                  align="center"
-                  className="w-48 p-2.5 text-xs"
-                  onPointerDownOutside={() => {
-                    if (typeof window !== 'undefined') (window as any).__mirio_menu_dismissed_at = Date.now();
-                  }}
-                  onInteractOutside={() => {
-                    if (typeof window !== 'undefined') (window as any).__mirio_menu_dismissed_at = Date.now();
-                  }}
-                >
-                  <div className="flex items-center justify-between mb-2 pb-1.5 border-b border-border">
-                    <span className="font-semibold text-[11px] text-foreground">Espessura do Traço</span>
-                    <span className="text-[10px] text-muted-foreground font-mono">{batchStrokeWidth}px</span>
-                  </div>
-
-                  <div className="flex items-center gap-1 mb-2">
-                    <Input
-                      type="number"
-                      min={1}
-                      max={100}
-                      placeholder={`${batchStrokeWidth}`}
-                      value={customBatchStrokeWidthInput}
-                      onChange={(e) => setCustomBatchStrokeWidthInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleApplyCustomBatchStrokeWidth();
-                      }}
-                      className="h-7 text-xs px-2 font-mono"
-                    />
-                    <Button
-                      size="icon-sm"
-                      onClick={handleApplyCustomBatchStrokeWidth}
-                      className="size-7 shrink-0 text-xs font-semibold"
-                    >
-                      OK
-                    </Button>
-                  </div>
-
-                  <div className="grid grid-cols-4 gap-1">
-                    {STROKE_WIDTH_PRESETS.map((w) => {
-                      const isSelected = batchStrokeWidth === w;
-                      return (
-                        <button
-                          key={w}
-                          type="button"
-                          onClick={() => handleSelectBatchStrokeWidth(w)}
-                          className={`h-6 rounded text-[11px] font-mono transition flex items-center justify-center ${
-                            isSelected
-                              ? 'bg-primary text-primary-foreground font-bold shadow-xs'
-                              : 'hover:bg-muted text-muted-foreground hover:text-foreground'
-                          }`}
-                        >
-                          {w}px
-                        </button>
-                      );
-                    })}
-                  </div>
-                </PopoverContent>
-              </Popover>
-
-              <Tooltip>
-                <TooltipTrigger asChild>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={100}
+                    placeholder={`${batchStrokeWidth}`}
+                    value={customBatchStrokeWidthInput}
+                    onChange={(e) => {
+                      const v = e.target.value.replace(/[^0-9]/g, '');
+                      if (v === '' || (parseInt(v, 10) <= 100)) setCustomBatchStrokeWidthInput(v);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleApplyCustomBatchStrokeWidth();
+                      if (e.key === 'Escape') setIsBatchStrokeWidthSelectOpen(false);
+                    }}
+                    onBlur={handleCommitBatchStrokeWidthOnBlur}
+                    className="h-7 min-w-0 flex-1 text-xs px-1.5 font-mono text-center tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                  />
                   <button
                     type="button"
-                    onClick={handleIncrementBatchStrokeWidth}
-                    className="size-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-background transition active:scale-95"
-                    aria-label="Aumentar espessura do traço"
+                    onClick={(e) => stepBatchStrokeWidth(e.shiftKey ? 5 : 1)}
+                    disabled={batchStrokeWidth >= 100}
+                    className="size-7 shrink-0 rounded-md border border-border bg-muted/40 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-40 disabled:pointer-events-none transition cursor-pointer active:scale-[0.95]"
+                    aria-label="Aumentar espessura (Shift: +5)"
                   >
                     <Plus className="size-3" />
                   </button>
-                </TooltipTrigger>
-                <TooltipContent side="top">Aumentar espessura (+)</TooltipContent>
-              </Tooltip>
-            </div>
+                </div>
+
+                <SelectSeparator />
+
+                {/* Presets */}
+                {STROKE_WIDTH_PRESETS.map((w) => (
+                  <StrokeWidthSelectItem
+                    key={w}
+                    value={String(w)}
+                    currentStrokeWidth={batchStrokeWidth}
+                  >
+                    {w}
+                  </StrokeWidthSelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         )}
 
@@ -1150,7 +1199,7 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
   // Elemento único selecionado (mesmo contêiner para bloqueado ou desbloqueado)
   const isSticky = primaryElement.type === 'sticky';
   const isChecklist = primaryElement.type === 'checklist';
-  const isShape = ['rect', 'circle', 'diamond', 'triangle', 'star'].includes(primaryElement.type);
+  const isShape = isGeometricShape(primaryElement.type);
   const isLineOrArrow = ['arrow', 'line', 'pen'].includes(primaryElement.type);
   const isText = primaryElement.type === 'text';
   const isFrame = primaryElement.type === 'frame';
@@ -1351,18 +1400,40 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
 
   const currentStrokeWidth = primaryElement.strokeWidth || (primaryElement.type === 'pen' ? 3 : 2);
 
-  const handleSelectStrokeWidth = (w: number) => {
-    onUpdateElement(primaryElement.id, { strokeWidth: w });
-    setIsStrokeWidthPopoverOpen(false);
+  const applySingleStrokeWidth = (sz: number) => {
+    onUpdateElement(primaryElement.id, { strokeWidth: sz });
   };
 
-  const handleApplyCustomStrokeWidth = () => {
+  const handleSelectStrokeWidth = (value: string) => {
+    const sz = parseInt(value, 10);
+    if (!isNaN(sz)) applySingleStrokeWidth(sz);
+  };
+
+  const handleApplyCustomStrokeWidth = (closeSelect = true) => {
     const parsed = parseInt(customStrokeWidthInput, 10);
     if (!isNaN(parsed) && parsed >= 1 && parsed <= 100) {
-      onUpdateElement(primaryElement.id, { strokeWidth: parsed });
-      setIsStrokeWidthPopoverOpen(false);
-      setCustomStrokeWidthInput('');
+      applySingleStrokeWidth(parsed);
+      if (closeSelect) {
+        setIsStrokeWidthSelectOpen(false);
+        setCustomStrokeWidthInput('');
+      }
+      return true;
     }
+    return false;
+  };
+
+  // Stepper ±1 (segura Shift para ±5): lê o campo digitado se houver, senão a espessura atual.
+  const stepStrokeWidth = (delta: number) => {
+    const parsed = parseInt(customStrokeWidthInput, 10);
+    const base = !isNaN(parsed) && parsed >= 1 && parsed <= 100 ? parsed : currentStrokeWidth;
+    const next = Math.min(100, Math.max(1, base + delta));
+    setCustomStrokeWidthInput(String(next));
+    applySingleStrokeWidth(next);
+  };
+
+  // Commit ao sair do campo (sem fechar o Select): aplica se válido, senão limpa.
+  const handleCommitStrokeWidthOnBlur = () => {
+    if (!handleApplyCustomStrokeWidth(false)) setCustomStrokeWidthInput('');
   };
 
   const handleSaveLink = () => {
@@ -2883,89 +2954,147 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
       {/* ========================================================= */}
       {(isShape || isLineOrArrow) && (
         <div className="flex items-center gap-0.5">
-          <Popover open={isStrokeWidthPopoverOpen} onOpenChange={setIsStrokeWidthPopoverOpen}>
+          <Select
+            value={String(currentStrokeWidth)}
+            onValueChange={handleSelectStrokeWidth}
+            open={isStrokeWidthSelectOpen}
+            onOpenChange={(open) => {
+              setIsStrokeWidthSelectOpen(open);
+              if (!open) {
+                setCustomStrokeWidthInput('');
+                if (typeof window !== 'undefined') (window as any).__mirio_menu_dismissed_at = Date.now();
+              }
+            }}
+          >
             <Tooltip>
               <TooltipTrigger asChild>
-                <PopoverTrigger asChild>
-                  <button
-                    type="button"
-                    className="h-7 px-1.5 text-xs font-mono font-semibold flex items-center gap-1 text-foreground hover:bg-muted rounded-md transition cursor-pointer active:scale-[0.97]"
-                    aria-label="Espessura"
-                  >
-                    <span className="tabular-nums">{currentStrokeWidth}px</span>
-                    <ChevronDown className="size-2.5 opacity-60" />
-                  </button>
-                </PopoverTrigger>
+                <SelectTrigger
+                  aria-label={isShape ? 'Espessura da borda' : 'Espessura do traço'}
+                  className="h-7 w-auto gap-1 rounded-md border-none bg-transparent px-1.5 font-mono text-xs font-semibold text-foreground shadow-none hover:bg-muted focus:ring-1 focus:ring-ring focus:ring-offset-0 data-[state=open]:bg-muted [&_svg]:size-2.5 [&_svg]:opacity-60"
+                >
+                  <span className="tabular-nums">{currentStrokeWidth}px</span>
+                </SelectTrigger>
               </TooltipTrigger>
               <TooltipContent side="top">
                 {isShape ? `Espessura da borda (${currentStrokeWidth}px)` : `Espessura do traço (${currentStrokeWidth}px)`}
               </TooltipContent>
             </Tooltip>
 
-            <PopoverContent
+            <SelectContent
               side="top"
               align="center"
-              className="w-48 p-2.5 text-xs shadow-xl border-border bg-popover"
               onCloseAutoFocus={handlePopoverCloseAutoFocus}
-              onPointerDownOutside={() => {
-                if (typeof window !== 'undefined') (window as any).__mirio_menu_dismissed_at = Date.now();
-              }}
-              onInteractOutside={() => {
-                if (typeof window !== 'undefined') (window as any).__mirio_menu_dismissed_at = Date.now();
-              }}
+              className="w-36"
             >
-              <div className="flex items-center justify-between mb-2 pb-1.5 border-b border-border">
-                <span className="font-semibold text-[11px] text-foreground">
-                  {isShape ? 'Espessura da Borda' : 'Espessura do Traço'}
-                </span>
-                <span className="text-[10px] text-muted-foreground font-mono">{currentStrokeWidth}px</span>
-              </div>
-
-              {/* Campo Numérico Livre */}
-              <div className="flex items-center gap-1 mb-2">
+              {/* Valor livre: stepper − / valor / + (Shift para ±5, Enter aplica e fecha) */}
+              <div className="flex items-stretch gap-1 px-1 pb-1" onKeyDown={(e) => e.stopPropagation()}>
+                <button
+                  type="button"
+                  onClick={(e) => stepStrokeWidth(e.shiftKey ? -5 : -1)}
+                  disabled={currentStrokeWidth <= 1}
+                  className="size-7 shrink-0 rounded-md border border-border bg-muted/40 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-40 disabled:pointer-events-none transition cursor-pointer active:scale-[0.95]"
+                  aria-label="Diminuir espessura (Shift: −5)"
+                >
+                  <Minus className="size-3" />
+                </button>
                 <Input
                   type="number"
                   min={1}
                   max={100}
                   placeholder={`${currentStrokeWidth}`}
                   value={customStrokeWidthInput}
-                  onChange={(e) => setCustomStrokeWidthInput(e.target.value)}
+                  onChange={(e) => {
+                    const v = e.target.value.replace(/[^0-9]/g, '');
+                    if (v === '' || (parseInt(v, 10) <= 100)) setCustomStrokeWidthInput(v);
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') handleApplyCustomStrokeWidth();
+                    if (e.key === 'Escape') setIsStrokeWidthSelectOpen(false);
                   }}
-                  className="h-7 text-xs px-2 font-mono"
+                  onBlur={handleCommitStrokeWidthOnBlur}
+                  className="h-7 min-w-0 flex-1 text-xs px-1.5 font-mono text-center tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                 />
-                <Button
-                  size="icon-sm"
-                  onClick={handleApplyCustomStrokeWidth}
-                  className="size-7 shrink-0 text-xs font-semibold"
+                <button
+                  type="button"
+                  onClick={(e) => stepStrokeWidth(e.shiftKey ? 5 : 1)}
+                  disabled={currentStrokeWidth >= 100}
+                  className="size-7 shrink-0 rounded-md border border-border bg-muted/40 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-40 disabled:pointer-events-none transition cursor-pointer active:scale-[0.95]"
+                  aria-label="Aumentar espessura (Shift: +5)"
                 >
-                  OK
-                </Button>
+                  <Plus className="size-3" />
+                </button>
               </div>
 
-              {/* Grade de Espessuras Rápidas */}
-              <div className="grid grid-cols-4 gap-1">
-                {STROKE_WIDTH_PRESETS.map((w) => {
-                  const isSelected = currentStrokeWidth === w;
-                  return (
-                    <button
-                      key={w}
-                      type="button"
-                      onClick={() => handleSelectStrokeWidth(w)}
-                      className={`h-6 rounded text-[11px] font-mono transition flex items-center justify-center ${
-                        isSelected
-                          ? 'bg-primary text-primary-foreground font-bold shadow-xs'
-                          : 'hover:bg-muted text-muted-foreground hover:text-foreground'
-                      }`}
-                    >
-                      {w}px
-                    </button>
-                  );
-                })}
-              </div>
-            </PopoverContent>
-          </Popover>
+              <SelectSeparator />
+
+              {/* Presets (lista única, padrão do projeto) */}
+              {STROKE_WIDTH_PRESETS.map((w) => (
+                <StrokeWidthSelectItem
+                  key={w}
+                  value={String(w)}
+                  currentStrokeWidth={currentStrokeWidth}
+                >
+                  {w}
+                </StrokeWidthSelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Seletor de Roteamento de Linha/Seta (Reta, Curva Suave, 90° Ortogonal) */}
+          {(primaryElement.type === 'arrow' || primaryElement.type === 'line') && (
+            <div className="flex items-center gap-0.5 bg-muted/60 p-0.5 rounded-md border border-border/80">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={() => handleSelectConnectorStyle('straight')}
+                    className={`h-6 px-1.5 text-[11px] font-medium rounded transition flex items-center gap-1 active:scale-[0.97] ${
+                      (primaryElement.connectorStyle || 'straight') === 'straight'
+                        ? 'bg-background text-foreground shadow-2xs font-semibold'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <span>Reta</span>
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="top">Linha Reta</TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={() => handleSelectConnectorStyle('curved')}
+                    className={`h-6 px-1.5 text-[11px] font-medium rounded transition flex items-center gap-1 active:scale-[0.97] ${
+                      primaryElement.connectorStyle === 'curved'
+                        ? 'bg-background text-foreground shadow-2xs font-semibold'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <span>Curva</span>
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="top">Curva Suave (Bezier)</TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={() => handleSelectConnectorStyle('orthogonal')}
+                    className={`h-6 px-1.5 text-[11px] font-medium rounded transition flex items-center gap-1 active:scale-[0.97] ${
+                      primaryElement.connectorStyle === 'orthogonal'
+                        ? 'bg-background text-foreground shadow-2xs font-semibold'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <span>90°</span>
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="top">Ortogonal (Em degrau 90°)</TooltipContent>
+              </Tooltip>
+            </div>
+          )}
 
           <div className="w-px h-3.5 bg-border mx-0.5" />
         </div>
