@@ -44,6 +44,73 @@ export function subscribeViewport(listener: ViewportListener) {
   };
 }
 
+export interface ElementDragOffsetState {
+  /** Verdadeiro enquanto o botão do ponteiro ainda está arrastando os elementos */
+  active: boolean;
+  draggedIds: ReadonlySet<string>;
+  initialBoundsById: ReadonlyMap<string, WorldBounds>;
+  dx: number;
+  dy: number;
+}
+
+type ElementDragOffsetListener = (drag: ElementDragOffsetState | null) => void;
+
+let elementDragOffset: ElementDragOffsetState | null = null;
+const dragOffsetListeners = new Set<ElementDragOffsetListener>();
+
+export function getElementDragOffset(): ElementDragOffsetState | null {
+  return elementDragOffset;
+}
+
+export function publishElementDragOffset(next: ElementDragOffsetState | null) {
+  if (elementDragOffset === null && next === null) {
+    return;
+  }
+  elementDragOffset = next;
+  dragOffsetListeners.forEach((listener) => listener(next));
+}
+
+export function subscribeElementDragOffset(listener: ElementDragOffsetListener) {
+  dragOffsetListeners.add(listener);
+  listener(elementDragOffset);
+  return () => {
+    dragOffsetListeners.delete(listener);
+  };
+}
+
+/**
+ * Retorna os limites mundiais em tempo real de um elemento durante ou logo após o arraste,
+ * eliminando congelamento de overlays HTML (SelectionContextBar / ConnectorHandles) e saltos no mouseup.
+ */
+export function resolveDraggedWorldBounds(
+  elementId: string,
+  committedBounds: WorldBounds,
+  drag: ElementDragOffsetState | null = elementDragOffset
+): WorldBounds {
+  if (!drag || !drag.draggedIds.has(elementId)) {
+    return committedBounds;
+  }
+  const init = drag.initialBoundsById.get(elementId);
+  if (!init) {
+    return committedBounds;
+  }
+  const targetX = Math.round(init.x + drag.dx);
+  const targetY = Math.round(init.y + drag.dy);
+  if (
+    !drag.active &&
+    Math.abs(committedBounds.x - targetX) <= 1 &&
+    Math.abs(committedBounds.y - targetY) <= 1
+  ) {
+    return committedBounds;
+  }
+  return {
+    x: init.x + drag.dx,
+    y: init.y + drag.dy,
+    w: init.w,
+    h: init.h,
+  };
+}
+
 export function applyWorldTransform(
   node: HTMLElement | null,
   next: ViewportState = viewport

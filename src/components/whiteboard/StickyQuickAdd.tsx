@@ -3,7 +3,14 @@ import { Plus } from '@/components/ui/icons';
 import type { CanvasElement } from '../../types/element';
 import { getElementWorldBounds } from '../../utils/elementBounds';
 import type { StickyDirection } from '../../utils/stickyPlacement';
-import { getViewport, subscribeViewport, type ViewportState } from '../../utils/viewport';
+import {
+  getViewport,
+  subscribeViewport,
+  getElementDragOffset,
+  subscribeElementDragOffset,
+  resolveDraggedWorldBounds,
+  type ViewportState,
+} from '../../utils/viewport';
 
 interface StickyQuickAddProps {
   sticky: CanvasElement;
@@ -42,7 +49,9 @@ export const StickyQuickAdd: React.FC<StickyQuickAddProps> = React.memo(({
 
   useLayoutEffect(() => {
     const place = (viewport: ViewportState) => {
-      const bounds = getElementWorldBounds(sticky);
+      const drag = getElementDragOffset();
+      const isDraggingThis = Boolean(drag?.active && drag.draggedIds.has(sticky.id));
+      const bounds = resolveDraggedWorldBounds(sticky.id, getElementWorldBounds(sticky), drag);
       const width = bounds.w * viewport.scale;
       const height = bounds.h * viewport.scale;
       const centerX = (bounds.x + bounds.w / 2) * viewport.scale + viewport.x;
@@ -55,8 +64,8 @@ export const StickyQuickAdd: React.FC<StickyQuickAddProps> = React.memo(({
         });
       };
 
-      // Evita poluição visual em zooms muito afastados ou com o elemento fora da tela.
-      if (Math.min(width, height) < QUICK_ADD_MIN_STICKY_SIZE) {
+      // Evita poluição visual em zooms muito afastados, durante arraste ativo ou fora da tela.
+      if (isDraggingThis || Math.min(width, height) < QUICK_ADD_MIN_STICKY_SIZE) {
         hideAll();
         return;
       }
@@ -95,7 +104,12 @@ export const StickyQuickAdd: React.FC<StickyQuickAddProps> = React.memo(({
     };
 
     place(getViewport());
-    return subscribeViewport(place);
+    const unsubViewport = subscribeViewport(place);
+    const unsubDrag = subscribeElementDragOffset(() => place(getViewport()));
+    return () => {
+      unsubViewport();
+      unsubDrag();
+    };
   }, [sticky]);
 
   const itemLabel = sticky.type === 'sticky' ? 'post-it' : 'forma';

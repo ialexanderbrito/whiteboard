@@ -7,6 +7,9 @@ import { Button } from '@/components/ui/button';
 import {
   getViewport,
   subscribeViewport,
+  getElementDragOffset,
+  subscribeElementDragOffset,
+  resolveDraggedWorldBounds,
   type ViewportState,
 } from '../../utils/viewport';
 
@@ -37,12 +40,14 @@ export const ElementLinkBalloon: React.FC<ElementLinkBalloonProps> = ({
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
   const balloonRef = useRef<HTMLDivElement>(null);
 
-  // Posiciona direto no DOM: pan/zoom não deve re-renderizar o balão nem seus botões.
+  // Posiciona direto no DOM: pan/zoom e arraste não re-renderizam o balão nem seus botões.
   const placeBalloon = useCallback((viewport: ViewportState) => {
     const node = balloonRef.current;
     if (!node) return;
 
-    const bounds = getElementWorldBounds(element);
+    const drag = getElementDragOffset();
+    const isDraggingThis = Boolean(drag?.active && drag.draggedIds.has(element.id));
+    const bounds = resolveDraggedWorldBounds(element.id, getElementWorldBounds(element), drag);
     const elemWidth = bounds.w * viewport.scale;
     const elemHeight = bounds.h * viewport.scale;
 
@@ -63,11 +68,17 @@ export const ElementLinkBalloon: React.FC<ElementLinkBalloonProps> = ({
 
     node.style.left = `${screenX + elemWidth / 2}px`;
     node.style.top = `${balloonTop}px`;
+    node.style.pointerEvents = isDraggingThis ? 'none' : '';
   }, [element, stickyBottomOffset]);
 
   useEffect(() => {
     placeBalloon(getViewport());
-    return subscribeViewport(placeBalloon);
+    const unsubViewport = subscribeViewport(placeBalloon);
+    const unsubDrag = subscribeElementDragOffset(() => placeBalloon(getViewport()));
+    return () => {
+      unsubViewport();
+      unsubDrag();
+    };
   }, [placeBalloon]);
 
   const links = extractAllLinks(element.text, element.linkUrl, element.links);

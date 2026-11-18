@@ -2,7 +2,15 @@ import React, { useLayoutEffect, useRef } from 'react';
 import { ArrowUp, ArrowRight, ArrowDown, ArrowLeft } from '@/components/ui/icons';
 import type { CanvasElement, ConnectionSide } from '../../types/element';
 import { getElementWorldBounds } from '../../utils/elementBounds';
-import { getViewport, subscribeViewport, isCoarseOrMobileViewport, type ViewportState } from '../../utils/viewport';
+import {
+  getViewport,
+  subscribeViewport,
+  getElementDragOffset,
+  subscribeElementDragOffset,
+  resolveDraggedWorldBounds,
+  isCoarseOrMobileViewport,
+  type ViewportState,
+} from '../../utils/viewport';
 import { getCardinalAnchors } from '../../utils/connectors';
 
 interface ElementConnectorHandlesProps {
@@ -56,7 +64,9 @@ export const ElementConnectorHandles: React.FC<ElementConnectorHandlesProps> = R
         return;
       }
 
-      const bounds = getElementWorldBounds(element);
+      const drag = getElementDragOffset();
+      const isDraggingThisElement = Boolean(drag?.active && drag.draggedIds.has(element.id));
+      const bounds = resolveDraggedWorldBounds(element.id, getElementWorldBounds(element), drag);
       const anchors = getCardinalAnchors(bounds);
 
       // Converte coordenadas do mundo para a tela
@@ -82,6 +92,7 @@ export const ElementConnectorHandles: React.FC<ElementConnectorHandlesProps> = R
         const pos = screenAnchors[side];
 
         const isVisible =
+          !isDraggingThisElement &&
           pos.x >= -20 &&
           pos.x <= viewportWidth + 20 &&
           pos.y >= -20 &&
@@ -93,12 +104,17 @@ export const ElementConnectorHandles: React.FC<ElementConnectorHandlesProps> = R
       });
 
       if (containerRef.current) {
-        containerRef.current.style.display = 'block';
+        containerRef.current.style.display = isDraggingThisElement ? 'none' : 'block';
       }
     };
 
     place(getViewport());
-    return subscribeViewport(place);
+    const unsubViewport = subscribeViewport(place);
+    const unsubDrag = subscribeElementDragOffset(() => place(getViewport()));
+    return () => {
+      unsubViewport();
+      unsubDrag();
+    };
   }, [element, disabled]);
 
   if (disabled || element.locked || isCoarseOrMobileViewport()) return null;
