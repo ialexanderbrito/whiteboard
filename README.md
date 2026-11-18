@@ -14,7 +14,7 @@ Pense, desenhe, faça ideações e facilite dinâmicas com a agilidade do Miro e
 
 [![React](https://img.shields.io/badge/React_19-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Vite](https://img.shields.io/badge/Vite_6-646CFF?style=for-the-badge&logo=vite&logoColor=FFD62E)](https://vitejs.dev/)
+[![Vite](https://img.shields.io/badge/Vite_8-646CFF?style=for-the-badge&logo=vite&logoColor=FFD62E)](https://vitejs.dev/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
 [![Firebase](https://img.shields.io/badge/Firebase-FFCA28?style=for-the-badge&logo=firebase&logoColor=black)](https://firebase.google.com/)
 [![Licença MIT](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](./LICENSE)
@@ -42,7 +42,7 @@ O **Mirio** foi concebido para eliminar barreiras entre uma ideia e sua execuç�
 - **🔷 Formas Geométricas & Desenho Livre**: Retângulos, círculos, triângulos, losangos, estrelas, conectores direcionais e caneta com suavização.
 - **💬 Cursor Chat & Interações Vivas**: Pressione `/` e converse diretamente pela posição do seu mouse (estilo Figma), aponte com feixe Laser (`L`) e envie reações flutuantes.
 - **⏱️ Facilitação Profissional**: Cronômetro colaborativo sincronizado na sala e sessões de votação anônima com pódio automático.
-- **📸 Exportação**: Captura da área visível do quadro em PNG e backup completo em JSON (elementos e estrutura).
+- **📸 Exportação & Backup Completo**: Exportação do quadro inteiro em alta resolução (PNG), vetor escalável (SVG) e exportação/importação de backup em JSON.
 - **📋 Templates Prontos para Sprint**: Crie com um clique quadros para *Lean Canvas*, *Retrospectivas*, *Brainstorming* e *Matriz de Priorização*.
 - **🔒 Segurança & Controle**: Quadros protegidos por senha opcional, modo apresentação para slides e permissões granulares por participante.
 - **🌗 Design System Imersivo**: Tema Claro e Escuro com transições suaves e zero oscilação visual (Zero-FOUC).
@@ -95,6 +95,11 @@ Ganhe velocidade dominando os atalhos do teclado:
 | <kbd>L</kbd> | Apontador Laser temporário |
 | <kbd>/</kbd> | Abrir Cursor Chat |
 | <kbd>F</kbd> | Criar Moldura / Frame |
+| <kbd>M</kbd> | Exibir / Ocultar Minimapa |
+| <kbd>Ctrl</kbd> + <kbd>F</kbd> | Buscar texto no quadro |
+| <kbd>Ctrl</kbd> + <kbd>G</kbd> | Agrupar elementos selecionados |
+| <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>G</kbd> | Desagrupar elementos |
+| <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>C</kbd> / <kbd>V</kbd> | Copiar e colar estilo visual |
 | <kbd>Delete</kbd> | Excluir seleção |
 | <kbd>Ctrl</kbd> + <kbd>Z</kbd> | Desfazer ação |
 
@@ -112,8 +117,8 @@ Ganhe velocidade dominando os atalhos do teclado:
 
 1. **Clone o repositório:**
    ```bash
-   git clone https://github.com/ialexanderbrito/whiteboard.git
-   cd whiteboard
+   git clone https://github.com/ialexanderbrito/mirio.git
+   cd mirio
    ```
 
 2. **Instale as dependências:**
@@ -137,8 +142,8 @@ Acesse [http://localhost:5173](http://localhost:5173) no seu navegador.
 - **Interface & Componentes**: [React 19](https://react.dev/), [TypeScript](https://www.typescriptlang.org/), [Tailwind CSS](https://tailwindcss.com/), [shadcn/ui](https://ui.shadcn.com/)
 - **Renderização Gráfica**: [Konva.js](https://konvajs.org/) e [React Konva](https://github.com/konvajs/react-konva)
 - **Tempo Real & Nuvem**: [Firebase](https://firebase.google.com/) (Firestore + Realtime Database)
-- **Ícones & Emojis**: [Lucide React](https://lucide.dev/), Emojis em alta resolução
-- **Build & Qualidade**: [Vite](https://vitejs.dev/), Node Test Runner
+- **Ícones & Emojis**: [Hugeicons](https://hugeicons.com/), Emojis em alta resolução
+- **Build & Qualidade**: [Vite 8](https://vitejs.dev/), Oxlint, Node Test Runner & GitHub Actions CI
 
 ---
 
