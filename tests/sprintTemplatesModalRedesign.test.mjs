@@ -44,12 +44,12 @@ test('SprintTemplatesModal redesign aligns with main screen QuickStartTemplatesS
   assert.doesNotMatch(navbarSrc, /SprintTemplatesModal/);
   assert.match(toolbarSrc, /onOpenTemplates/);
   assert.match(toolbarSrc, /LayoutTemplate/);
-  assert.match(toolbarSrc, /aria-label="Inserir Templates de Sprint"/);
-  assert.match(toolbarSrc, /Templates de Sprint[\s\S]*?\(S\)/);
+  assert.match(toolbarSrc, /aria-label="Inserir Templates & Frameworks"/);
+  assert.match(toolbarSrc, /Templates & Frameworks[\s\S]*?\(S\)/);
   assert.match(boardPageSrc, /onOpenTemplates=\{\(\) => setIsSprintTemplatesOpen\(true\)\}/);
 
   // 7. Shortcut S directly opens templates modal on canvas (matching single-key tool convention)
   assert.match(canvasSrc, /\(e\.key === ['"]s['"]\s*\|\|\s*e\.key === ['"]S['"]\)\s*&&\s*onOpenTemplates/);
-  assert.match(contextMenuSrc, /Modelos de Sprint\.\.\.[\s\S]*?<kbd[^>]*>\s*S\s*<\/kbd>/);
-  assert.match(shortcutsModalSrc, /keys:\s*\['S'\][\s\S]*?Templates de Sprint/);
+  assert.match(contextMenuSrc, /Templates & Frameworks\.\.\.[\s\S]*?<kbd[^>]*>\s*S\s*<\/kbd>/);
+  assert.match(shortcutsModalSrc, /keys:\s*\['S'\][\s\S]*?Templates & Frameworks/);
 });

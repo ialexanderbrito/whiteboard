@@ -497,7 +497,7 @@ export const BoardContextMenu: React.FC<BoardContextMenuProps> = ({
             >
               <div className="flex items-center gap-2">
                 <LayoutTemplate className="size-4 text-muted-foreground group-hover:scale-105 transition-transform" />
-                <span className="font-medium">Modelos de Sprint...</span>
+                <span className="font-medium">Templates & Frameworks...</span>
               </div>
               <kbd className="px-1.5 py-0.5 text-[9px] font-mono bg-muted text-muted-foreground rounded border border-border/50">
                 S

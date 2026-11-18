@@ -42,7 +42,15 @@ export type TemplatePreviewVariant =
   | 'lean_canvas'
   | 'retro_agile'
   | 'daily'
-  | 'retro_focus';
+  | 'retro_focus'
+  | 'raci_matrix'
+  | 'tech_spec'
+  | 'revenue_funnel'
+  | 'mindmap_discovery'
+  | 'kanban_interactive'
+  | 'rice_matrix'
+  | 'post_mortem'
+  | 'design_system';
 
 export interface SprintTemplate {
   id: string;
@@ -1177,6 +1185,1318 @@ export const SPRINT_TEMPLATES: SprintTemplate[] = [
         ],
       },
     ],
+  },
+  {
+    id: 'matriz_raci',
+    title: 'Matriz RACI & Governança de Squad',
+    shortTitle: 'Matriz RACI',
+    description: 'Defina claramente papéis e responsabilidades (Responsible, Accountable, Consulted, Informed) com tabela estruturada e checklist de governança.',
+    badge: 'Tabela • Governança & Squad',
+    iconName: 'Table2',
+    category: 'agile',
+    previewVariant: 'raci_matrix',
+    accentColor: '#0284c7',
+    columns: [
+      {
+        title: '📋 Atividades & Entregas Críticas',
+        frameFill: 'rgba(239, 246, 255, 0.45)',
+        frameStroke: '#0284c7',
+        stickyFill: '#bae6fd',
+        cards: ['Definição de Visão', 'Discovery & Protótipos', 'Arquitetura de API', 'Desenvolvimento de Features', 'Validação de DoD'],
+      },
+    ],
+    customGenerator: (origin, user, startingZIndex) => {
+      const els: Omit<CanvasElement, 'id' | 'updatedAt'>[] = [];
+      let z = startingZIndex;
+      const ox = Math.round(origin.x);
+      const oy = Math.round(origin.y);
+
+      // Tabela RACI Nativa
+      const raciData = [
+        ['Atividade / Entrega Crítica', 'Product Manager', 'Tech Lead', 'Product Designer', 'Engenheiro(a) Core', 'QA / Testes'],
+        ['Definição de Visão & Priorização', 'A (Accountable)', 'C (Consultado)', 'C (Consultado)', 'I (Informado)', 'I (Informado)'],
+        ['Discovery & Protótipos de Alta Fidelidade', 'C (Consultado)', 'I (Informado)', 'A / R (Responsável)', 'C (Consultado)', 'I (Informado)'],
+        ['Arquitetura Técnica & ADRs de API', 'I (Informado)', 'A (Accountable)', 'I (Informado)', 'R (Responsável)', 'C (Consultado)'],
+        ['Desenvolvimento de Features & PRs', 'I (Informado)', 'C (Consultado)', 'I (Informado)', 'A / R (Responsável)', 'C (Consultado)'],
+        ['Critérios de Aceite & Validação de DoD', 'C (Consultado)', 'C (Consultado)', 'C (Consultado)', 'C (Consultado)', 'A / R (Responsável)'],
+      ];
+      const colWidths = [240, 110, 105, 120, 125, 100];
+      const tableW = colWidths.reduce((a, b) => a + b, 0); // 800
+      const tableH = 42 + 5 * 38; // 232
+
+      els.push({
+        type: 'table',
+        x: ox + 40,
+        y: oy + 40,
+        width: tableW,
+        height: tableH,
+        tableData: raciData,
+        tableColWidths: colWidths,
+        tableHeaderRow: true,
+        fill: '#0284c7',
+        stroke: '#0284c7',
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      // Micro-Widget Checklist de Definition of Done (DoD)
+      els.push({
+        type: 'checklist',
+        x: ox + 880,
+        y: oy + 40,
+        width: 320,
+        height: 250,
+        checklistTitle: 'Definition of Done (DoD) da Squad',
+        checklistItems: [
+          { id: 'dod_1', text: 'Código revisado por ao menos 1 par (PR aprovado)', completed: true },
+          { id: 'dod_2', text: 'Testes unitários e de integração verdes no CI', completed: true },
+          { id: 'dod_3', text: 'Critérios de acessibilidade WCAG 2.2 atendidos', completed: false },
+          { id: 'dod_4', text: 'Documentação de API atualizada no Swagger/ADR', completed: false },
+          { id: 'dod_5', text: 'Validação e fumaça em ambiente de Staging', completed: false },
+        ],
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      // Post-its de Legenda RACI e Regras
+      els.push({
+        type: 'sticky',
+        x: ox + 40,
+        y: oy + 300,
+        width: 250,
+        height: 140,
+        fill: '#bae6fd',
+        text: '📌 Legenda RACI:\n• R (Responsible): Quem executa o trabalho\n• A (Accountable): Quem responde pelo sucesso\n• C (Consulted): Especialista consultado\n• I (Informed): Informado do progresso',
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      els.push({
+        type: 'sticky',
+        x: ox + 310,
+        y: oy + 300,
+        width: 250,
+        height: 140,
+        fill: '#fef08a',
+        text: '⚡ Regra de Ouro:\nApenas UM Accountable (A) por linha para evitar diluição de responsabilidade entre lideranças.',
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      els.push({
+        type: 'sticky',
+        x: ox + 580,
+        y: oy + 300,
+        width: 260,
+        height: 140,
+        fill: '#bbf7d0',
+        text: '🎯 Alinhamento de Expectativas:\nRevise a matriz no início de cada trimestre ou sempre que novos membros entrarem na squad.',
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      return els;
+    },
+  },
+  {
+    id: 'rfc_tech_spec',
+    title: 'RFC Técnica & Arquitetura de Microsserviços',
+    shortTitle: 'RFC & Arquitetura',
+    description: 'Especificação técnica com contrato de código tipado, tabela comparativa de SLAs/latência e checklist de prontidão de produção.',
+    badge: 'Código & Tabela • Tech Spec',
+    iconName: 'Code2',
+    category: 'engineering',
+    previewVariant: 'tech_spec',
+    accentColor: '#7c3aed',
+    columns: [
+      {
+        title: '💻 Especificação da API',
+        frameFill: 'rgba(245, 243, 255, 0.45)',
+        frameStroke: '#7c3aed',
+        stickyFill: '#ddd6fe',
+        cards: ['Contrato TypeScript da Mensagem', 'Idempotência via Redis'],
+      },
+    ],
+    customGenerator: (origin, user, startingZIndex) => {
+      const els: Omit<CanvasElement, 'id' | 'updatedAt'>[] = [];
+      let z = startingZIndex;
+      const ox = Math.round(origin.x);
+      const oy = Math.round(origin.y);
+
+      // 1. Bloco de Código Nativo (Contrato TypeScript)
+      const codeSnippet = `interface ProcessOrderPayload {
+  readonly orderId: string;
+  readonly customerId: string;
+  readonly idempotencyKey: string;
+  readonly amountCents: number;
+}
+
+export async function processOrderEvent(
+  payload: ProcessOrderPayload
+): Promise<{ status: 'ACCEPTED'; latencyMs: number }> {
+  // Lock distribuído com TTL de 30s no Redis
+  const acquired = await redis.set(
+    \`lock:\${payload.idempotencyKey}\`,
+    '1',
+    'EX', 30, 'NX'
+  );
+  if (!acquired) throw new Error('Duplicate event');
+  return { status: 'ACCEPTED', latencyMs: 24 };
+}`;
+
+      els.push({
+        type: 'code',
+        x: ox + 40,
+        y: oy + 40,
+        width: 480,
+        height: 310,
+        text: codeSnippet,
+        codeLanguage: 'typescript',
+        codeTheme: 'dark',
+        fontSize: 13,
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      // 2. Tabela de Requisitos Não-Funcionais & SLAs
+      const slaData = [
+        ['Camada / Microsserviço', 'P95 SLA', 'P99 SLA', 'Resiliência & Fallback'],
+        ['API Gateway & Auth', '< 25ms', '< 50ms', 'Cache JWT distribuído no Edge'],
+        ['Serviço Core de Pedidos', '< 80ms', '< 140ms', 'Circuit-breaker com fila dead-letter'],
+        ['Banco Principal (PostgreSQL)', '< 15ms', '< 35ms', 'Pool PgBouncer + Read Replicas'],
+        ['Barramento Kafka', '< 40ms', '< 90ms', 'Particionamento por customerId'],
+      ];
+      const colWidths = [190, 85, 85, 240];
+      const tableW = colWidths.reduce((a, b) => a + b, 0); // 600
+      const tableH = 42 + 4 * 38; // 194
+
+      els.push({
+        type: 'table',
+        x: ox + 550,
+        y: oy + 40,
+        width: tableW,
+        height: tableH,
+        tableData: slaData,
+        tableColWidths: colWidths,
+        tableHeaderRow: true,
+        fill: '#7c3aed',
+        stroke: '#7c3aed',
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      // 3. Checklist de Production Readiness (Prontidão de Produção)
+      els.push({
+        type: 'checklist',
+        x: ox + 550,
+        y: oy + 260,
+        width: 600,
+        height: 220,
+        checklistTitle: 'Production Readiness Checklist (SRE & Segurança)',
+        checklistItems: [
+          { id: 'sre_1', text: 'Idempotência testada sob rajada concorrente de requisições', completed: true },
+          { id: 'sre_2', text: 'Dashboards de latência P95/P99 e taxa de erro no Grafana', completed: true },
+          { id: 'sre_3', text: 'Script de migração de banco com rollback automático validado', completed: false },
+          { id: 'sre_4', text: 'Secrets gerenciados via KMS (nenhuma chave hardcoded)', completed: true },
+          { id: 'sre_5', text: 'Testes de carga com 2.000 requisições/s sem degradação', completed: false },
+        ],
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      // 4. Post-its com Princípios de Arquitetura e Decisão
+      els.push({
+        type: 'sticky',
+        x: ox + 40,
+        y: oy + 375,
+        width: 230,
+        height: 135,
+        fill: '#ddd6fe',
+        text: '🔒 Decisão de Arquitetura (ADR #042):\nAdotamos semântica at-least-once com idempotência na ponta consumidora para tolerar reentregas.',
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      els.push({
+        type: 'sticky',
+        x: ox + 290,
+        y: oy + 375,
+        width: 230,
+        height: 135,
+        fill: '#bbf7d0',
+        text: '📊 Observabilidade:\nTodo log deve conter traceId, spanId e customerId para rastreamento ponta-a-ponta no Jaeger.',
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      return els;
+    },
+  },
+  {
+    id: 'revenue_funnel_rcd',
+    title: 'Funil de Conversão & Retenção SaaS (Revenue-Centric Design)',
+    shortTitle: 'Funil de Conversão SaaS',
+    description: 'Framework baseado nos 101 princípios de Richard (@richardrx): Níveis de Schwartz, TTV acelerado, Pricing GBB e Retenção Zeigarnik.',
+    badge: '4 Etapas • Richard RCD',
+    iconName: 'TrendingUp',
+    category: 'product',
+    previewVariant: 'revenue_funnel',
+    accentColor: '#10b981',
+    columns: [
+      {
+        title: '🎯 1. Aquisição (Awareness de Schwartz)',
+        frameFill: 'rgba(239, 246, 255, 0.45)',
+        frameStroke: '#3b82f6',
+        stickyFill: '#bae6fd',
+        cards: [
+          'Eugene Schwartz: Identificar nível de consciência (Inconsciente, Dor, Solução ou Produto)',
+          'Neutralidade é omissão: A interface deve guiar a decisão ideal do cliente',
+          'Headline de alto contraste: Focada no resultado tangível, nunca em features genéricas',
+          'CTA de baixa fricção: Sem cartão de crédito para eliminar hesitação inicial',
+        ],
+      },
+      {
+        title: '⚡ 2. Ativação & Time-to-Value (TTV)',
+        frameFill: 'rgba(240, 253, 244, 0.45)',
+        frameStroke: '#10b981',
+        stickyFill: '#bbf7d0',
+        cards: [
+          'Value first, ask later: Entregue prova de valor antes que o usuário duvide da escolha',
+          'Momento Aha em menos de 30 segundos (TTV veloz reduz churn inicial em 40%)',
+          'Efeito Default: Pré-selecione o fluxo mais comum e poupe carga cognitiva',
+          'Empty state vivo: Apresente o produto com dados de exemplo prontos para uso',
+        ],
+      },
+      {
+        title: '💎 3. Monetização & Psicologia de Preço',
+        frameFill: 'rgba(254, 243, 199, 0.45)',
+        frameStroke: '#f59e0b',
+        stickyFill: '#fde68a',
+        cards: [
+          'Good-Better-Best (GBB): 3 planos com a opção intermediária em destaque',
+          'Efeito Chafariz (Decoy Effect): O plano Pro faz o plano Team parecer pechincha',
+          'Preço é um filtro: Quem paga valoriza a ferramenta e abre menos tickets triviais',
+          'Expansão baseada em uso: Notifique upgrade no momento exato do limite atingido',
+        ],
+      },
+      {
+        title: '🛡️ 4. Retenção & Redução de Churn',
+        frameFill: 'rgba(245, 243, 255, 0.45)',
+        frameStroke: '#8b5cf6',
+        stickyFill: '#ddd6fe',
+        cards: [
+          'Efeito Zeigarnik: Tarefas em andamento no produto geram impulso de retorno',
+          'Perceived Loss: A perda do histórico criado retém mais do que promessa de novo recurso',
+          'Expectation Debt: Nunca prometa o que o software não entrega perfeitamente no dia 1',
+          'Cancelamento transparente: Dificultar offboarding destrói a confiança na marca',
+        ],
+      },
+    ],
+    customGenerator: (origin, user, startingZIndex) => {
+      const els: Omit<CanvasElement, 'id' | 'updatedAt'>[] = [];
+      let z = startingZIndex;
+      const ox = Math.round(origin.x);
+      const oy = Math.round(origin.y);
+
+      // 1. Cascata Visual do Funil (4 Etapas Proporcionais com métricas e cores temáticas)
+      // Etapa 1: Aquisição
+      els.push({
+        type: 'rect',
+        x: ox + 40,
+        y: oy + 40,
+        width: 440,
+        height: 64,
+        fill: '#eff6ff',
+        stroke: '#2563eb',
+        strokeWidth: 2,
+        text: '🎯 1. AQUISIÇÃO • 10.000 Visitantes / mês\nConsciência de Schwartz & Headlines de Alto Contraste',
+        fontSize: 13,
+        fontWeight: 'bold',
+        textAlign: 'center',
+        textColor: '#1e3a8a',
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      // Seta de Conversão 1 -> 2
+      els.push({
+        type: 'arrow',
+        x: ox + 260,
+        y: oy + 104,
+        points: [0, 0, 0, 36],
+        stroke: '#2563eb',
+        strokeWidth: 2.5,
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      // Etapa 2: Ativação
+      els.push({
+        type: 'rect',
+        x: ox + 80,
+        y: oy + 140,
+        width: 360,
+        height: 64,
+        fill: '#ecfeff',
+        stroke: '#0891b2',
+        strokeWidth: 2,
+        text: '⚡ 2. ATIVAÇÃO • 3.200 Ativados (32%)\nMomento Aha em < 30s & Value First, Ask Later',
+        fontSize: 13,
+        fontWeight: 'bold',
+        textAlign: 'center',
+        textColor: '#155e75',
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      // Seta de Conversão 2 -> 3
+      els.push({
+        type: 'arrow',
+        x: ox + 260,
+        y: oy + 204,
+        points: [0, 0, 0, 36],
+        stroke: '#0891b2',
+        strokeWidth: 2.5,
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      // Etapa 3: Monetização
+      els.push({
+        type: 'rect',
+        x: ox + 120,
+        y: oy + 240,
+        width: 280,
+        height: 64,
+        fill: '#f0fdf4',
+        stroke: '#059669',
+        strokeWidth: 2,
+        text: '💎 3. MONETIZAÇÃO • 800 Clientes (25%)\nGood-Better-Best (GBB) & Decoy Effect',
+        fontSize: 12,
+        fontWeight: 'bold',
+        textAlign: 'center',
+        textColor: '#14532d',
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      // Seta de Conversão 3 -> 4
+      els.push({
+        type: 'arrow',
+        x: ox + 260,
+        y: oy + 304,
+        points: [0, 0, 0, 36],
+        stroke: '#059669',
+        strokeWidth: 2.5,
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      // Etapa 4: Retenção
+      els.push({
+        type: 'rect',
+        x: ox + 160,
+        y: oy + 340,
+        width: 200,
+        height: 64,
+        fill: '#faf5ff',
+        stroke: '#7c3aed',
+        strokeWidth: 2,
+        text: '🛡️ 4. RETENÇÃO\n720 Ativos (90% D30) • NRR 118%\nEfeito Zeigarnik',
+        fontSize: 11,
+        fontWeight: 'bold',
+        textAlign: 'center',
+        textColor: '#581c87',
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      // 2. Tabela Nativa de Métricas de Conversão & Benchmarks SaaS (Lado Direito Superior)
+      const funnelTableData = [
+        ['Estágio do Funil', 'Métrica Principal', 'Benchmark SaaS', 'Alavanca RCD (Richard)'],
+        ['1. Aquisição', 'CTR do CTA Principal (Hero)', '> 8.5%', 'Headline com foco no resultado tangível'],
+        ['2. Ativação', 'Time-to-Value (TTV até o Aha)', '< 30 segundos', 'Empty state vivo com dados pré-preenchidos'],
+        ['3. Monetização', 'Conversão Trial para Pago', '> 6.0%', 'Plano intermediário destacado (Efeito Decoy)'],
+        ['4. Retenção', 'Retenção de Cohort (Mês 1)', '> 75%', 'Efeito Zeigarnik com progresso visível'],
+        ['5. Expansão', 'Net Revenue Retention (NRR)', '> 115%', 'Upgrade no momento exato do limite de uso'],
+      ];
+      const colWidths = [150, 190, 120, 260];
+      const tableW = colWidths.reduce((a, b) => a + b, 0); // 720
+      const tableH = 42 + 5 * 38; // 232
+
+      els.push({
+        type: 'table',
+        x: ox + 520,
+        y: oy + 40,
+        width: tableW,
+        height: tableH,
+        tableData: funnelTableData,
+        tableColWidths: colWidths,
+        tableHeaderRow: true,
+        fill: '#10b981',
+        stroke: '#10b981',
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      // 3. Micro-Widget Checklist de Auditoria CRO & Alavancas de Receita
+      els.push({
+        type: 'checklist',
+        x: ox + 520,
+        y: oy + 292,
+        width: 720,
+        height: 220,
+        checklistTitle: 'Auditoria de Conversão & UX (Checklist RCD)',
+        checklistItems: [
+          { id: 'rcd_1', text: 'Headline passa no teste dos 5 segundos (clareza irrecusável)', completed: true },
+          { id: 'rcd_2', text: 'Eliminar fricção no cadastro (sem cartão de crédito inicial)', completed: true },
+          { id: 'rcd_3', text: 'Momento Aha demonstrado antes do pedido de upgrade', completed: true },
+          { id: 'rcd_4', text: 'Tabela de preços com opção Good-Better-Best e âncora clara', completed: false },
+          { id: 'rcd_5', text: 'Prevenção de churn com oferta de pausa e suporte imediato', completed: false },
+        ],
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      // 4. Cards Estratégicos com os 101 Princípios RCD (Abaixo)
+      const cardW = 285;
+      const cardH = 175;
+      const cardY = oy + 535;
+
+      els.push({
+        type: 'sticky',
+        x: ox + 40,
+        y: cardY,
+        width: cardW,
+        height: cardH,
+        fill: '#bae6fd',
+        text: '🎯 1. Aquisição (Awareness):\n• Eugene Schwartz: Mapeie o nível de consciência (Inconsciente, Dor ou Solução).\n• Neutralidade é omissão: A interface deve direcionar sem hesitação.\n• Headline de contraste: Fale do resultado, nunca de features genéricas.',
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      els.push({
+        type: 'sticky',
+        x: ox + 345,
+        y: cardY,
+        width: cardW,
+        height: cardH,
+        fill: '#cffafe',
+        text: '⚡ 2. Ativação & TTV:\n• Value first, ask later: Entregue a prova antes que o usuário duvide.\n• TTV < 30s: Reduz o churn inicial em até 40%.\n• Efeito Default: A opção pré-selecionada define o comportamento da massa.',
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      els.push({
+        type: 'sticky',
+        x: ox + 650,
+        y: cardY,
+        width: cardW,
+        height: cardH,
+        fill: '#bbf7d0',
+        text: '💎 3. Monetização & Preço:\n• GBB (Good-Better-Best): O plano do meio é o campeão de vendas.\n• Decoy Effect: O plano Pro ancora o plano Team como vantajoso.\n• Preço é um filtro: Quem paga valoriza a ferramenta.',
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      els.push({
+        type: 'sticky',
+        x: ox + 955,
+        y: cardY,
+        width: cardW,
+        height: cardH,
+        fill: '#ddd6fe',
+        text: '🛡️ 4. Retenção & Anti-Churn:\n• Efeito Zeigarnik: Tarefas em andamento puxam o usuário de volta.\n• Perceived Loss: Perder dados criados retém mais que promessas.\n• Expectation Debt: Nunca prometa o que não cumpre no D1.',
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      return els;
+    },
+  },
+  {
+    id: 'discovery_mindmap',
+    title: 'Product Discovery & Árvore de Oportunidades (OST)',
+    shortTitle: 'Árvore de Oportunidades',
+    description: 'Mapeamento visual baseado em Teresa Torres: conecte objetivos de negócio a dores dos usuários, soluções potenciais e hipóteses de validação.',
+    badge: 'Mapa Mental • Product Discovery',
+    iconName: 'GitBranch',
+    category: 'product',
+    previewVariant: 'mindmap_discovery',
+    accentColor: '#0284c7',
+    columns: [
+      {
+        title: '🌳 Discovery & Hipóteses',
+        frameFill: 'rgba(239, 246, 255, 0.45)',
+        frameStroke: '#0284c7',
+        stickyFill: '#bae6fd',
+        cards: ['Objetivo de Negócio', 'Dores dos Usuários', 'Soluções Hipotéticas', 'Experimentos Rápidos'],
+      },
+    ],
+    customGenerator: (origin, user, startingZIndex) => {
+      const els: Omit<CanvasElement, 'id' | 'updatedAt'>[] = [];
+      let z = startingZIndex;
+      const ox = Math.round(origin.x);
+      const oy = Math.round(origin.y);
+
+      // Nó Raiz do Mapa Mental
+      els.push({
+        type: 'rect',
+        x: ox + 40,
+        y: oy + 230,
+        width: 250,
+        height: 80,
+        fill: '#eff6ff',
+        stroke: '#2563eb',
+        strokeWidth: 2,
+        text: '🎯 Objetivo de Negócio\nAumentar Ativação para 60%',
+        fontSize: 15,
+        fontWeight: 'bold',
+        textAlign: 'center',
+        textColor: '#1e3a8a',
+        mindmapRootId: 'self',
+        mindmapDirection: 'right',
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      // Oportunidades (Nível 1)
+      els.push({
+        type: 'rect',
+        x: ox + 360,
+        y: oy + 120,
+        width: 240,
+        height: 70,
+        fill: '#fef3c7',
+        stroke: '#d97706',
+        strokeWidth: 2,
+        text: '⚠️ Oportunidade 1\nUsuário não sabe como começar',
+        fontSize: 13,
+        fontWeight: 'bold',
+        textAlign: 'center',
+        textColor: '#78350f',
+        mindmapDirection: 'right',
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      els.push({
+        type: 'rect',
+        x: ox + 360,
+        y: oy + 340,
+        width: 240,
+        height: 70,
+        fill: '#fef3c7',
+        stroke: '#d97706',
+        strokeWidth: 2,
+        text: '👥 Oportunidade 2\nDificuldade de convidar a equipe',
+        fontSize: 13,
+        fontWeight: 'bold',
+        textAlign: 'center',
+        textColor: '#78350f',
+        mindmapDirection: 'right',
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      // Setas conectoras curvas Raiz -> Oportunidades
+      els.push({
+        type: 'arrow',
+        x: ox + 290,
+        y: oy + 270,
+        points: [0, 0, 70, -115],
+        stroke: '#2563eb',
+        strokeWidth: 2.5,
+        connectorStyle: 'curved',
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      els.push({
+        type: 'arrow',
+        x: ox + 290,
+        y: oy + 270,
+        points: [0, 0, 70, 105],
+        stroke: '#2563eb',
+        strokeWidth: 2.5,
+        connectorStyle: 'curved',
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      // Soluções (Nível 2)
+      els.push({
+        type: 'rect',
+        x: ox + 670,
+        y: oy + 60,
+        width: 250,
+        height: 65,
+        fill: '#dcfce7',
+        stroke: '#16a34a',
+        strokeWidth: 2,
+        text: '💡 Solução A\nGaleria de Templates em 1 Clique',
+        fontSize: 13,
+        fontWeight: 'bold',
+        textAlign: 'center',
+        textColor: '#14532d',
+        mindmapDirection: 'right',
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      els.push({
+        type: 'rect',
+        x: ox + 670,
+        y: oy + 160,
+        width: 250,
+        height: 65,
+        fill: '#dcfce7',
+        stroke: '#16a34a',
+        strokeWidth: 2,
+        text: '💡 Solução B\nTour Interativo de 30 Segundos',
+        fontSize: 13,
+        fontWeight: 'bold',
+        textAlign: 'center',
+        textColor: '#14532d',
+        mindmapDirection: 'right',
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      els.push({
+        type: 'rect',
+        x: ox + 670,
+        y: oy + 310,
+        width: 250,
+        height: 65,
+        fill: '#dcfce7',
+        stroke: '#16a34a',
+        strokeWidth: 2,
+        text: '💡 Solução C\nLink de Convidado Sem Cadastro',
+        fontSize: 13,
+        fontWeight: 'bold',
+        textAlign: 'center',
+        textColor: '#14532d',
+        mindmapDirection: 'right',
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      els.push({
+        type: 'rect',
+        x: ox + 670,
+        y: oy + 410,
+        width: 250,
+        height: 65,
+        fill: '#dcfce7',
+        stroke: '#16a34a',
+        strokeWidth: 2,
+        text: '💡 Solução D\nConvite com 1 Clique via Slack',
+        fontSize: 13,
+        fontWeight: 'bold',
+        textAlign: 'center',
+        textColor: '#14532d',
+        mindmapDirection: 'right',
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      // Conectores Oportunidade 1 -> Soluções A e B
+      els.push({
+        type: 'arrow',
+        x: ox + 600,
+        y: oy + 155,
+        points: [0, 0, 70, -62],
+        stroke: '#d97706',
+        strokeWidth: 2,
+        connectorStyle: 'curved',
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+      els.push({
+        type: 'arrow',
+        x: ox + 600,
+        y: oy + 155,
+        points: [0, 0, 70, 38],
+        stroke: '#d97706',
+        strokeWidth: 2,
+        connectorStyle: 'curved',
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      // Conectores Oportunidade 2 -> Soluções C e D
+      els.push({
+        type: 'arrow',
+        x: ox + 600,
+        y: oy + 375,
+        points: [0, 0, 70, -32],
+        stroke: '#d97706',
+        strokeWidth: 2,
+        connectorStyle: 'curved',
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+      els.push({
+        type: 'arrow',
+        x: ox + 600,
+        y: oy + 375,
+        points: [0, 0, 70, 68],
+        stroke: '#d97706',
+        strokeWidth: 2,
+        connectorStyle: 'curved',
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      // Post-its de Hipóteses de Experimento e Métricas
+      els.push({
+        type: 'sticky',
+        x: ox + 980,
+        y: oy + 80,
+        width: 250,
+        height: 140,
+        fill: '#bae6fd',
+        text: '🧪 Experimento Rápido:\nRodar teste A/B oferecendo 3 templates sugeridos no onboarding.\nMeta: TTV < 45s.',
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      els.push({
+        type: 'sticky',
+        x: ox + 980,
+        y: oy + 280,
+        width: 250,
+        height: 140,
+        fill: '#fde68a',
+        text: '📊 Métrica de Sucesso (OKR):\nTaxa de quadros criados que recebem ao menos 2 colaboradores no primeiro dia.',
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      return els;
+    },
+  },
+  {
+    id: 'kanban_interactive_sprint',
+    title: 'Sprint Kanban com WIP & Fluxo Contínuo',
+    shortTitle: 'Kanban Interativo WIP',
+    description: 'Quadro Kanban dinâmico e interativo com raias WIP, arrasto de cartões, checklist de acordos de trabalho e métricas da sprint.',
+    badge: 'Widget Kanban • Squad & WIP',
+    iconName: 'FolderKanban',
+    category: 'agile',
+    previewVariant: 'kanban_interactive',
+    accentColor: '#2563eb',
+    columns: [
+      {
+        title: '⚡ Fluxo da Sprint',
+        frameFill: 'rgba(239, 246, 255, 0.45)',
+        frameStroke: '#2563eb',
+        stickyFill: '#bae6fd',
+        cards: ['Backlog da Sprint', 'Em Desenvolvimento', 'Code Review & QA', 'Pronto para Deploy'],
+      },
+    ],
+    customGenerator: (origin, user, startingZIndex) => {
+      const els: Omit<CanvasElement, 'id' | 'updatedAt'>[] = [];
+      let z = startingZIndex;
+      const ox = Math.round(origin.x);
+      const oy = Math.round(origin.y);
+
+      // Widget Kanban Nativo Completo
+      const kanbanCols = [
+        {
+          id: 'k_todo',
+          title: 'A Fazer (Backlog)',
+          color: '#64748b',
+          cards: [
+            { id: 'kc_1', title: 'Autenticação SSO via Google e GitHub', tag: 'Auth' },
+            { id: 'kc_2', title: 'Otimização de WebGL / Canvas a 60fps', tag: 'Perf' },
+            { id: 'kc_3', title: 'Suíte de testes E2E com Playwright', tag: 'QA' },
+          ],
+        },
+        {
+          id: 'k_wip',
+          title: 'Em Desenvolvimento (WIP: 2)',
+          color: '#2563eb',
+          cards: [
+            { id: 'kc_4', title: 'Widgets de Tabela e Código no whiteboard', tag: 'Core' },
+            { id: 'kc_5', title: 'Sincronização em tempo real de cursores', tag: 'Collab' },
+          ],
+        },
+        {
+          id: 'k_review',
+          title: 'Code Review & QA (WIP: 2)',
+          color: '#8b5cf6',
+          cards: [
+            { id: 'kc_6', title: 'Auditoria de Acessibilidade WCAG 2.2', tag: 'A11y' },
+            { id: 'kc_7', title: 'Histórico e Snapshots com Undo Atômico', tag: 'Sync' },
+          ],
+        },
+        {
+          id: 'k_done',
+          title: 'Pronto / Concluído (Done)',
+          color: '#10b981',
+          cards: [
+            { id: 'kc_8', title: 'Lançamento v1.5 com novos templates', tag: 'Release', completed: true },
+            { id: 'kc_9', title: 'Migração segura para Firebase v10', tag: 'Infra', completed: true },
+          ],
+        },
+      ];
+
+      els.push({
+        type: 'kanban',
+        x: ox + 40,
+        y: oy + 40,
+        width: 980,
+        height: 380,
+        kanbanTitle: 'Sprint Kanban • Squad Core',
+        kanbanColumns: kanbanCols,
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      // Checklist de Acordos de Trabalho & Cerimônias
+      els.push({
+        type: 'checklist',
+        x: ox + 1050,
+        y: oy + 40,
+        width: 330,
+        height: 240,
+        checklistTitle: 'Acordos de Trabalho (Squad Rules)',
+        checklistItems: [
+          { id: 'sq_1', text: 'Daily assíncrona até as 10h com bloqueios', completed: true },
+          { id: 'sq_2', text: 'Limite estrito de WIP: máx 2 itens por dev', completed: true },
+          { id: 'sq_3', text: 'PRs revisados em até 4 horas úteis', completed: false },
+          { id: 'sq_4', text: 'Nenhum commit direto na branch main', completed: true },
+          { id: 'sq_5', text: 'Refinamento de backlog toda quarta 14h', completed: false },
+        ],
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      // Post-its de Metas e Capacidade
+      els.push({
+        type: 'sticky',
+        x: ox + 1050,
+        y: oy + 300,
+        width: 330,
+        height: 120,
+        fill: '#fef08a',
+        text: '🎯 Meta da Sprint (Sprint Goal):\nEntregar a suíte completa de Templates & Frameworks com alta fidelidade visual e zero bugs no canvas.',
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      return els;
+    },
+  },
+  {
+    id: 'rice_prioritization',
+    title: 'Matriz RICE de Priorização de Backlog',
+    shortTitle: 'Priorização RICE',
+    description: 'Pontuação objetiva de iniciativas com tabela calculada: Alcance (Reach), Impacto (Impact), Confiança (Confidence) e Esforço (Effort).',
+    badge: 'Tabela • RICE Score',
+    iconName: 'Calculator',
+    category: 'product',
+    previewVariant: 'rice_matrix',
+    accentColor: '#ea580c',
+    columns: [
+      {
+        title: '📊 Scorecard de Priorização',
+        frameFill: 'rgba(255, 247, 237, 0.45)',
+        frameStroke: '#ea580c',
+        stickyFill: '#fed7aa',
+        cards: ['Iniciativas', 'Alcance (R)', 'Impacto (I)', 'Confiança (C)', 'Esforço (E)', 'RICE Score'],
+      },
+    ],
+    customGenerator: (origin, user, startingZIndex) => {
+      const els: Omit<CanvasElement, 'id' | 'updatedAt'>[] = [];
+      let z = startingZIndex;
+      const ox = Math.round(origin.x);
+      const oy = Math.round(origin.y);
+
+      // Tabela RICE
+      const riceData = [
+        ['Iniciativa / Hipótese de Produto', 'Alcance (R)', 'Impacto (I)', 'Confiança (C)', 'Esforço (E)', 'RICE Score', 'Decisão'],
+        ['Templates & Frameworks em 1 clique', '10.000 / mês', '3 (Massivo)', '90%', '1 sprint', '27.000', '🟢 Fazer Já (Q1)'],
+        ['Widgets de Tabela e Bloco de Código', '6.000 / mês', '2 (Alto)', '80%', '2 sprints', '4.800', '🟢 Fazer Já (Q1)'],
+        ['Integração com Jira e GitHub Issues', '4.000 / mês', '2 (Alto)', '70%', '3 sprints', '1.867', '🟡 Próxima Sprint'],
+        ['App Desktop Nativo com Modo Offline', '2.500 / mês', '1 (Médio)', '50%', '6 sprints', '208', '🔴 Backlog Futuro'],
+      ];
+      const colWidths = [220, 100, 95, 100, 90, 100, 135];
+      const tableW = colWidths.reduce((a, b) => a + b, 0); // 840
+      const tableH = 42 + 4 * 38; // 194
+
+      els.push({
+        type: 'table',
+        x: ox + 40,
+        y: oy + 40,
+        width: tableW,
+        height: tableH,
+        tableData: riceData,
+        tableColWidths: colWidths,
+        tableHeaderRow: true,
+        fill: '#ea580c',
+        stroke: '#ea580c',
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      // Checklist de Critérios de Avaliação
+      els.push({
+        type: 'checklist',
+        x: ox + 920,
+        y: oy + 40,
+        width: 330,
+        height: 210,
+        checklistTitle: 'Critérios de Avaliação RICE',
+        checklistItems: [
+          { id: 'rc_1', text: 'Alcance validado por métricas do Mixpanel/GA4', completed: true },
+          { id: 'rc_2', text: 'Impacto alinhado com o OKR trimestral', completed: true },
+          { id: 'rc_3', text: 'Confiança acima de 70% apoiada em entrevistas', completed: false },
+          { id: 'rc_4', text: 'Esforço estimado junto com o Tech Lead', completed: true },
+        ],
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      // Post-its com a Fórmula e Recomendações
+      els.push({
+        type: 'sticky',
+        x: ox + 40,
+        y: oy + 265,
+        width: 260,
+        height: 135,
+        fill: '#fed7aa',
+        text: '📐 Fórmula do RICE:\n(Alcance × Impacto × Confiança) ÷ Esforço\n\nQuanto maior o escore final, maior o retorno por esforço de engenharia.',
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      els.push({
+        type: 'sticky',
+        x: ox + 320,
+        y: oy + 265,
+        width: 260,
+        height: 135,
+        fill: '#fef08a',
+        text: '💡 Dica de Calibração:\nEvite dar nota máxima de Confiança (100%) a menos que já exista protótipo com teste de fumaça aprovado.',
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      els.push({
+        type: 'sticky',
+        x: ox + 600,
+        y: oy + 265,
+        width: 280,
+        height: 135,
+        fill: '#bbf7d0',
+        text: '🎯 Linha de Corte:\nIniciativas com escore acima de 3.000 entram automaticamente na sprint corrente.',
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      return els;
+    },
+  },
+  {
+    id: 'post_mortem_incident',
+    title: 'Post-Mortem de Incidente & Análise de Causa Raiz',
+    shortTitle: 'Post-Mortem & SRE',
+    description: 'Estrutura blameless para análise de incidentes críticos: timeline com impacto e severidade, cadeia dos 5 Porquês, checklist de confiabilidade SRE e script de mitigação.',
+    badge: 'Tabela • SRE & Engenharia',
+    iconName: 'AlertTriangle',
+    category: 'engineering',
+    previewVariant: 'post_mortem',
+    accentColor: '#ef4444',
+    columns: [
+      {
+        title: '🚨 Linha do Tempo & Triage',
+        frameFill: 'rgba(254, 242, 242, 0.45)',
+        frameStroke: '#ef4444',
+        stickyFill: '#fecdd3',
+        cards: [
+          '14:02 UTC: Alerta P1 no Datadog (Latência p99 > 2.5s)',
+          '14:08 UTC: War Room aberta no Slack com SRE on-call',
+          '14:15 UTC: Tráfego redirecionado para cluster secundário',
+          '14:28 UTC: Rollback do release v2.14 concluído com sucesso',
+        ],
+      },
+    ],
+    customGenerator: (origin, user, startingZIndex) => {
+      const els: Omit<CanvasElement, 'id' | 'updatedAt'>[] = [];
+      let z = startingZIndex;
+      const ox = Math.round(origin.x);
+      const oy = Math.round(origin.y);
+
+      // 1. Tabela Nativa de Linha do Tempo do Incidente
+      const timelineData = [
+        ['Horário (UTC)', 'Etapa / Evento', 'Severidade', 'Impacto nos Usuários', 'Ação / Mitigação Executada'],
+        ['14:02', 'Alarme P1: Latência p99 > 2.5s', 'P1 - Crítico', '28% das requisições com timeout', 'Abertura imediata de War Room'],
+        ['14:08', 'Triage do Spike de CPU', 'P1 - Crítico', 'Degradação em /api/checkout', 'Isolamento de tráfego do microsserviço'],
+        ['14:15', 'Ativação de Circuit Breaker', 'P2 - Alto', 'Fallback para cache local ativo', 'Drenagem de conexões presas'],
+        ['14:28', 'Rollback do Release v2.14', 'P3 - Médio', 'Taxa de erro normalizada (< 0.1%)', 'Deploy da imagem estável anterior'],
+        ['14:40', 'Resolução Completa', 'Normal', 'Operação 100% restabelecida', 'Início da investigação de causa raiz'],
+      ];
+      const colWidths = [110, 200, 110, 180, 220];
+      const tableW = colWidths.reduce((a, b) => a + b, 0); // 820
+      const tableH = 42 + 5 * 38; // 232
+
+      els.push({
+        type: 'table',
+        x: ox + 40,
+        y: oy + 40,
+        width: tableW,
+        height: tableH,
+        tableData: timelineData,
+        tableColWidths: colWidths,
+        tableHeaderRow: true,
+        fill: '#ef4444',
+        stroke: '#ef4444',
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      // 2. Micro-Widget Checklist de Ações Preventivas SRE (Lado Direito)
+      els.push({
+        type: 'checklist',
+        x: ox + 890,
+        y: oy + 40,
+        width: 380,
+        height: 232,
+        checklistTitle: 'Plano de Ação SRE (Prevenção)',
+        checklistItems: [
+          { id: 'sre_1', text: 'Alerta preditivo de saturação de pool de conexões', completed: true },
+          { id: 'sre_2', text: 'Adicionar timeout explícito (800ms) no client gRPC', completed: true },
+          { id: 'sre_3', text: 'Executar teste de carga antes do deploy de sexta', completed: false },
+          { id: 'sre_4', text: 'Automatizar rollback canário no ArgoCD/Kubernetes', completed: false },
+          { id: 'sre_5', text: 'Atualizar runbook de emergência para plantonistas', completed: false },
+        ],
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      // 3. Bloco de Código com Configuração Resiliente de Circuit Breaker
+      els.push({
+        type: 'code',
+        x: ox + 40,
+        y: oy + 295,
+        width: 600,
+        height: 180,
+        text: `// Política de Resiliência & Circuit Breaker (Cockatiel / Polly)\nexport const paymentCircuitBreaker = circuitBreaker(handleAll, {\n  halfOpenAfter: 15 * 1000, // 15s em meia-abertura\n  breaker: new ConsecutiveBreaker(5), // Abre após 5 falhas seguidas\n});\n\nexport const resilientFetch = wrap(\n  timeout(1200, TimeoutStrategy.Aggressive),\n  paymentCircuitBreaker,\n  retry(handleAll, { maxAttempts: 2 })\n);`,
+        codeLanguage: 'typescript',
+        codeTheme: 'dark',
+        fontSize: 12,
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      // 4. Cadeia de 5 Porquês (5 Whys Root Cause Analysis)
+      const whyX = ox + 665;
+      const whys = [
+        { label: '1. Por que o serviço caiu?', text: 'Pool de conexões com o Postgres esgotou em 90s.', fill: '#fee2e2' },
+        { label: '2. Por que o pool esgotou?', text: 'Query de checkout sem paginação bloqueou threads.', fill: '#fef3c7' },
+        { label: '3. Por que a query travou?', text: 'Faltava índice composto em (user_id, status).', fill: '#fef9c3' },
+        { label: '4. Causa Raiz & Ação Definitiva', text: 'Faltava validação de índices em PRs no CI/CD.', fill: '#dcfce7' },
+      ];
+
+      whys.forEach((why, idx) => {
+        els.push({
+          type: 'rect',
+          x: whyX,
+          y: oy + 295 + idx * 46,
+          width: 605,
+          height: 38,
+          fill: why.fill,
+          stroke: idx === 3 ? '#16a34a' : '#d1d5db',
+          strokeWidth: 1.5,
+          text: `${why.label} → ${why.text}`,
+          fontSize: 12,
+          fontWeight: 'bold',
+          textAlign: 'left',
+          textColor: '#0f172a',
+          zIndex: ++z,
+          updatedBy: user.uid,
+          updatedByName: user.displayName,
+        });
+      });
+
+      return els;
+    },
+  },
+  {
+    id: 'design_system_spec',
+    title: 'Design System & Auditoria de UI Polish (Emil & WCAG)',
+    shortTitle: 'Design System & Polish',
+    description: 'Especificação de interface e auditoria de polimento baseada em Emil Kowalski: tokens de contraste WCAG 2.2, físicas de micro-interações, checklist de acessibilidade e código de componente acessível.',
+    badge: 'Design System • Acessibilidade',
+    iconName: 'Palette',
+    category: 'design',
+    previewVariant: 'design_system',
+    accentColor: '#ec4899',
+    columns: [
+      {
+        title: '🎨 Tokens & Componentes',
+        frameFill: 'rgba(253, 242, 248, 0.45)',
+        frameStroke: '#ec4899',
+        stickyFill: '#fbcfe8',
+        cards: [
+          'Button: Primary, Secondary, Ghost & Destructive',
+          'Input: Default, Hover, Focus-Visible & Error',
+          'Dialog: Animação suave com mola (damping 24)',
+          'Toast: Posição fixa inferior com fila inteligente',
+        ],
+      },
+    ],
+    customGenerator: (origin, user, startingZIndex) => {
+      const els: Omit<CanvasElement, 'id' | 'updatedAt'>[] = [];
+      let z = startingZIndex;
+      const ox = Math.round(origin.x);
+      const oy = Math.round(origin.y);
+
+      // 1. Tabela Nativa de Tokens do Design System
+      const dsTokensData = [
+        ['Componente', 'Variante', 'Estado de Interação', 'Contraste (WCAG 2.2)', 'Classes Tailwind / Tokens'],
+        ['Button', 'Primary (Solid)', 'Default / Hover', '8.5:1 (AAA Pass)', 'bg-zinc-900 hover:bg-zinc-800 text-white'],
+        ['Input', 'Outline Text', 'Focus-Visible', '4.9:1 (AA Pass)', 'ring-2 ring-primary ring-offset-2 border-transparent'],
+        ['Modal / Dialog', 'Centered Popover', 'Entering (Spring)', '11.2:1 (AAA Pass)', 'animate-in zoom-in-95 backdrop-blur-md'],
+        ['Badge', 'Pill Status', 'Active / Success', '5.2:1 (AA Pass)', 'bg-emerald-50 text-emerald-700 border-emerald-200'],
+        ['Feedback Toast', 'Floating Alert', 'Mounting', '9.1:1 (AAA Pass)', 'shadow-xl rounded-xl border border-zinc-200'],
+      ];
+      const colWidths = [120, 150, 140, 160, 270];
+      const tableW = colWidths.reduce((a, b) => a + b, 0); // 840
+      const tableH = 42 + 5 * 38; // 232
+
+      els.push({
+        type: 'table',
+        x: ox + 40,
+        y: oy + 40,
+        width: tableW,
+        height: tableH,
+        tableData: dsTokensData,
+        tableColWidths: colWidths,
+        tableHeaderRow: true,
+        fill: '#ec4899',
+        stroke: '#ec4899',
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      // 2. Micro-Widget Checklist de Auditoria WCAG 2.2 & Emil Polish (Lado Direito)
+      els.push({
+        type: 'checklist',
+        x: ox + 910,
+        y: oy + 40,
+        width: 370,
+        height: 232,
+        checklistTitle: 'Auditoria de Acessibilidade & UI Polish',
+        checklistItems: [
+          { id: 'wcag_1', text: 'Navegação por teclado completa com Tab e Shift+Tab', completed: true },
+          { id: 'wcag_2', text: 'Focus ring nítido visível apenas via teclado (focus-visible)', completed: true },
+          { id: 'wcag_3', text: 'Área de toque mínima de 44x44px em botões móveis', completed: true },
+          { id: 'wcag_4', text: 'Físicas de mola naturais: damping suave sem bounce excessivo', completed: false },
+          { id: 'wcag_5', text: 'Suporte a redução de movimento (prefers-reduced-motion)', completed: false },
+        ],
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      // 3. Bloco de Código de Componente Acessível com Primitivas ARIA
+      els.push({
+        type: 'code',
+        x: ox + 40,
+        y: oy + 295,
+        width: 540,
+        height: 195,
+        text: `// Componente com Emil Kowalski Polish & Acessibilidade WCAG\nexport const AccessibleButton = React.forwardRef<HTMLButtonElement, ButtonProps>(\n  ({ children, variant = 'primary', isLoading, ...props }, ref) => (\n    <button\n      ref={ref}\n      aria-busy={isLoading}\n      className="inline-flex items-center justify-center min-h-[44px] px-4 py-2.5\n                 rounded-lg font-medium text-sm transition-all duration-150\n                 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary\n                 active:scale-[0.98] disabled:opacity-50 select-none cursor-pointer"\n      {...props}\n    >\n      {isLoading ? <Spinner className="size-4 animate-spin mr-2" /> : children}\n    </button>\n  )\n);`,
+        codeLanguage: 'typescript',
+        codeTheme: 'dark',
+        fontSize: 12,
+        zIndex: ++z,
+        updatedBy: user.uid,
+        updatedByName: user.displayName,
+      });
+
+      // 4. Post-its com Princípios de Emil Kowalski
+      const emilPrinciples = [
+        { title: '🌿 Físicas de Mola Reais', text: 'Animações devem expressar peso e momentum natural, evitando curvas lineares artificiais.', fill: '#fce7f3' },
+        { title: '⚡ Latência Percebida Zero', text: 'Feedback imediato no pointerdown com UI otimista antes mesmo da resposta do servidor.', fill: '#fed7aa' },
+        { title: '📐 Tipografia de Alto Contraste', text: 'Escala tipográfica nítida com entrelinha confortável e espaçamento consistente em grade 4px.', fill: '#bae6fd' },
+        { title: '🔍 Feedback Tátil & Estados', text: 'Hover, active e focus contam uma história coesa de profundidade através de elevação e bordas.', fill: '#bbf7d0' },
+      ];
+
+      emilPrinciples.forEach((principle, idx) => {
+        const px = ox + 605 + (idx % 2) * 335;
+        const py = oy + 295 + Math.floor(idx / 2) * 98;
+        els.push({
+          type: 'sticky',
+          x: px,
+          y: py,
+          width: 320,
+          height: 90,
+          fill: principle.fill,
+          text: `${principle.title}\n${principle.text}`,
+          fontSize: 12,
+          zIndex: ++z,
+          updatedBy: user.uid,
+          updatedByName: user.displayName,
+        });
+      });
+
+      return els;
+    },
   },
 ];
 

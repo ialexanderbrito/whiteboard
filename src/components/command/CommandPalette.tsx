@@ -800,7 +800,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                   <div className={itemIconClass}>
                     <LayoutTemplate className="size-3.5" />
                   </div>
-                  <span>Inserir Templates de Sprint (Scrum, Retro, Kanban)</span>
+                  <span>Inserir Templates & Frameworks (Retro, Kanban, Arquitetura, RCD)</span>
                   <CommandShortcut>
                     <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] font-bold">
                       S

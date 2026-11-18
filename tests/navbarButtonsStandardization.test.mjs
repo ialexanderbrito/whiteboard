@@ -18,7 +18,7 @@ test('Navbar buttons standardization: all right-hand floating HUD buttons share 
   assert.match(templatesSrc, /border border-border/);
   assert.match(templatesSrc, /active:scale-\[0\.97\]/);
   assert.match(templatesSrc, /group-hover:scale-105/);
-  assert.match(templatesSrc, /<TooltipContent>Inserir Templates de Sprint<\/TooltipContent>/);
+  assert.match(templatesSrc, /<TooltipContent>Inserir Templates (?:& Frameworks|de Sprint)<\/TooltipContent>/);
 
   // 2. BuyMeACoffeeModal (Apoiar) trigger standardization
   assert.match(coffeeSrc, /bg-background\/80 dark:bg-card\/80 backdrop-blur-md/);

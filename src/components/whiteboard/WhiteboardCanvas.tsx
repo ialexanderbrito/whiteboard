@@ -73,7 +73,7 @@ import {
   buildPasteStyleUpdates,
   hasCopiedElementStyle,
 } from '../../utils/styleClipboard';
-import { getElementsContainedInFrame } from '../../utils/frameContainment.ts';
+import { getElementsContainedInFrame, isElementContainedInFrame } from '../../utils/frameContainment.ts';
 import { cleanGifUrl } from '../../utils/gif';
 import { sortElementsByLayer, computeLayerReorderUpdates, getNextZIndex, selectionSupportsLayerReorder, resolveLayerShortcut } from '../../utils/layerOrder';
 import { recognizeSmartShape } from '../../utils/smartDrawing';
@@ -3257,7 +3257,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         onSelectionChange(expandSelectionWithGroups(elements, [...selectedIds, elemId]));
       }
     } else {
-      if (!selectedIds.includes(elemId)) {
+      if (!selectedIds.includes(elemId) || selectedIds.length > 1) {
         onSelectionChange(expandSelectionWithGroups(elements, [elemId]));
       }
     }
@@ -3275,7 +3275,23 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
   // Atualização de elemento com suporte automático a delta em lote e reconexão magnética de setas
   const handleElementChange = useCallback((elemId: string, updates: Partial<CanvasElement>) => {
     // Se o elemento é parte de uma multisseleção ou é uma moldura com filhos contidos arrastados
-    const isMulti = selectedIds.includes(elemId) && selectedIds.length > 1;
+    const originElem = elementsById.get(elemId) || elements.find((e) => e.id === elemId);
+
+    // Se o elemento modificado está contido em uma moldura, a moldura delimitadora JAMAIS
+    // deve ser arrastada ou atualizada em lote junto com ele.
+    let effectiveSelectedIds = selectedIds;
+    if (originElem) {
+      effectiveSelectedIds = selectedIds.filter((id) => {
+        if (id === elemId) return true;
+        const el = elementsById.get(id) || elements.find((e) => e.id === id);
+        if (el && el.type === 'frame' && isElementContainedInFrame(originElem, el)) {
+          return false;
+        }
+        return true;
+      });
+    }
+
+    const isMulti = effectiveSelectedIds.includes(elemId) && effectiveSelectedIds.length > 1;
     const frameChildIds = [...(draggedFrameChildIdsRef.current || [])];
     const hasFrameChildren = frameChildIds.length > 0;
 
@@ -3284,13 +3300,12 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       updates.y !== undefined &&
       (isMulti || hasFrameChildren)
     ) {
-      const originElem = elementsById.get(elemId) || elements.find((e) => e.id === elemId);
       if (originElem) {
         const dx = updates.x - originElem.x;
         const dy = updates.y - originElem.y;
 
         const allTargetIds = isMulti
-          ? Array.from(new Set([...selectedIds, ...frameChildIds]))
+          ? Array.from(new Set([...effectiveSelectedIds, ...frameChildIds]))
           : [elemId, ...frameChildIds];
 
         // Previne chamadas duplicadas simultâneas causadas por término de arraste múltiplo no mesmo instante
@@ -4247,9 +4262,31 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
 
       if (width > 6 && height > 6) {
         const marqueeBounds = { x: x1, y: y1, w: width, h: height };
-        const hits = elements
+        let hits = elements
           .filter((el) => boundsIntersect(getElementWorldBounds(el), marqueeBounds))
           .map((el) => el.id);
+
+        // Se a seleção por caixa (marquee) atingiu elementos normais dentro de uma moldura,
+        // a moldura delimitadora de fundo NÃO deve ser selecionada acidentalmente,
+        // a menos que a caixa de seleção envolva completamente toda a moldura.
+        const nonFrameHits = hits.filter((id) => {
+          const el = elementsById.get(id) || elements.find((e) => e.id === id);
+          return el && el.type !== 'frame';
+        });
+
+        if (nonFrameHits.length > 0) {
+          hits = hits.filter((id) => {
+            const el = elementsById.get(id) || elements.find((e) => e.id === id);
+            if (!el || el.type !== 'frame') return true;
+            const b = getElementWorldBounds(el);
+            const completelyEncloses =
+              marqueeBounds.x <= b.x &&
+              marqueeBounds.y <= b.y &&
+              marqueeBounds.x + marqueeBounds.w >= b.x + b.w &&
+              marqueeBounds.y + marqueeBounds.h >= b.y + b.h;
+            return completelyEncloses;
+          });
+        }
 
         if (e.evt && (e.evt.ctrlKey || e.evt.metaKey || e.evt.shiftKey)) {
           onSelectionChange(Array.from(new Set([...selectedIds, ...hits])));
@@ -6210,6 +6247,11 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           // Se já há uma sessão ativa para este líder de arraste, não reinicializa
           if (dragSessionRef.current) return;
 
+          // Se o elemento arrastado não fazia parte da seleção atual, isola a seleção nele
+          if (!selectedIds.includes(targetId)) {
+            onSelectionChange([targetId]);
+          }
+
           dragStartPositions.current.clear();
           draggedFrameChildIdsRef.current = [];
 
@@ -6220,10 +6262,24 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
             draggedFrameChildIdsRef.current = contained;
           }
 
-          const isMulti = selectedIds.length > 1 && selectedIds.includes(targetId);
+          // Se o elemento arrastado está contido dentro de uma moldura, a moldura delimitadora
+          // JAMAIS deve ser arrastada junto com o elemento filho (mesmo se estivesse em selectedIds).
+          let effectiveSelectedIds = selectedIds.includes(targetId) ? selectedIds : [targetId];
+          if (targetElem) {
+            effectiveSelectedIds = effectiveSelectedIds.filter((id) => {
+              if (id === targetId) return true;
+              const el = elementsById.get(id) || elementsRef.current.find((e) => e.id === id);
+              if (el && el.type === 'frame' && isElementContainedInFrame(targetElem, el)) {
+                return false;
+              }
+              return true;
+            });
+          }
+
+          const isMulti = effectiveSelectedIds.length > 1 && effectiveSelectedIds.includes(targetId);
           const hasFrameChildren = draggedFrameChildIdsRef.current.length > 0;
           const draggedIds = isMulti
-            ? Array.from(new Set([...selectedIds, ...draggedFrameChildIdsRef.current]))
+            ? Array.from(new Set([...effectiveSelectedIds, ...draggedFrameChildIdsRef.current]))
             : hasFrameChildren
             ? [targetId, ...draggedFrameChildIdsRef.current]
             : [targetId];

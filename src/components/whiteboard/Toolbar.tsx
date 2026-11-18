@@ -92,7 +92,7 @@ interface ToolbarProps {
   // Minimapa Interativo Retrátil
   showMinimap?: boolean;
   onToggleMinimap?: () => void;
-  // Templates de Sprint (Padrão Miro / FigJam)
+  // Templates & Frameworks (Padrão Miro / FigJam)
   onOpenTemplates?: () => void;
 }
 
@@ -1106,7 +1106,7 @@ export const Toolbar: React.FC<ToolbarProps> = React.memo(({
                       ? 'bg-primary text-primary-foreground shadow-xs'
                       : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                   }`}
-                  aria-label="Tabela, Kanban, Mapa Mental e Código"
+                  aria-label="Componentes e Widgets Estruturados"
                 >
                   <ActiveWidgetIcon className="size-4" />
                   <span className="absolute -bottom-0.5 -right-0.5 text-[8px] opacity-70">▾</span>
@@ -1124,7 +1124,7 @@ export const Toolbar: React.FC<ToolbarProps> = React.memo(({
                 } bg-popover text-popover-foreground p-1 rounded-md shadow-md border border-border flex flex-col gap-0.5 z-40 animate-in fade-in-0 zoom-in-95 w-48`}
               >
                 <div className="px-2 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-                  Widgets & Ferramentas
+                  Widgets & Componentes
                 </div>
                 {WIDGET_OPTIONS.map((w) => {
                   const WIcon = w.icon;
@@ -1153,7 +1153,7 @@ export const Toolbar: React.FC<ToolbarProps> = React.memo(({
             )}
           </div>
 
-          {/* Templates de Sprint e Frameworks (Padrão Miro & FigJam na barra de ferramentas) */}
+          {/* Templates & Frameworks (Padrão Miro & FigJam na barra de ferramentas) */}
           {onOpenTemplates && (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -1164,13 +1164,13 @@ export const Toolbar: React.FC<ToolbarProps> = React.memo(({
                     onOpenTemplates();
                   }}
                   className="size-8 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors flex items-center justify-center active:scale-[0.98]"
-                  aria-label="Inserir Templates de Sprint"
+                  aria-label="Inserir Templates & Frameworks"
                 >
                   <LayoutTemplate className="size-4" />
                 </button>
               </TooltipTrigger>
               <TooltipContent side={tooltipSide}>
-                <p className="font-medium text-xs">Templates de Sprint <span className="opacity-60 text-[10px]">(S)</span></p>
+                <p className="font-medium text-xs">Templates & Frameworks <span className="opacity-60 text-[10px]">(S)</span></p>
               </TooltipContent>
             </Tooltip>
           )}

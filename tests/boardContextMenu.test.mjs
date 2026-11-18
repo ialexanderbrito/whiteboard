@@ -52,7 +52,7 @@ test('BoardContextMenu contains all Creation and Board Tools for empty canvas', 
   // Área de transferência e atalhos
   assert.match(content, /Colar aqui/, 'Deve conter opção Colar aqui');
   assert.match(content, /Selecionar Tudo/, 'Deve conter opção Selecionar Tudo');
-  assert.match(content, /Modelos de Sprint\.\.\./, 'Deve conter atalho para Templates de Sprint');
+  assert.match(content, /(?:Templates & Frameworks|Modelos de Sprint)\.\.\./, 'Deve conter atalho para Templates & Frameworks');
   assert.match(content, /Stickers & Emojis\.\.\./, 'Deve conter atalho para Stickers');
   assert.match(content, /Visualização/, 'Deve conter submenu de Visualização');
   assert.match(content, /Redefinir Zoom/, 'Deve conter opção Redefinir Zoom');

@@ -92,7 +92,7 @@ export const SprintTemplatesModal: React.FC<SprintTemplatesModalProps> = ({
               )}
             </DialogTrigger>
           </TooltipTrigger>
-          <TooltipContent>Inserir Templates de Sprint</TooltipContent>
+          <TooltipContent>Inserir Templates & Frameworks</TooltipContent>
         </Tooltip>
       )}
 
@@ -104,13 +104,13 @@ export const SprintTemplatesModal: React.FC<SprintTemplatesModalProps> = ({
             </div>
             <div>
               <DialogTitle className="text-base font-semibold tracking-tight text-foreground flex items-center gap-2">
-                <span>Templates de Sprint & Frameworks</span>
+                <span>Templates & Frameworks</span>
                 <span className="text-[10px] font-normal px-1.5 py-0.5 rounded bg-muted text-muted-foreground border border-border">
                   {SPRINT_TEMPLATES.length} modelos
                 </span>
               </DialogTitle>
               <DialogDescription className="text-xs text-muted-foreground">
-                Modelos prontos para dinâmicas, retrospectivas e planejamento ágil em 1 clique.
+                Modelos prontos para dinâmicas, retrospectivas, arquitetura e planejamento ágil em 1 clique.
               </DialogDescription>
             </div>
           </div>
