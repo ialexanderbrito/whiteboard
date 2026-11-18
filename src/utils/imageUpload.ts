@@ -35,6 +35,21 @@ export interface ProcessedUploadImage {
   sizeBytes: number;
 }
 
+export type CloudImageUploaderFn = (
+  dataUrlOrBlob: Blob | string,
+  mimeType: string
+) => Promise<string | null>;
+
+let cloudImageUploader: CloudImageUploaderFn | null = null;
+
+/**
+ * Registra o provedor de Object Storage (Firebase Storage / R2 / S3) em runtime
+ * para substituir strings Base64 grandes por URLs HTTPS públicas enxutas.
+ */
+export function registerCloudImageUploader(uploader: CloudImageUploaderFn | null): void {
+  cloudImageUploader = uploader;
+}
+
 const SUPPORTED_IMAGE_EXTENSIONS = /\.(png|jpe?g|webp|gif|svg|avif|bmp|ico)$/i;
 
 /**
@@ -302,15 +317,27 @@ export async function processImageFile(
   }
 
   const compressed = compressImageToDataUrl(img);
+  let finalSrc = compressed.dataUrl;
+  if (cloudImageUploader) {
+    try {
+      const uploadedUrl = await cloudImageUploader(compressed.dataUrl, 'image/webp');
+      if (uploadedUrl) {
+        finalSrc = uploadedUrl;
+      }
+    } catch {
+      // Fallback transparente para DataURL comprimida
+    }
+  }
+
   return {
     type: 'sticker',
-    src: compressed.dataUrl,
+    src: finalSrc,
     alt,
     width: displayDims.width,
     height: displayDims.height,
     naturalWidth: compressed.naturalWidth,
     naturalHeight: compressed.naturalHeight,
-    sizeBytes: estimateDataUrlBytes(compressed.dataUrl),
+    sizeBytes: finalSrc.startsWith('data:') ? estimateDataUrlBytes(finalSrc) : finalSrc.length,
   };
 }
 
