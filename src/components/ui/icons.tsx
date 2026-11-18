@@ -37,7 +37,7 @@ import {
   Target02Icon,
   ClipboardPasteIcon,
   Clock01Icon,
-  Coffee01Icon,
+  Coffee02Icon,
   Compass01Icon,
   Copy01Icon,
   Copy02Icon,
@@ -198,7 +198,7 @@ export const Circle = createHugeIcon(CircleIcon, 'Circle');
 export const CircleDot = createHugeIcon(Target02Icon, 'CircleDot');
 export const ClipboardPaste = createHugeIcon(ClipboardPasteIcon, 'ClipboardPaste');
 export const Clock = createHugeIcon(Clock01Icon, 'Clock');
-export const Coffee = createHugeIcon(Coffee01Icon, 'Coffee');
+export const Coffee = createHugeIcon(Coffee02Icon, 'Coffee');
 export const Compass = createHugeIcon(Compass01Icon, 'Compass');
 export const Copy = createHugeIcon(Copy01Icon, 'Copy');
 export const Crown = createHugeIcon(CrownIcon, 'Crown');
@@ -344,6 +344,8 @@ export const ZoomOut = createHugeIcon(ZoomOutIcon, 'ZoomOut');
 
 export const Hexagon: React.FC<React.SVGProps<SVGSVGElement>> = ({ className, ...props }) => (
   <svg
+    width="16"
+    height="16"
     viewBox="0 0 24 24"
     fill="none"
     stroke="currentColor"
@@ -359,6 +361,8 @@ export const Hexagon: React.FC<React.SVGProps<SVGSVGElement>> = ({ className, ..
 
 export const Cylinder: React.FC<React.SVGProps<SVGSVGElement>> = ({ className, ...props }) => (
   <svg
+    width="16"
+    height="16"
     viewBox="0 0 24 24"
     fill="none"
     stroke="currentColor"
@@ -373,4 +377,83 @@ export const Cylinder: React.FC<React.SVGProps<SVGSVGElement>> = ({ className, .
     <path d="M3 12a9 3 0 0 0 18 0" />
   </svg>
 );
+
+export const Code2: React.FC<React.SVGProps<SVGSVGElement>> = ({ className, ...props }) => (
+  <svg
+    width="16"
+    height="16"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    {...props}
+  >
+    <polyline points="16 18 22 12 16 6" />
+    <polyline points="8 6 2 12 8 18" />
+    <line x1="14" y1="4" x2="10" y2="20" />
+  </svg>
+);
+
+export const Table2: React.FC<React.SVGProps<SVGSVGElement>> = ({ className, ...props }) => (
+  <svg
+    width="16"
+    height="16"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    {...props}
+  >
+    <rect x="3" y="3" width="18" height="18" rx="2.5" />
+    <line x1="3" y1="9" x2="21" y2="9" />
+    <line x1="3" y1="15" x2="21" y2="15" />
+    <line x1="9" y1="3" x2="9" y2="21" />
+    <line x1="15" y1="3" x2="15" y2="21" />
+  </svg>
+);
+
+export const Crop: React.FC<React.SVGProps<SVGSVGElement>> = ({ className, ...props }) => (
+  <svg
+    width="16"
+    height="16"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    {...props}
+  >
+    <path d="M6 2v14a2 2 0 0 0 2 2h14" />
+    <path d="M18 22V8a2 2 0 0 0-2-2H2" />
+  </svg>
+);
+
+export const MessagePin: React.FC<React.SVGProps<SVGSVGElement>> = ({ className, ...props }) => (
+  <svg
+    width="16"
+    height="16"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    {...props}
+  >
+    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+    <circle cx="9" cy="11.5" r="1" fill="currentColor" />
+    <circle cx="12.5" cy="11.5" r="1" fill="currentColor" />
+    <circle cx="16" cy="11.5" r="1" fill="currentColor" />
+  </svg>
+);
+
 
