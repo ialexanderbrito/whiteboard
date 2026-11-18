@@ -90,9 +90,9 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   const [copiedLink, setCopiedLink] = useState(false);
   const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
 
-  // Estados de proteção por senha
+  // Estados de proteção por senha (nunca exibe o hash SHA-256 salvo no input)
   const [hasPassword, setHasPassword] = useState(Boolean(board?.isPasswordProtected));
-  const [boardPassword, setBoardPassword] = useState(board?.password || '');
+  const [boardPassword, setBoardPassword] = useState('');
   const [showPasswordText, setShowPasswordText] = useState(false);
   const [passwordSaved, setPasswordSaved] = useState(false);
 
@@ -219,7 +219,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
           return next;
         });
 
-        // 2. Remove presença e atualiza Firestore
+        // 2. Remove presença e atualiza Firestore de forma atômica (sem sobrescrever estados concorrentes)
         if (person.uid) {
           await boardService.removeBoardMember(board.id, person.uid);
         }
@@ -228,41 +228,6 @@ export const ShareModal: React.FC<ShareModalProps> = ({
         if (person.email) {
           await boardService.removeBoardCollaborator(board.id, person.email);
         }
-
-        // 4. Remove definitivamente da lista de membros
-        const updatedMembers = { ...(board.members || {}) };
-        if (person.uid) {
-          delete updatedMembers[person.uid];
-        }
-        const updatedRemoved = Array.from(
-          new Set([...(board.removedMemberIds || []), ...(person.uid ? [person.uid] : [])])
-        );
-
-        const updatedCollaborators = { ...(board.collaborators || {}) };
-        if (person.email) {
-          const cleanKey = person.email.replace(/[.#$[\]]/g, '_');
-          delete updatedCollaborators[cleanKey];
-        }
-        const collaboratorEmails = Object.values(updatedCollaborators)
-          .map((c) => (c?.email ? c.email.toLowerCase() : ''))
-          .filter(Boolean);
-
-        const updatedJoinRequests = { ...(board.joinRequests || {}) };
-        if (person.uid && updatedJoinRequests[person.uid]) {
-          updatedJoinRequests[person.uid] = {
-            ...updatedJoinRequests[person.uid],
-            status: 'rejected',
-            respondedAt: Date.now(),
-          };
-        }
-
-        await onUpdateBoardSettings({
-          members: updatedMembers,
-          joinRequests: updatedJoinRequests,
-          removedMemberIds: updatedRemoved,
-          collaborators: updatedCollaborators,
-          collaboratorEmails,
-        });
         return;
       }
 
@@ -580,6 +545,42 @@ export const ShareModal: React.FC<ShareModalProps> = ({
             </DropdownMenu>
           </div>
         </div>
+
+        {/* Entrada Direta vs Autorização do Anfitrião (Permite colaboração assíncrona pelo link) */}
+        {isOwner && defaultPermission !== 'none' && onUpdateBoardSettings && (
+          <div
+            onClick={() =>
+              onUpdateBoardSettings({
+                waitingRoomEnabled: !(board?.waitingRoomEnabled !== false),
+              })
+            }
+            className="flex items-center justify-between gap-3 p-2.5 rounded-lg border border-border bg-muted/15 hover:bg-muted/25 transition-colors cursor-pointer select-none"
+          >
+            <div className="min-w-0 space-y-0.5">
+              <p className="text-xs font-semibold text-foreground">
+                Exigir autorização ao entrar pelo link
+              </p>
+              <p className="text-[10px] text-muted-foreground leading-snug">
+                {board?.waitingRoomEnabled !== false
+                  ? 'Visitantes aguardam sua confirmação antes de acessar.'
+                  : 'Entrada livre: qualquer pessoa com o link colabora mesmo com você offline.'}
+              </p>
+            </div>
+            <div
+              role="switch"
+              aria-checked={board?.waitingRoomEnabled !== false}
+              className={`w-8 h-4.5 flex items-center rounded-full p-0.5 transition-colors shrink-0 ${
+                board?.waitingRoomEnabled !== false ? 'bg-primary' : 'bg-muted-foreground/30'
+              }`}
+            >
+              <div
+                className={`bg-background size-3.5 rounded-full shadow-xs transform transition-transform duration-200 ${
+                  board?.waitingRoomEnabled !== false ? 'translate-x-3.5' : 'translate-x-0'
+                }`}
+              />
+            </div>
+          </div>
+        )}
 
         {/* Link Curto e Limpo */}
         <div className="space-y-1.5">

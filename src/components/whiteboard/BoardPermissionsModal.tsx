@@ -259,29 +259,6 @@ export const BoardPermissionsModal: React.FC<BoardPermissionsModalProps> = ({
         } catch (e) {
           console.warn('Erro ao chamar boardService.remove:', e);
         }
-
-        const updatedMembers = { ...(board.members || {}) };
-        if (member.uid) {
-          delete updatedMembers[member.uid];
-        }
-
-        const safeRemoved = Array.isArray(board.removedMemberIds) ? board.removedMemberIds : [];
-        const updatedRemovedIds = Array.from(new Set([...safeRemoved, targetId]));
-
-        const updatedJoinRequests = { ...(board.joinRequests || {}) };
-        if (member.uid && updatedJoinRequests[member.uid]) {
-          updatedJoinRequests[member.uid] = {
-            ...updatedJoinRequests[member.uid],
-            status: 'rejected',
-            respondedAt: Date.now(),
-          };
-        }
-
-        await onUpdateBoardSettings(board.id, {
-          members: updatedMembers,
-          joinRequests: updatedJoinRequests,
-          removedMemberIds: updatedRemovedIds,
-        });
         return;
       }
 
@@ -461,6 +438,42 @@ export const BoardPermissionsModal: React.FC<BoardPermissionsModalProps> = ({
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
+
+            {/* 2b. Controle de Entrada Direta vs Autorização do Anfitrião */}
+            {defaultPermission !== 'none' && (
+              <div
+                onClick={() =>
+                  onUpdateBoardSettings(board.id, {
+                    waitingRoomEnabled: !(board.waitingRoomEnabled !== false),
+                  })
+                }
+                className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border bg-muted/15 hover:bg-muted/30 transition-colors cursor-pointer select-none"
+              >
+                <div className="min-w-0 space-y-0.5">
+                  <span className="text-xs font-semibold text-foreground block">
+                    Exigir autorização ao entrar pelo link
+                  </span>
+                  <p className="text-[11px] text-muted-foreground leading-snug">
+                    {board.waitingRoomEnabled !== false
+                      ? 'Novos visitantes aguardam você aceitar antes de ver o quadro.'
+                      : 'Entrada aberta: quem tiver o link entra direto de forma assíncrona.'}
+                  </p>
+                </div>
+                <div
+                  role="switch"
+                  aria-checked={board.waitingRoomEnabled !== false}
+                  className={`w-9 h-5 flex items-center rounded-full p-0.5 transition-colors shrink-0 ${
+                    board.waitingRoomEnabled !== false ? 'bg-primary' : 'bg-muted-foreground/30'
+                  }`}
+                >
+                  <div
+                    className={`bg-background size-4 rounded-full shadow-xs transform transition-transform duration-200 ${
+                      board.waitingRoomEnabled !== false ? 'translate-x-4' : 'translate-x-0'
+                    }`}
+                  />
+                </div>
+              </div>
+            )}
 
             {/* 3. Lista de Membros e Pessoas com Acesso */}
             <div className="space-y-2 pt-1">

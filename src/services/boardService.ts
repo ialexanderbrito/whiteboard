@@ -15,9 +15,14 @@ import {
   where
 } from 'firebase/firestore';
 import { ref as rtdbRef, remove as rtdbRemove } from 'firebase/database';
-import { db, rtdb, isFirebaseConfigured } from '../config/firebase';
+import { auth, db, rtdb, isFirebaseConfigured } from '../config/firebase';
 import type { Board, BoardCollaborator, BoardMember, BoardPermission, CurrentUser, JoinRequest } from '../types/board';
+import type { CanvasElement } from '../types/element';
+import { deserializeElementFromFirestore } from '../utils/tableAndKanban';
 import { hashBoardPassword } from '../utils/security';
+import { elementService } from './elementService';
+import { timerService } from './timerService';
+import { votingService } from './votingService';
 
 export interface CreateBoardOptions {
   boardId?: string;
@@ -34,7 +39,75 @@ export interface CreateBoardOptions {
 const LOCAL_BOARDS_KEY = 'mirio_local_boards';
 const BOARDS_CHANNEL_NAME = 'mirio_boards_channel';
 const VISITED_BOARDS_PREFIX = 'mirio_visited_boards_';
+const DISMISSED_BOARDS_PREFIX = 'mirio_dismissed_boards_';
+const FAVORITE_BOARDS_PREFIX = 'mirio_favorite_boards_';
 const INVITES_COLLECTION = 'invites';
+
+export function getDismissedBoardIds(userId: string): Set<string> {
+  if (!userId) return new Set();
+  try {
+    const raw = localStorage.getItem(`${DISMISSED_BOARDS_PREFIX}${userId}`);
+    if (!raw) return new Set();
+    const list = JSON.parse(raw);
+    return Array.isArray(list) ? new Set(list.map((id) => cleanBoardId(id)).filter(Boolean)) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+export function addDismissedBoard(rawBoardId: unknown, userId: string): void {
+  const boardId = cleanBoardId(rawBoardId);
+  if (!boardId || !userId) return;
+  try {
+    const next = getDismissedBoardIds(userId);
+    next.add(boardId);
+    localStorage.setItem(`${DISMISSED_BOARDS_PREFIX}${userId}`, JSON.stringify(Array.from(next)));
+  } catch {}
+}
+
+export function clearDismissedBoard(rawBoardId: unknown, userId: string): void {
+  const boardId = cleanBoardId(rawBoardId);
+  if (!boardId || !userId) return;
+  try {
+    const next = getDismissedBoardIds(userId);
+    if (next.delete(boardId)) {
+      localStorage.setItem(`${DISMISSED_BOARDS_PREFIX}${userId}`, JSON.stringify(Array.from(next)));
+    }
+  } catch {}
+}
+
+export function getFavoriteBoardIds(userId: string): Set<string> {
+  if (!userId) return new Set();
+  try {
+    const raw = localStorage.getItem(`${FAVORITE_BOARDS_PREFIX}${userId}`);
+    if (!raw) return new Set();
+    const list = JSON.parse(raw);
+    return Array.isArray(list) ? new Set(list.map((id) => cleanBoardId(id)).filter(Boolean)) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+export function toggleFavoriteBoardLocal(rawBoardId: unknown, userId: string): boolean {
+  const boardId = cleanBoardId(rawBoardId);
+  if (!boardId || !userId) return false;
+  try {
+    const favs = getFavoriteBoardIds(userId);
+    let isNowFav = false;
+    if (favs.has(boardId)) {
+      favs.delete(boardId);
+      isNowFav = false;
+    } else {
+      favs.add(boardId);
+      isNowFav = true;
+    }
+    localStorage.setItem(`${FAVORITE_BOARDS_PREFIX}${userId}`, JSON.stringify(Array.from(favs)));
+    notifyLocalSubscribers();
+    return isNowFav;
+  } catch {
+    return false;
+  }
+}
 
 /** Snapshot público e seguro do convite: só dados não sensíveis (nunca senha, membros ou permissões) */
 export interface BoardInviteSnapshot {
@@ -108,6 +181,7 @@ export function recordVisitedBoard(rawBoardId: unknown, userId: string): void {
   const boardId = cleanBoardId(rawBoardId);
   if (!boardId || !userId) return;
   try {
+    clearDismissedBoard(boardId, userId);
     const current = getVisitedBoardIds(userId).filter((id) => id !== boardId);
     current.unshift(boardId);
     // Armazena até 30 quadros acessados recentemente
@@ -215,7 +289,7 @@ export const boardService = {
       options.collaborators ? Object.values(options.collaborators).map((c) => c.email.toLowerCase()) : []
     );
     const isPasswordProtected = Boolean(options.isPasswordProtected && options.password?.trim());
-    const password = isPasswordProtected && options.password ? await hashBoardPassword(options.password.trim()) : '';
+    const password = isPasswordProtected && options.password ? await hashBoardPassword(options.password.trim(), boardId) : '';
 
     const newBoard: Board = {
       id: boardId,
@@ -295,9 +369,13 @@ export const boardService = {
         }
 
         const visitedIds = getVisitedBoardIds(user.uid);
+        const dismissedSet = getDismissedBoardIds(user.uid);
         const userEmailLower = user.email ? user.email.toLowerCase() : null;
 
         const filtered = allLocal.filter((b) => {
+          if (b.ownerId !== user.uid && dismissedSet.has(cleanBoardId(b.id))) {
+            return false;
+          }
           const isReinvited = (userEmailLower && (
             (b.collaboratorEmails && b.collaboratorEmails.map((e) => String(e).toLowerCase()).includes(userEmailLower)) ||
             (b.collaborators && Object.values(b.collaborators).some((c) => c?.email && String(c.email).toLowerCase() === userEmailLower))
@@ -384,9 +462,12 @@ export const boardService = {
     const publishMergedBoards = () => {
       const mergedMap = new Map<string, Board>();
       const userEmailLower = user.email ? user.email.toLowerCase() : null;
+      const dismissedSet = getDismissedBoardIds(user.uid);
 
       [ownedBoardsMap, collabBoardsMap, visitedBoardsMap].forEach((m) => {
         m.forEach((b, id) => {
+          if (b.ownerId !== user.uid && b.deletedAt) return;
+          if (b.ownerId !== user.uid && dismissedSet.has(id)) return;
           const isReinvited = (userEmailLower && (
             (b.collaboratorEmails && b.collaboratorEmails.includes(userEmailLower)) ||
             (b.collaborators && Object.values(b.collaborators).some((c) => c?.email && String(c.email).toLowerCase() === userEmailLower))
@@ -424,8 +505,15 @@ export const boardService = {
           : [],
         members: rawData.members || {},
         removedMemberIds: Array.isArray(rawData.removedMemberIds) ? rawData.removedMemberIds : [],
+        waitingRoomEnabled: rawData.waitingRoomEnabled !== undefined ? Boolean(rawData.waitingRoomEnabled) : true,
+        joinRequests: rawData.joinRequests || {},
         isPasswordProtected: Boolean(rawData.isPasswordProtected),
         password: rawData.password || '',
+        starredBy: Array.isArray(rawData.starredBy) ? rawData.starredBy : [],
+        deletedAt: typeof rawData.deletedAt === 'number' ? rawData.deletedAt : null,
+        ...(rawData.previewSnapshot && typeof rawData.previewSnapshot === 'object'
+          ? { previewSnapshot: rawData.previewSnapshot }
+          : {}),
       };
     };
 
@@ -722,7 +810,7 @@ export const boardService = {
     if (updates.password !== undefined) {
       const p = updates.password ? updates.password.trim() : '';
       if (p) {
-        payload.password = /^[0-9a-fA-F]{64}$/.test(p) ? p : await hashBoardPassword(p);
+        payload.password = /^[0-9a-fA-F]{64}$/.test(p) ? p : await hashBoardPassword(p, boardId);
       } else {
         payload.password = '';
       }
@@ -1311,34 +1399,352 @@ export const boardService = {
     const boardId = cleanBoardId(rawBoardId);
     if (!boardId) return;
 
-    // 1. Remove dos visitados locais
+    // 1. Remove dos visitados locais e registra dispensa local imediata
     removeVisitedBoard(boardId, user.uid);
     removeVisitedBoard(`board_${boardId}`, user.uid);
+    addDismissedBoard(boardId, user.uid);
 
-    // 2. Se for um usuário com e-mail convidado, remove da lista de colaboradores
+    // 2. Marca saída voluntária do próprio membro no Firestore (permitido por firestore.rules)
+    if (isFirebaseConfigured && db) {
+      try {
+        const docRef = doc(db, 'boards', boardId);
+        await updateDoc(docRef, {
+          [`members.${user.uid}.role`]: 'none',
+          updatedAt: Date.now(),
+        });
+      } catch {
+        // Ignora se o usuário nunca chegou a gravar em members
+      }
+    }
+
+    // 3. Se for um usuário com e-mail convidado, remove seu próprio e-mail de colaboradores
     if (user.email) {
       const emailLower = user.email.toLowerCase();
-      const board = await this.getBoard(boardId);
-      if (board && board.collaborators) {
-        const emailKey = emailLower.replace(/[.#$[\]]/g, '_');
-        if (board.collaborators[emailKey]) {
-          const updated = { ...board.collaborators };
-          delete updated[emailKey];
-          const emails = Object.values(updated).map((c) => c?.email ? c.email.toLowerCase() : '').filter(Boolean);
-          await this.updateBoardSettings(boardId, {
-            collaborators: updated,
-            collaboratorEmails: emails,
-          });
+      try {
+        const board = await this.getBoard(boardId);
+        if (board && board.collaborators) {
+          const emailKey = emailLower.replace(/[.#$[\]]/g, '_');
+          if (board.collaborators[emailKey]) {
+            const updated = { ...board.collaborators };
+            delete updated[emailKey];
+            const emails = Object.values(updated).map((c) => c?.email ? c.email.toLowerCase() : '').filter(Boolean);
+            await this.updateBoardSettings(boardId, {
+              collaborators: updated,
+              collaboratorEmails: emails,
+            });
+          }
         }
+      } catch {
+        // Ocultação local via dismissedBoards já garantiu remoção da lista
       }
     }
 
     notifyLocalSubscribers();
   },
 
+  toggleFavorite(rawBoardId: string, userId: string): boolean {
+    return toggleFavoriteBoardLocal(rawBoardId, userId);
+  },
+
+  getFavoriteIds(userId: string): Set<string> {
+    return getFavoriteBoardIds(userId);
+  },
+
+  /**
+   * Duplica integralmente um quadro existente (metadados + todos os elementos e conexões remapeadas).
+   */
+  async duplicateBoard(rawBoardId: string, user: CurrentUser): Promise<string> {
+    const sourceBoardId = cleanBoardId(rawBoardId);
+    if (!sourceBoardId) throw new Error('ID do quadro inválido');
+
+    const sourceBoard = await this.getBoard(sourceBoardId);
+    const baseTitle = sourceBoard?.title || 'Quadro';
+    const newBoardId = await this.createBoard(
+      {
+        title: `${baseTitle} (Cópia)`,
+        defaultPermission: sourceBoard?.defaultPermission || 'edit',
+        waitingRoomEnabled: sourceBoard?.waitingRoomEnabled ?? true,
+      },
+      user
+    );
+
+    let sourceElements: CanvasElement[] = [];
+    if (!isFirebaseConfigured || !db) {
+      try {
+        const raw = localStorage.getItem(`mirio_board_elements_${sourceBoardId}`);
+        sourceElements = raw ? JSON.parse(raw) : [];
+      } catch {
+        sourceElements = [];
+      }
+    } else {
+      try {
+        const snap = await getDocs(collection(db, 'boards', sourceBoardId, 'elements'));
+        sourceElements = snap.docs.map((d) =>
+          deserializeElementFromFirestore(d.id, d.data() as Record<string, unknown>)
+        );
+      } catch {
+        sourceElements = [];
+      }
+    }
+
+    if (sourceElements.length > 0) {
+      const idMap = new Map<string, string>();
+      const groupMap = new Map<string, string>();
+      sourceElements.forEach((el, idx) => {
+        idMap.set(el.id, `elem_${Math.random().toString(36).substring(2, 11)}${idx}`);
+        if (el.groupId && !groupMap.has(el.groupId)) {
+          groupMap.set(el.groupId, `grp_${Math.random().toString(36).substring(2, 10)}`);
+        }
+      });
+
+      const clonedElements: CanvasElement[] = sourceElements.map((el) => {
+        const cloned: CanvasElement = {
+          ...el,
+          id: idMap.get(el.id)!,
+          updatedBy: user.uid,
+          updatedByName: user.displayName,
+          updatedAt: Date.now(),
+          reactions: {},
+          ...(el.groupId ? { groupId: groupMap.get(el.groupId) } : {}),
+        };
+        if (cloned.startBinding && idMap.has(cloned.startBinding.elementId)) {
+          cloned.startBinding = {
+            ...cloned.startBinding,
+            elementId: idMap.get(cloned.startBinding.elementId)!,
+          };
+        }
+        if (cloned.endBinding && idMap.has(cloned.endBinding.elementId)) {
+          cloned.endBinding = {
+            ...cloned.endBinding,
+            elementId: idMap.get(cloned.endBinding.elementId)!,
+          };
+        }
+        return cloned;
+      });
+
+      await elementService.batchAddElements(newBoardId, clonedElements);
+    }
+
+    return newBoardId;
+  },
+
+  /**
+   * Importa um arquivo JSON de backup ({ board, elements }) criando um novo quadro completo
+   * ou adicionando os elementos em um quadro alvo existente.
+   */
+  async importBoardBackup(
+    rawPayload: unknown,
+    user: CurrentUser,
+    targetBoardId?: string
+  ): Promise<{ boardId: string; importedCount: number }> {
+    if (!rawPayload || typeof rawPayload !== 'object') {
+      throw new Error('Arquivo JSON de backup inválido.');
+    }
+    const obj = rawPayload as { board?: Partial<Board>; elements?: unknown[] };
+    const rawElements = Array.isArray(obj.elements)
+      ? obj.elements
+      : Array.isArray(rawPayload)
+      ? (rawPayload as unknown[])
+      : null;
+
+    if (!rawElements) {
+      throw new Error('O arquivo JSON não contém uma lista válida de elementos.');
+    }
+
+    const validElements = rawElements.filter(
+      (item): item is CanvasElement =>
+        Boolean(
+          item &&
+            typeof item === 'object' &&
+            typeof (item as CanvasElement).type === 'string' &&
+            typeof (item as CanvasElement).x === 'number' &&
+            typeof (item as CanvasElement).y === 'number'
+        )
+    );
+
+    const destBoardId = targetBoardId
+      ? cleanBoardId(targetBoardId)
+      : await this.createBoard(
+          {
+            title:
+              typeof obj.board?.title === 'string' && obj.board.title.trim()
+                ? `${obj.board.title.trim()} (Importado)`
+                : 'Quadro Importado',
+            defaultPermission: 'edit',
+          },
+          user
+        );
+
+    if (validElements.length > 0) {
+      const idMap = new Map<string, string>();
+      const groupMap = new Map<string, string>();
+      validElements.forEach((el, idx) => {
+        const oldId = typeof el.id === 'string' && el.id ? el.id : `old_${idx}`;
+        idMap.set(oldId, `elem_${Math.random().toString(36).substring(2, 11)}${idx}`);
+        if (el.groupId && !groupMap.has(el.groupId)) {
+          groupMap.set(el.groupId, `grp_${Math.random().toString(36).substring(2, 10)}`);
+        }
+      });
+
+      const prepared: CanvasElement[] = validElements.map((el, idx) => {
+        const oldId = typeof el.id === 'string' && el.id ? el.id : `old_${idx}`;
+        const next: CanvasElement = {
+          ...el,
+          id: idMap.get(oldId)!,
+          zIndex: typeof el.zIndex === 'number' ? el.zIndex : idx + 1,
+          updatedBy: user.uid,
+          updatedByName: user.displayName,
+          updatedAt: Date.now(),
+          ...(el.groupId ? { groupId: groupMap.get(el.groupId) } : {}),
+        };
+        if (next.startBinding && idMap.has(next.startBinding.elementId)) {
+          next.startBinding = {
+            ...next.startBinding,
+            elementId: idMap.get(next.startBinding.elementId)!,
+          };
+        }
+        if (next.endBinding && idMap.has(next.endBinding.elementId)) {
+          next.endBinding = {
+            ...next.endBinding,
+            elementId: idMap.get(next.endBinding.elementId)!,
+          };
+        }
+        return next;
+      });
+
+      await elementService.batchAddElements(destBoardId, prepared);
+    }
+
+    return { boardId: destBoardId, importedCount: validElements.length };
+  },
+
+  /**
+   * Constrói um snapshot geométrico leve (máx 48 itens, zero strings Base64)
+   * para renderizar o preview do card no Dashboard sem abrir listeners N+1 em /elements.
+   */
+  buildBoardPreviewSnapshot(elements: ReadonlyArray<CanvasElement>) {
+    const items = elements
+      .filter((el) => el && typeof el.x === 'number' && typeof el.y === 'number')
+      .slice(0, 48)
+      .map((el) => ({
+        id: el.id,
+        type: el.type,
+        x: Math.round(el.x),
+        y: Math.round(el.y),
+        w: Math.round(el.width || (el.radius ? el.radius * 2 : 120)),
+        h: Math.round(el.height || (el.radius ? el.radius * 2 : 120)),
+        ...(el.fill ? { fill: el.fill } : {}),
+        ...(el.stroke ? { stroke: el.stroke } : {}),
+        ...(el.points && el.points.length >= 4
+          ? { points: el.points.slice(0, 16).map((p) => Math.round(p)) }
+          : {}),
+        ...(el.rotation ? { rotation: Math.round(el.rotation) } : {}),
+      }));
+
+    return {
+      itemCount: elements.length,
+      updatedAt: Date.now(),
+      items,
+    };
+  },
+
+  async saveBoardPreviewSnapshot(
+    rawBoardId: string,
+    elements: ReadonlyArray<CanvasElement>
+  ): Promise<void> {
+    const boardId = cleanBoardId(rawBoardId);
+    if (!boardId) return;
+    const previewSnapshot = this.buildBoardPreviewSnapshot(elements);
+
+    if (!isFirebaseConfigured || !db) {
+      try {
+        const local: Board[] = JSON.parse(localStorage.getItem(LOCAL_BOARDS_KEY) || '[]');
+        if (Array.isArray(local)) {
+          const idx = local.findIndex((b) => b && cleanBoardId(b.id) === boardId);
+          if (idx !== -1) {
+            local[idx] = { ...local[idx], previewSnapshot };
+            localStorage.setItem(LOCAL_BOARDS_KEY, JSON.stringify(local));
+            notifyLocalSubscribers();
+          }
+        }
+      } catch {}
+      return;
+    }
+
+    try {
+      await updateDoc(doc(db, 'boards', boardId), { previewSnapshot });
+    } catch {
+      // Best-effort (ignora caso participante esteja em modo somente leitura)
+    }
+  },
+
+  /**
+   * Move um quadro para a Lixeira (Soft Delete reversível).
+   */
+  async moveBoardToTrash(rawBoardId: string): Promise<void> {
+    const boardId = cleanBoardId(rawBoardId);
+    if (!boardId) return;
+    const deletedAt = Date.now();
+
+    if (!isFirebaseConfigured || !db) {
+      const local: Board[] = JSON.parse(localStorage.getItem(LOCAL_BOARDS_KEY) || '[]');
+      if (Array.isArray(local)) {
+        const idx = local.findIndex((b) => b && cleanBoardId(b.id) === boardId);
+        if (idx !== -1) {
+          local[idx] = { ...local[idx], deletedAt, updatedAt: deletedAt };
+          localStorage.setItem(LOCAL_BOARDS_KEY, JSON.stringify(local));
+          notifyLocalSubscribers();
+        }
+      }
+      return;
+    }
+
+    await updateDoc(doc(db, 'boards', boardId), {
+      deletedAt,
+      updatedAt: deletedAt,
+    });
+  },
+
+  /**
+   * Restaura um quadro da Lixeira de volta para o Workspace ativo.
+   */
+  async restoreBoardFromTrash(rawBoardId: string): Promise<void> {
+    const boardId = cleanBoardId(rawBoardId);
+    if (!boardId) return;
+    const now = Date.now();
+
+    if (!isFirebaseConfigured || !db) {
+      const local: Board[] = JSON.parse(localStorage.getItem(LOCAL_BOARDS_KEY) || '[]');
+      if (Array.isArray(local)) {
+        const idx = local.findIndex((b) => b && cleanBoardId(b.id) === boardId);
+        if (idx !== -1) {
+          local[idx] = { ...local[idx], deletedAt: null, updatedAt: now };
+          localStorage.setItem(LOCAL_BOARDS_KEY, JSON.stringify(local));
+          notifyLocalSubscribers();
+        }
+      }
+      return;
+    }
+
+    await updateDoc(doc(db, 'boards', boardId), {
+      deletedAt: null,
+      updatedAt: now,
+    });
+  },
+
   async deleteBoard(rawBoardId: string): Promise<void> {
     const boardId = cleanBoardId(rawBoardId);
     if (!boardId) return;
+
+    elementService.clearMemoryCache(boardId);
+    timerService.clearMemoryCache(boardId);
+    votingService.clearMemoryCache(boardId);
+
+    const uid = auth?.currentUser?.uid;
+    if (uid) {
+      removeVisitedBoard(boardId, uid);
+      removeVisitedBoard(`board_${boardId}`, uid);
+    }
 
     if (!isFirebaseConfigured || !db) {
       let local: Board[] = [];
@@ -1350,15 +1756,15 @@ export const boardService = {
       }
       const filtered = local.filter((b) => b && cleanBoardId(b.id) !== boardId && b.id !== `board_${boardId}`);
       localStorage.setItem(LOCAL_BOARDS_KEY, JSON.stringify(filtered));
-      // Remove elementos associados (chave limpa e chave legada)
       localStorage.removeItem(`mirio_board_elements_${boardId}`);
       localStorage.removeItem(`mirio_board_elements_board_${boardId}`);
+      localStorage.removeItem(`mirio_invite_snapshot_${boardId}`);
       notifyLocalSubscribers();
       return;
     }
 
     try {
-      // 1. Limpa subcoleção de elementos do canvas para evitar documentos órfãos que ocupam armazenamento no Firestore
+      // 1. Limpa subcoleção de elementos do canvas para evitar documentos órfãos
       const elementsRef = collection(db, 'boards', boardId, 'elements');
       const snap = await getDocs(elementsRef);
       if (!snap.empty) {
@@ -1372,7 +1778,12 @@ export const boardService = {
         }
       }
 
-      // 2. Remove o documento raiz do quadro
+      // 2. Remove o snapshot público de convite ANTES do quadro (compatível com qualquer versão de regras)
+      try {
+        await deleteDoc(doc(db, INVITES_COLLECTION, boardId));
+      } catch {}
+
+      // 3. Remove o documento raiz do quadro
       const docRef = doc(db, 'boards', boardId);
       await deleteDoc(docRef);
 
@@ -1381,19 +1792,19 @@ export const boardService = {
         await deleteDoc(doc(db, 'boards', `board_${boardId}`));
       } catch {}
 
-      // 3. Remove sala de presença residual no Realtime Database
+      // 4. Remove nós efêmeros residuais permitidos no Realtime Database
       if (rtdb) {
-        try {
-          const presenceRef = rtdbRef(rtdb, `presence/${boardId}`);
-          await rtdbRemove(presenceRef);
-        } catch {
-          // Ignora se não houver presença ativa
+        if (uid) {
+          await rtdbRemove(rtdbRef(rtdb, `presence/${boardId}/${uid}`)).catch(() => {});
         }
+        await rtdbRemove(rtdbRef(rtdb, `board_timer/${boardId}`)).catch(() => {});
+        await rtdbRemove(rtdbRef(rtdb, `board_voting/${boardId}`)).catch(() => {});
       }
 
       // Remove cache local do navegador
       localStorage.removeItem(`mirio_board_elements_${boardId}`);
       localStorage.removeItem(`mirio_board_elements_board_${boardId}`);
+      localStorage.removeItem(`mirio_invite_snapshot_${boardId}`);
     } catch (err) {
       console.error('Erro ao deletar quadro do Firestore:', err);
       throw err;

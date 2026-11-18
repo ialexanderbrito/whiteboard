@@ -34,6 +34,25 @@ export interface JoinRequest {
   assignedRole?: BoardPermission;
 }
 
+export interface BoardPreviewItemSnapshot {
+  id: string;
+  type: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  fill?: string;
+  stroke?: string;
+  points?: number[];
+  rotation?: number;
+}
+
+export interface BoardPreviewSnapshot {
+  itemCount: number;
+  updatedAt: number;
+  items: BoardPreviewItemSnapshot[];
+}
+
 export interface Board {
   id: string;
   title: string;
@@ -50,6 +69,9 @@ export interface Board {
   joinRequests?: Record<string, JoinRequest>;
   isPasswordProtected?: boolean;
   password?: string;
+  starredBy?: string[];
+  deletedAt?: number | null;
+  previewSnapshot?: BoardPreviewSnapshot;
 }
 
 export interface UserPresence {

@@ -1,5 +1,5 @@
 /* oxlint-disable react/only-export-components */
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Sparkles, ArrowUpRight, Layers } from '@/components/ui/icons';
 import type { Board } from '@/types/board';
 import type { CanvasElement } from '@/types/element';
@@ -112,15 +112,62 @@ function computeMiniMapData(elements: CanvasElement[]): MiniMapData | null {
 }
 
 export const BoardCardPreview: React.FC<BoardCardPreviewProps> = ({ board }) => {
-  const [elements, setElements] = useState<CanvasElement[]>([]);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const hasSnapshot = Boolean(board?.previewSnapshot && Array.isArray(board.previewSnapshot.items));
+  const [isVisible, setIsVisible] = useState(
+    () => typeof IntersectionObserver === 'undefined'
+  );
+  const [liveElements, setLiveElements] = useState<CanvasElement[]>([]);
+
+  // Observa visibilidade no viewport apenas para quadros antigos que ainda não têm previewSnapshot salvo
+  useEffect(() => {
+    if (hasSnapshot || isVisible || typeof IntersectionObserver === 'undefined') return;
+    const node = containerRef.current;
+    if (!node) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setIsVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: '260px' }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [hasSnapshot, isVisible]);
 
   useEffect(() => {
-    if (!board?.id) return;
+    if (!board?.id || hasSnapshot || !isVisible) return;
     const unsubscribe = elementService.subscribeElements(board.id, (list) => {
-      setElements(Array.isArray(list) ? list : []);
+      setLiveElements(Array.isArray(list) ? list : []);
     });
     return () => unsubscribe();
-  }, [board?.id]);
+  }, [board?.id, hasSnapshot, isVisible]);
+
+  const snapItems = board?.previewSnapshot?.items;
+  const snapshotElements = useMemo<CanvasElement[] | null>(() => {
+    if (!Array.isArray(snapItems)) return null;
+    return snapItems.map((it, idx) => ({
+      id: it.id || `snap_${idx}`,
+      type: it.type as CanvasElement['type'],
+      x: it.x,
+      y: it.y,
+      width: it.w,
+      height: it.h,
+      fill: it.fill,
+      stroke: it.stroke,
+      points: it.points,
+      rotation: it.rotation,
+      zIndex: idx + 1,
+      updatedBy: '',
+      updatedAt: 0,
+    }));
+  }, [snapItems]);
+
+  const elements = snapshotElements ?? liveElements;
+  const totalCount = board?.previewSnapshot?.itemCount ?? elements.length;
 
   const miniMap = useMemo(() => computeMiniMapData(elements), [elements]);
   const variant = useMemo(
@@ -129,7 +176,7 @@ export const BoardCardPreview: React.FC<BoardCardPreviewProps> = ({ board }) => 
   );
 
   return (
-    <div className="h-36 bg-muted/25 dark:bg-muted/15 border-b border-border/60 flex items-center justify-center relative overflow-hidden select-none">
+    <div ref={containerRef} className="h-36 bg-muted/25 dark:bg-muted/15 border-b border-border/60 flex items-center justify-center relative overflow-hidden select-none">
       {/* Grade Arquitetônica de Pontos com Máscara Radial Suave */}
       <div
         className="absolute inset-0 opacity-[0.22] dark:opacity-[0.28] transition-opacity duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-[0.35]"
@@ -599,11 +646,11 @@ export const BoardCardPreview: React.FC<BoardCardPreviewProps> = ({ board }) => 
 
       {/* Barra Inferior Flutuante de Metadados Visuais do Canvas */}
       <div className="absolute bottom-2 left-2.5 right-2.5 z-2 flex items-center justify-between pointer-events-none">
-        {elements.length > 0 ? (
+        {totalCount > 0 ? (
           <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-background/85 dark:bg-background/75 backdrop-blur-xs border border-border/60 shadow-2xs">
             <Layers className="size-2.5 text-muted-foreground" />
             <span className="text-[10px] font-medium text-foreground/80 tabular-nums">
-              {elements.length} {elements.length === 1 ? 'item' : 'itens'}
+              {totalCount} {totalCount === 1 ? 'item' : 'itens'}
             </span>
             {miniMap && miniMap.palette.length > 0 && (
               <div className="flex items-center -space-x-1 ml-0.5">

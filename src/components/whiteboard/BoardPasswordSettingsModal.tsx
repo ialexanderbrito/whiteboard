@@ -95,7 +95,8 @@ export const BoardPasswordSettingsModal: React.FC<BoardPasswordSettingsModalProp
   onSavePasswordSettings,
 }) => {
   const [isEnabled, setIsEnabled] = useState(() => Boolean(board?.isPasswordProtected));
-  const [password, setPassword] = useState(() => board?.password || '');
+  // Nunca pré-preenche o hash SHA-256 salvo no banco dentro do campo de texto!
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -108,7 +109,7 @@ export const BoardPasswordSettingsModal: React.FC<BoardPasswordSettingsModalProp
     setPrevBoardId(board?.id);
     if (board && open) {
       setIsEnabled(Boolean(board.isPasswordProtected));
-      setPassword(board.password || '');
+      setPassword('');
       setShowPassword(false);
       setSuccessMessage(null);
       setError(null);
@@ -120,7 +121,7 @@ export const BoardPasswordSettingsModal: React.FC<BoardPasswordSettingsModalProp
   const currentHasPassword = Boolean(board.isPasswordProtected && board.password);
 
   const handleSave = async () => {
-    if (isEnabled && !password.trim()) {
+    if (isEnabled && !password.trim() && !currentHasPassword) {
       setError('Por favor, informe uma senha válida.');
       return;
     }
@@ -131,7 +132,11 @@ export const BoardPasswordSettingsModal: React.FC<BoardPasswordSettingsModalProp
     try {
       await onSavePasswordSettings(board.id, {
         isPasswordProtected: isEnabled,
-        password: isEnabled ? password.trim() : '',
+        ...(isEnabled
+          ? password.trim()
+            ? { password: password.trim() }
+            : {}
+          : { password: '' }),
       });
 
       setSuccessMessage(
@@ -254,7 +259,7 @@ export const BoardPasswordSettingsModal: React.FC<BoardPasswordSettingsModalProp
                   <Input
                     type={showPassword ? 'text' : 'password'}
                     autoFocus
-                    placeholder="Defina a senha do quadro..."
+                    placeholder={currentHasPassword ? 'Digite nova senha para alterar...' : 'Defina a senha do quadro...'}
                     value={password}
                     onChange={(e) => {
                       setPassword(e.target.value);
@@ -354,7 +359,7 @@ export const BoardPasswordSettingsModal: React.FC<BoardPasswordSettingsModalProp
                 type="button"
                 size="sm"
                 onClick={handleSave}
-                disabled={isSaving || (isEnabled && !password.trim())}
+                disabled={isSaving || (isEnabled && !password.trim() && !currentHasPassword)}
                 className="h-8 px-3.5 text-xs font-semibold gap-1.5 active:scale-[0.97] transition-transform cursor-pointer"
               >
                 {isSaving ? (

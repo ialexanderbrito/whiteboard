@@ -18,7 +18,12 @@ import {
   Pencil,
   Lock,
   KeyRound,
-  Users
+  Users,
+  Star,
+  CopyPlus,
+  Upload,
+  RotateCcw,
+  SlidersHorizontal
 } from '@/components/ui/icons';
 import { useAuth } from '../context/AuthContext';
 import { boardService } from '../services/boardService';
@@ -84,6 +89,18 @@ export const DashboardPage: React.FC = () => {
   const { isDark, toggleTheme, resolvedTheme } = useTheme();
   const [boards, setBoards] = useState<Board[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [filterTab, setFilterTab] = useState<'all' | 'owned' | 'shared' | 'favorites' | 'trash'>('all');
+  const [sortBy, setSortBy] = useState<'recent' | 'alpha' | 'created'>('recent');
+  const [prevFavUid, setPrevFavUid] = useState<string | undefined>(currentUser?.uid);
+  const [favoriteIds, setFavoriteIds] = useState<Set<string>>(() =>
+    boardService.getFavoriteIds(currentUser?.uid || '')
+  );
+  if (currentUser?.uid !== prevFavUid) {
+    setPrevFavUid(currentUser?.uid);
+    setFavoriteIds(boardService.getFavoriteIds(currentUser?.uid || ''));
+  }
+  const [duplicatingBoardId, setDuplicatingBoardId] = useState<string | null>(null);
+  const importBackupInputRef = React.useRef<HTMLInputElement | null>(null);
 
   // Carrega o estado adaptativo salvo da última interação (modo de visão e quantidade prévia de quadros)
   const initialAdaptive = getAdaptiveSnapshot(currentUser?.uid);
@@ -196,11 +213,6 @@ export const DashboardPage: React.FC = () => {
   const handleConfirmDelete = async () => {
     if (!boardToDelete || !currentUser) return;
     const isOwner = isBoardOwner(boardToDelete, currentUser);
-    // Apenas o proprietário pode excluir o quadro
-    if (!isOwner) {
-      setBoardToDelete(null);
-      return;
-    }
 
     setIsDeleting(true);
     const targetId = boardToDelete.id;
@@ -214,18 +226,99 @@ export const DashboardPage: React.FC = () => {
     });
 
     try {
-      await boardService.deleteBoard(targetId);
+      if (isOwner) {
+        await boardService.deleteBoard(targetId);
+      } else {
+        await boardService.removeBoardFromUser(targetId, currentUser);
+      }
       setBoardToDelete(null);
     } catch (err) {
-      console.error('Erro ao excluir quadro:', err);
-      // Se falhou, restaura
+      console.error('Erro ao excluir/remover quadro:', err);
       const b = await boardService.getBoard(targetId);
       if (b) {
         setBoards((prev) => [b, ...prev]);
       }
-      alert('Não foi possível excluir este quadro. Verifique suas permissões.');
+      alert('Não foi possível concluir esta operação. Verifique suas permissões.');
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const handleMoveToTrash = async (e: React.MouseEvent, board: Board) => {
+    e.stopPropagation();
+    if (!currentUser || !isBoardOwner(board, currentUser)) {
+      setBoardToDelete(board);
+      return;
+    }
+    const now = Date.now();
+    setBoards((prev) =>
+      prev.map((b) => (b.id === board.id ? { ...b, deletedAt: now, updatedAt: now } : b))
+    );
+    try {
+      await boardService.moveBoardToTrash(board.id);
+    } catch (err) {
+      console.error('Erro ao mover quadro para a lixeira:', err);
+      const fresh = await boardService.getBoard(board.id);
+      if (fresh) {
+        setBoards((prev) => prev.map((b) => (b.id === board.id ? fresh : b)));
+      }
+    }
+  };
+
+  const handleRestoreFromTrash = async (e: React.MouseEvent, board: Board) => {
+    e.stopPropagation();
+    const now = Date.now();
+    setBoards((prev) =>
+      prev.map((b) => (b.id === board.id ? { ...b, deletedAt: null, updatedAt: now } : b))
+    );
+    try {
+      await boardService.restoreBoardFromTrash(board.id);
+    } catch (err) {
+      console.error('Erro ao restaurar quadro da lixeira:', err);
+      const fresh = await boardService.getBoard(board.id);
+      if (fresh) {
+        setBoards((prev) => prev.map((b) => (b.id === board.id ? fresh : b)));
+      }
+    }
+  };
+
+  const handleToggleFavorite = (e: React.MouseEvent, rawBoardId: string) => {
+    e.stopPropagation();
+    if (!currentUser) return;
+    boardService.toggleFavorite(rawBoardId, currentUser.uid);
+    setFavoriteIds(boardService.getFavoriteIds(currentUser.uid));
+  };
+
+  const handleDuplicateBoard = async (e: React.MouseEvent, board: Board) => {
+    e.stopPropagation();
+    if (!currentUser || duplicatingBoardId) return;
+    setDuplicatingBoardId(board.id);
+    try {
+      const clonedId = await boardService.duplicateBoard(board.id, currentUser);
+      navigate(`/b/${clonedId}?fit=1`);
+    } catch (err) {
+      console.error('Erro ao duplicar quadro:', err);
+      alert('Não foi possível duplicar este quadro.');
+    } finally {
+      setDuplicatingBoardId(null);
+    }
+  };
+
+  const handleImportBackupChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !currentUser) return;
+    setIsCreating(true);
+    try {
+      const rawText = await file.text();
+      const parsed = JSON.parse(rawText);
+      const { boardId } = await boardService.importBoardBackup(parsed, currentUser);
+      navigate(`/b/${boardId}?fit=1`);
+    } catch (err) {
+      console.error('Erro ao importar backup JSON:', err);
+      alert('Arquivo JSON inválido. Selecione um backup exportado pelo Mirio.');
+    } finally {
+      setIsCreating(false);
     }
   };
 
@@ -305,11 +398,45 @@ export const DashboardPage: React.FC = () => {
     await handleUpdateBoardSettings(boardId, settings);
   };
 
-  const filteredBoards = boards.filter((b) => {
-    const title = (b?.title || '').toLowerCase();
-    const query = (searchQuery || '').toLowerCase().trim();
-    return title.includes(query);
-  });
+  const trashedCount = boards.filter((b) => Boolean(b.deletedAt) && isBoardOwner(b, currentUser)).length;
+
+  const filteredBoards = boards
+    .filter((b) => {
+      const isTrashed = Boolean(b.deletedAt);
+      if (filterTab === 'trash') {
+        if (!isTrashed || !isBoardOwner(b, currentUser)) return false;
+      } else if (isTrashed) {
+        return false;
+      }
+
+      const title = (b?.title || '').toLowerCase();
+      const owner = (b?.ownerName || '').toLowerCase();
+      const idStr = cleanBoardId(b?.id || '').toLowerCase();
+      const query = (searchQuery || '').toLowerCase().trim();
+      const matchesSearch = !query || title.includes(query) || owner.includes(query) || idStr.includes(query);
+      if (!matchesSearch) return false;
+
+      const isOwner = isBoardOwner(b, currentUser);
+      const isFav = favoriteIds.has(cleanBoardId(b.id));
+      if (filterTab === 'owned') return isOwner;
+      if (filterTab === 'shared') return !isOwner;
+      if (filterTab === 'favorites') return isFav;
+      return true;
+    })
+    .sort((a, b) => {
+      // Favoritos ganham prioridade sutil no topo na aba geral quando ambos ou um deles é favorito
+      const aFav = favoriteIds.has(cleanBoardId(a.id)) ? 1 : 0;
+      const bFav = favoriteIds.has(cleanBoardId(b.id)) ? 1 : 0;
+      if (filterTab === 'all' && aFav !== bFav) return bFav - aFav;
+
+      if (sortBy === 'alpha') {
+        return (a.title || '').localeCompare(b.title || '', 'pt-BR');
+      }
+      if (sortBy === 'created') {
+        return (b.createdAt || 0) - (a.createdAt || 0);
+      }
+      return (b.updatedAt || 0) - (a.updatedAt || 0);
+    });
 
   const formatDate = (timestamp?: number) => {
     if (!timestamp) return 'Recente';
@@ -522,6 +649,26 @@ export const DashboardPage: React.FC = () => {
                 </Button>
               </div>
 
+              {/* Importar Backup JSON */}
+              <input
+                ref={importBackupInputRef}
+                type="file"
+                accept=".json,application/json"
+                className="hidden"
+                onChange={handleImportBackupChange}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isCreating}
+                onClick={() => importBackupInputRef.current?.click()}
+                className="gap-1.5 h-10 sm:h-9 px-3 text-xs font-medium shrink-0 active:scale-[0.97] transition-transform cursor-pointer"
+                title="Importar backup de quadro (.json)"
+              >
+                <Upload className="size-3.5 shrink-0" />
+                <span className="hidden md:inline">Importar JSON</span>
+              </Button>
+
               {/* Botão Novo Quadro (Criação Instantânea em 1 Clique) */}
               <Button
                 type="button"
@@ -535,6 +682,71 @@ export const DashboardPage: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {/* Barra de Filtros de Workspace e Ordenação */}
+        {!isLoading && boards.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-5">
+            <div className="inline-flex items-center gap-1 p-1 rounded-lg bg-muted/40 border border-border/70 text-xs">
+              {(
+                [
+                  { id: 'all', label: 'Todos' },
+                  { id: 'owned', label: 'Meus' },
+                  { id: 'shared', label: 'Compartilhados' },
+                  { id: 'favorites', label: 'Favoritos' },
+                  { id: 'trash', label: trashedCount > 0 ? `Lixeira (${trashedCount})` : 'Lixeira' },
+                ] as const
+              ).map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setFilterTab(tab.id)}
+                  className={cn(
+                    'px-2.5 py-1 rounded-md text-xs font-medium transition-all cursor-pointer active:scale-[0.97]',
+                    filterTab === tab.id
+                      ? 'bg-background text-foreground shadow-2xs font-semibold'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 px-2.5 text-xs gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer"
+                >
+                  <SlidersHorizontal className="size-3.5" />
+                  <span>
+                    {sortBy === 'recent'
+                      ? 'Modificados recentemente'
+                      : sortBy === 'alpha'
+                      ? 'Ordem alfabética (A–Z)'
+                      : 'Data de criação'}
+                  </span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48 text-xs">
+                <DropdownMenuItem onClick={() => setSortBy('recent')} className="justify-between cursor-pointer">
+                  <span>Modificados recentemente</span>
+                  {sortBy === 'recent' && <Check className="size-3 text-primary" />}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setSortBy('alpha')} className="justify-between cursor-pointer">
+                  <span>Ordem alfabética (A–Z)</span>
+                  {sortBy === 'alpha' && <Check className="size-3 text-primary" />}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setSortBy('created')} className="justify-between cursor-pointer">
+                  <span>Data de criação</span>
+                  {sortBy === 'created' && <Check className="size-3 text-primary" />}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        )}
 
         {/* Lista / Grade de Quadros com Skeleton Adaptativo ao Último Estado da Tela */}
         {isLoading ? (
@@ -591,106 +803,166 @@ export const DashboardPage: React.FC = () => {
                   <div className="relative">
                     <BoardCardPreview board={b} />
 
-                    {/* Menu de Ações no Canto do Card (Sempre acessível em touch, reveal suave em desktop) */}
-                    {canManage && (
-                      <div className="absolute top-2.5 right-2.5 z-10">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              className="size-7 rounded-md bg-background/85 backdrop-blur-xs text-muted-foreground hover:text-foreground opacity-100 [@media(hover:hover)_and_(pointer:fine)]:opacity-0 [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100 transition-[opacity,transform,color,background-color] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] border border-border/50 shadow-2xs active:scale-[0.97] cursor-pointer"
-                              title="Mais opções do quadro"
-                            >
-                              <MoreHorizontal className="size-3.5" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent
-                            align="end"
-                            className="w-52 origin-(--radix-dropdown-menu-content-transform-origin) animate-in fade-in zoom-in-95 duration-150 ease-[cubic-bezier(0.23,1,0.32,1)]"
+                    {/* Botão Favorito (Estrela) e Menu de Ações (Proprietários e Convidados) */}
+                    <div className="absolute top-2.5 left-2.5 z-10">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={(e) => handleToggleFavorite(e, b.id)}
+                        className={cn(
+                          'size-7 rounded-md bg-background/85 backdrop-blur-xs border border-border/50 shadow-2xs active:scale-[0.95] cursor-pointer transition-[opacity,transform,color]',
+                          favoriteIds.has(cleanBoardId(b.id))
+                            ? 'text-amber-500 opacity-100'
+                            : 'text-muted-foreground hover:text-foreground opacity-100 [@media(hover:hover)_and_(pointer:fine)]:opacity-0 [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100'
+                        )}
+                        title={favoriteIds.has(cleanBoardId(b.id)) ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
+                      >
+                        <Star className="size-3.5" />
+                      </Button>
+                    </div>
+
+                    <div className="absolute top-2.5 right-2.5 z-10">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            className="size-7 rounded-md bg-background/85 backdrop-blur-xs text-muted-foreground hover:text-foreground opacity-100 [@media(hover:hover)_and_(pointer:fine)]:opacity-0 [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100 transition-[opacity,transform,color,background-color] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] border border-border/50 shadow-2xs active:scale-[0.97] cursor-pointer"
+                            title="Mais opções do quadro"
                           >
+                            <MoreHorizontal className="size-3.5" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent
+                          align="end"
+                          className="w-52 origin-(--radix-dropdown-menu-content-transform-origin) animate-in fade-in zoom-in-95 duration-150 ease-[cubic-bezier(0.23,1,0.32,1)]"
+                        >
+                          {canManage && (
+                            <>
+                              <DropdownMenuItem
+                                onClick={(e) => handleStartRename(e, b)}
+                                className="gap-2 text-xs cursor-pointer"
+                              >
+                                <Pencil className="size-3.5 text-muted-foreground" />
+                                <span>Renomear</span>
+                              </DropdownMenuItem>
+
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setPermissionsModalBoard(b);
+                                }}
+                                className="gap-2 text-xs cursor-pointer"
+                              >
+                                <Users className="size-3.5 text-muted-foreground" />
+                                <span>Permissões de Acesso</span>
+                              </DropdownMenuItem>
+
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setPasswordModalBoard(b);
+                                }}
+                                className="gap-2 text-xs cursor-pointer"
+                              >
+                                <KeyRound className="size-3.5 text-muted-foreground" />
+                                <span>Proteção por Senha</span>
+                                {b.isPasswordProtected && (
+                                  <span className="ml-auto flex items-center gap-1 text-[10px] text-amber-500 font-medium">
+                                    <Lock className="size-2.5" />
+                                    Ativa
+                                  </span>
+                                )}
+                              </DropdownMenuItem>
+
+                              <DropdownMenuSeparator />
+                            </>
+                          )}
+
+                          <DropdownMenuItem
+                            onClick={(e) => handleToggleFavorite(e, b.id)}
+                            className="gap-2 text-xs cursor-pointer"
+                          >
+                            <Star className="size-3.5 text-muted-foreground" />
+                            <span>
+                              {favoriteIds.has(cleanBoardId(b.id)) ? 'Remover favorito' : 'Favoritar quadro'}
+                            </span>
+                          </DropdownMenuItem>
+
+                          <DropdownMenuItem
+                            onClick={(e) => handleDuplicateBoard(e, b)}
+                            disabled={duplicatingBoardId === b.id}
+                            className="gap-2 text-xs cursor-pointer"
+                          >
+                            <CopyPlus className="size-3.5 text-muted-foreground" />
+                            <span>{duplicatingBoardId === b.id ? 'Duplicando...' : 'Duplicar quadro'}</span>
+                          </DropdownMenuItem>
+
+                          <DropdownMenuItem
+                            onClick={(e) => handleCopyLink(e, b.id)}
+                            className="gap-2 text-xs cursor-pointer"
+                          >
+                            {copiedId === b.id ? (
+                              <>
+                                <Check className="size-3.5 text-emerald-500" />
+                                <span className="text-emerald-500 font-medium">Link copiado!</span>
+                              </>
+                            ) : (
+                              <>
+                                <Share2 className="size-3.5 text-muted-foreground" />
+                                <span>Copiar link</span>
+                              </>
+                            )}
+                          </DropdownMenuItem>
+
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/b/${cleanBoardId(b.id)}`);
+                            }}
+                            className="gap-2 text-xs cursor-pointer"
+                          >
+                            <ExternalLink className="size-3.5 text-muted-foreground" />
+                            <span>Abrir quadro</span>
+                          </DropdownMenuItem>
+
+                          <DropdownMenuSeparator />
+
+                          {b.deletedAt ? (
+                            <>
+                              <DropdownMenuItem
+                                onClick={(e) => handleRestoreFromTrash(e, b)}
+                                className="gap-2 text-xs cursor-pointer text-emerald-600 dark:text-emerald-400"
+                              >
+                                <RotateCcw className="size-3.5" />
+                                <span>Restaurar quadro</span>
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setBoardToDelete(b);
+                                }}
+                                className="text-destructive focus:bg-destructive/10 focus:text-destructive gap-2 text-xs cursor-pointer"
+                              >
+                                <Trash2 className="size-3.5" />
+                                <span>Excluir permanentemente</span>
+                              </DropdownMenuItem>
+                            </>
+                          ) : (
                             <DropdownMenuItem
-                              onClick={(e) => handleStartRename(e, b)}
-                              className="gap-2 text-xs cursor-pointer"
-                            >
-                              <Pencil className="size-3.5 text-muted-foreground" />
-                              <span>Renomear</span>
-                            </DropdownMenuItem>
-
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setPermissionsModalBoard(b);
-                              }}
-                              className="gap-2 text-xs cursor-pointer"
-                            >
-                              <Users className="size-3.5 text-muted-foreground" />
-                              <span>Permissões de Acesso</span>
-                            </DropdownMenuItem>
-
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setPasswordModalBoard(b);
-                              }}
-                              className="gap-2 text-xs cursor-pointer"
-                            >
-                              <KeyRound className="size-3.5 text-muted-foreground" />
-                              <span>Proteção por Senha</span>
-                              {b.isPasswordProtected && (
-                                <span className="ml-auto flex items-center gap-1 text-[10px] text-amber-500 font-medium">
-                                  <Lock className="size-2.5" />
-                                  Ativa
-                                </span>
-                              )}
-                            </DropdownMenuItem>
-
-                            <DropdownMenuSeparator />
-
-                            <DropdownMenuItem
-                              onClick={(e) => handleCopyLink(e, b.id)}
-                              className="gap-2 text-xs cursor-pointer"
-                            >
-                              {copiedId === b.id ? (
-                                <>
-                                  <Check className="size-3.5 text-emerald-500" />
-                                  <span className="text-emerald-500 font-medium">Link copiado!</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Share2 className="size-3.5 text-muted-foreground" />
-                                  <span>Copiar link</span>
-                                </>
-                              )}
-                            </DropdownMenuItem>
-
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigate(`/b/${cleanBoardId(b.id)}`);
-                              }}
-                              className="gap-2 text-xs cursor-pointer"
-                            >
-                              <ExternalLink className="size-3.5 text-muted-foreground" />
-                              <span>Abrir quadro</span>
-                            </DropdownMenuItem>
-
-                            <DropdownMenuSeparator />
-
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setBoardToDelete(b);
-                              }}
+                              onClick={(e) =>
+                                canManage ? handleMoveToTrash(e, b) : (e.stopPropagation(), setBoardToDelete(b))
+                              }
                               className="text-destructive focus:bg-destructive/10 focus:text-destructive gap-2 text-xs cursor-pointer"
                             >
                               <Trash2 className="size-3.5" />
-                              <span>Excluir quadro</span>
+                              <span>{canManage ? 'Mover para a lixeira' : 'Remover da lista'}</span>
                             </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    )}
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </div>
 
                   {/* Conteúdo do Card */}
@@ -912,89 +1184,137 @@ export const DashboardPage: React.FC = () => {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
-                          {canManage && (
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon-sm"
-                                  className="size-7 rounded-md text-muted-foreground hover:text-foreground active:scale-[0.97] transition-transform cursor-pointer"
-                                  title="Mais opções do quadro"
-                                >
-                                  <MoreHorizontal className="size-3.5" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="w-52 animate-in zoom-in-95 duration-150">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={(e) => handleToggleFavorite(e, b.id)}
+                            className={cn(
+                              'size-7 rounded-md cursor-pointer active:scale-[0.95]',
+                              favoriteIds.has(cleanBoardId(b.id))
+                                ? 'text-amber-500'
+                                : 'text-muted-foreground hover:text-foreground'
+                            )}
+                            title={favoriteIds.has(cleanBoardId(b.id)) ? 'Remover favorito' : 'Favoritar'}
+                          >
+                            <Star className="size-3.5" />
+                          </Button>
+
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                className="size-7 rounded-md text-muted-foreground hover:text-foreground active:scale-[0.97] transition-transform cursor-pointer"
+                                title="Mais opções do quadro"
+                              >
+                                <MoreHorizontal className="size-3.5" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-52 animate-in zoom-in-95 duration-150">
+                              {canManage && (
+                                <>
+                                  <DropdownMenuItem
+                                    onClick={(e) => handleStartRename(e, b)}
+                                    className="gap-2 text-xs cursor-pointer"
+                                  >
+                                    <Pencil className="size-3.5 text-muted-foreground" />
+                                    <span>Renomear</span>
+                                  </DropdownMenuItem>
+
+                                  <DropdownMenuItem
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setPermissionsModalBoard(b);
+                                    }}
+                                    className="gap-2 text-xs cursor-pointer"
+                                  >
+                                    <Users className="size-3.5 text-muted-foreground" />
+                                    <span>Permissões de Acesso</span>
+                                  </DropdownMenuItem>
+
+                                  <DropdownMenuItem
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setPasswordModalBoard(b);
+                                    }}
+                                    className="gap-2 text-xs cursor-pointer"
+                                  >
+                                    <KeyRound className="size-3.5 text-muted-foreground" />
+                                    <span>Proteção por Senha</span>
+                                    {b.isPasswordProtected && (
+                                      <span className="ml-auto flex items-center gap-1 text-[10px] text-amber-500 font-medium">
+                                        <Lock className="size-2.5" />
+                                        Ativa
+                                      </span>
+                                    )}
+                                  </DropdownMenuItem>
+
+                                  <DropdownMenuSeparator />
+                                </>
+                              )}
+
+                              <DropdownMenuItem
+                                onClick={(e) => handleDuplicateBoard(e, b)}
+                                disabled={duplicatingBoardId === b.id}
+                                className="gap-2 text-xs cursor-pointer"
+                              >
+                                <CopyPlus className="size-3.5 text-muted-foreground" />
+                                <span>{duplicatingBoardId === b.id ? 'Duplicando...' : 'Duplicar quadro'}</span>
+                              </DropdownMenuItem>
+
+                              <DropdownMenuItem
+                                onClick={(e) => handleCopyLink(e, b.id)}
+                                className="gap-2 text-xs cursor-pointer"
+                              >
+                                {copiedId === b.id ? (
+                                  <>
+                                    <Check className="size-3.5 text-emerald-500" />
+                                    <span className="text-emerald-500 font-medium">Link copiado!</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Share2 className="size-3.5 text-muted-foreground" />
+                                    <span>Copiar link</span>
+                                  </>
+                                )}
+                              </DropdownMenuItem>
+
+                              <DropdownMenuSeparator />
+
+                              {b.deletedAt ? (
+                                <>
+                                  <DropdownMenuItem
+                                    onClick={(e) => handleRestoreFromTrash(e, b)}
+                                    className="gap-2 text-xs cursor-pointer text-emerald-600 dark:text-emerald-400"
+                                  >
+                                    <RotateCcw className="size-3.5" />
+                                    <span>Restaurar quadro</span>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setBoardToDelete(b);
+                                    }}
+                                    className="text-destructive focus:bg-destructive/10 focus:text-destructive gap-2 text-xs cursor-pointer"
+                                  >
+                                    <Trash2 className="size-3.5" />
+                                    <span>Excluir permanentemente</span>
+                                  </DropdownMenuItem>
+                                </>
+                              ) : (
                                 <DropdownMenuItem
-                                  onClick={(e) => handleStartRename(e, b)}
-                                  className="gap-2 text-xs cursor-pointer"
-                                >
-                                  <Pencil className="size-3.5 text-muted-foreground" />
-                                  <span>Renomear</span>
-                                </DropdownMenuItem>
-
-                                <DropdownMenuItem
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setPermissionsModalBoard(b);
-                                  }}
-                                  className="gap-2 text-xs cursor-pointer"
-                                >
-                                  <Users className="size-3.5 text-muted-foreground" />
-                                  <span>Permissões de Acesso</span>
-                                </DropdownMenuItem>
-
-                                <DropdownMenuItem
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setPasswordModalBoard(b);
-                                  }}
-                                  className="gap-2 text-xs cursor-pointer"
-                                >
-                                  <KeyRound className="size-3.5 text-muted-foreground" />
-                                  <span>Proteção por Senha</span>
-                                  {b.isPasswordProtected && (
-                                    <span className="ml-auto flex items-center gap-1 text-[10px] text-amber-500 font-medium">
-                                      <Lock className="size-2.5" />
-                                      Ativa
-                                    </span>
-                                  )}
-                                </DropdownMenuItem>
-
-                                <DropdownMenuSeparator />
-
-                                <DropdownMenuItem
-                                  onClick={(e) => handleCopyLink(e, b.id)}
-                                  className="gap-2 text-xs cursor-pointer"
-                                >
-                                  {copiedId === b.id ? (
-                                    <>
-                                      <Check className="size-3.5 text-emerald-500" />
-                                      <span className="text-emerald-500 font-medium">Link copiado!</span>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Share2 className="size-3.5 text-muted-foreground" />
-                                      <span>Copiar link</span>
-                                    </>
-                                  )}
-                                </DropdownMenuItem>
-
-                                <DropdownMenuSeparator />
-
-                                <DropdownMenuItem
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setBoardToDelete(b);
-                                  }}
+                                  onClick={(e) =>
+                                    canManage ? handleMoveToTrash(e, b) : (e.stopPropagation(), setBoardToDelete(b))
+                                  }
                                   className="text-destructive focus:bg-destructive/10 focus:text-destructive gap-2 text-xs cursor-pointer"
                                 >
                                   <Trash2 className="size-3.5" />
-                                  <span>Excluir quadro</span>
+                                  <span>{canManage ? 'Mover para a lixeira' : 'Remover da lista'}</span>
                                 </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          )}
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
 
                           <Button
                             variant="ghost"
@@ -1066,6 +1386,7 @@ export const DashboardPage: React.FC = () => {
           boards,
           isAnonymous: currentUser?.isAnonymous,
           onCreateBoard: handleCreateBlankBoard,
+          onImportJSON: () => importBackupInputRef.current?.click(),
           onCreateFromTemplate: handleQuickCreateFromTemplate,
           onOpenEditProfile: () => setIsEditProfileOpen(true),
           onOpenCoffee: () => setIsCoffeeModalOpen(true),

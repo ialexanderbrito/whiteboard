@@ -61,6 +61,13 @@ import {
   SlidersHorizontal,
   Users,
   KeyRound,
+  Upload,
+  Search,
+  Map,
+  Table2,
+  GitBranch,
+  Code2,
+  MessagePin,
 } from '@/components/ui/icons';
 import {
   CommandDialog,
@@ -106,7 +113,15 @@ export interface CommandPaletteBoardContext {
   onOpenShortcuts?: () => void;
   onOpenCoffee?: () => void;
   onExportPNG?: () => void;
+  onExportSVG?: () => void;
+  onExportPDF?: () => void;
   onExportJSON?: () => void;
+  onImportJSON?: () => void;
+  onOpenSearch?: () => void;
+  onToggleMinimap?: () => void;
+  showMinimap?: boolean;
+  onGroupElements?: () => void;
+  onUngroupElements?: () => void;
   onShare?: () => void;
   onCopyLink?: () => void;
   onResetZoom?: () => void;
@@ -135,6 +150,7 @@ export interface CommandPaletteDashboardContext {
   boards?: Board[];
   isAnonymous?: boolean;
   onCreateBoard?: () => void;
+  onImportJSON?: () => void;
   onCreateFromTemplate?: (template: SprintTemplate) => void;
   onOpenEditProfile?: () => void;
   onToggleViewMode?: () => void;
@@ -586,6 +602,61 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     </CommandShortcut>
                   </CommandItem>
 
+                  <CommandItem
+                    value="comentario fixado thread alfinete pin feedback"
+                    onSelect={() => handleSelect(() => boardContext.onSelectTool?.('comment'))}
+                    className="group"
+                  >
+                    <div className={itemIconClass}>
+                      <MessagePin className="size-3.5" />
+                    </div>
+                    <span>Comentário Fixado em Thread</span>
+                  </CommandItem>
+
+                  <CommandItem
+                    value="tabela grid linhas colunas planilha raci"
+                    onSelect={() => handleSelect(() => boardContext.onSelectTool?.('table'))}
+                    className="group"
+                  >
+                    <div className={itemIconClass}>
+                      <Table2 className="size-3.5" />
+                    </div>
+                    <span>Tabela Editável (Grid)</span>
+                  </CommandItem>
+
+                  <CommandItem
+                    value="quadro kanban colunas cards tarefas sprint"
+                    onSelect={() => handleSelect(() => boardContext.onSelectTool?.('kanban'))}
+                    className="group"
+                  >
+                    <div className={itemIconClass}>
+                      <FolderKanban className="size-3.5" />
+                    </div>
+                    <span>Quadro Kanban Nativo</span>
+                  </CommandItem>
+
+                  <CommandItem
+                    value="mapa mental mind map arvore ideias nos tab enter"
+                    onSelect={() => handleSelect(() => boardContext.onSelectTool?.('mindmap'))}
+                    className="group"
+                  >
+                    <div className={itemIconClass}>
+                      <GitBranch className="size-3.5" />
+                    </div>
+                    <span>Mapa Mental (Mind Map)</span>
+                  </CommandItem>
+
+                  <CommandItem
+                    value="bloco de codigo code snippet markdown syntax highlight"
+                    onSelect={() => handleSelect(() => boardContext.onSelectTool?.('code'))}
+                    className="group"
+                  >
+                    <div className={itemIconClass}>
+                      <Code2 className="size-3.5" />
+                    </div>
+                    <span>Bloco de Código / Markdown</span>
+                  </CommandItem>
+
                   {boardContext.onToggleSmartDrawing && (
                     <CommandItem
                       value="desenho inteligente smart drawing caneta pen formas geometricas varinha magica reconhecer forma toggle ativar desativar shift p"
@@ -828,6 +899,78 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                 </CommandItem>
               )}
 
+              {boardContext.onOpenSearch && (
+                <CommandItem
+                  value="buscar pesquisar localizar texto post-it ctrl+f find search"
+                  onSelect={() => handleSelect(boardContext.onOpenSearch)}
+                  className="group"
+                >
+                  <div className={itemIconClass}>
+                    <Search className="size-3.5" />
+                  </div>
+                  <span>Buscar Texto no Quadro</span>
+                  <CommandShortcut>
+                    <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] font-bold">
+                      {formatKey('Ctrl')}+F
+                    </kbd>
+                  </CommandShortcut>
+                </CommandItem>
+              )}
+
+              {boardContext.onToggleMinimap && (
+                <CommandItem
+                  value="minimapa mapa visao geral navegacao minimap"
+                  onSelect={() => handleSelect(boardContext.onToggleMinimap)}
+                  className="group"
+                >
+                  <div className={itemIconClass}>
+                    <Map className="size-3.5" />
+                  </div>
+                  <span>{boardContext.showMinimap ? 'Ocultar Minimapa do Quadro' : 'Exibir Minimapa do Quadro'}</span>
+                  <CommandShortcut>
+                    <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] font-bold">
+                      M
+                    </kbd>
+                  </CommandShortcut>
+                </CommandItem>
+              )}
+
+              {(boardContext.selectedCount ?? 0) >= 2 && boardContext.onGroupElements && (
+                <CommandItem
+                  value="agrupar elementos grupo group ctrl+g"
+                  onSelect={() => handleSelect(boardContext.onGroupElements)}
+                  className="group"
+                >
+                  <div className={itemIconClass}>
+                    <Boxes className="size-3.5" />
+                  </div>
+                  <span>Agrupar Elementos Selecionados</span>
+                  <CommandShortcut>
+                    <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] font-bold">
+                      {formatKey('Ctrl')}+G
+                    </kbd>
+                  </CommandShortcut>
+                </CommandItem>
+              )}
+
+              {(boardContext.selectedCount ?? 0) >= 1 && boardContext.onUngroupElements && (
+                <CommandItem
+                  value="desagrupar elementos ungroup ctrl+shift+g"
+                  onSelect={() => handleSelect(boardContext.onUngroupElements)}
+                  className="group"
+                >
+                  <div className={itemIconClass}>
+                    <Boxes className="size-3.5" />
+                  </div>
+                  <span>Desagrupar Elementos</span>
+                  <CommandShortcut>
+                    <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] font-bold">
+                      {formatKey('Ctrl')}+⇧+G
+                    </kbd>
+                  </CommandShortcut>
+                </CommandItem>
+              )}
+
               {boardContext.onExportPNG && (
                 <CommandItem
                   onSelect={() => handleSelectImmediate(boardContext.onExportPNG)}
@@ -836,7 +979,33 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                   <div className={itemIconClass}>
                     <Download className="size-3.5" />
                   </div>
-                  <span>Capturar Área Visível do Quadro (PNG)</span>
+                  <span>Exportar Quadro Inteiro em Alta Resolução (PNG)</span>
+                </CommandItem>
+              )}
+
+              {boardContext.onExportSVG && (
+                <CommandItem
+                  value="exportar svg vetorial vetor ilustracao"
+                  onSelect={() => handleSelectImmediate(boardContext.onExportSVG)}
+                  className="group"
+                >
+                  <div className={itemIconClass}>
+                    <Download className="size-3.5" />
+                  </div>
+                  <span>Exportar Quadro Vetorial (SVG)</span>
+                </CommandItem>
+              )}
+
+              {boardContext.onExportPDF && (
+                <CommandItem
+                  value="exportar pdf slides molduras apresentacao documento"
+                  onSelect={() => handleSelectImmediate(boardContext.onExportPDF)}
+                  className="group"
+                >
+                  <div className={itemIconClass}>
+                    <FileText className="size-3.5" />
+                  </div>
+                  <span>Exportar Quadro / Molduras em PDF</span>
                 </CommandItem>
               )}
 
@@ -849,6 +1018,19 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     <FileText className="size-3.5" />
                   </div>
                   <span>Exportar Backup do Quadro (JSON)</span>
+                </CommandItem>
+              )}
+
+              {boardContext.onImportJSON && !boardContext.isReadOnly && !boardContext.isCommentOnly && (
+                <CommandItem
+                  value="importar restaurar backup json carregar elementos"
+                  onSelect={() => handleSelectImmediate(boardContext.onImportJSON)}
+                  className="group"
+                >
+                  <div className={itemIconClass}>
+                    <Upload className="size-3.5" />
+                  </div>
+                  <span>Importar Elementos de Backup (JSON)</span>
                 </CommandItem>
               )}
             </CommandGroup>
@@ -1100,6 +1282,19 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                 </div>
                 <span>Criar Novo Quadro em Branco</span>
               </CommandItem>
+
+              {dashboardContext.onImportJSON && (
+                <CommandItem
+                  keywords={['importar', 'restaurar', 'backup', 'json', 'upload']}
+                  onSelect={() => handleSelectImmediate(dashboardContext.onImportJSON)}
+                  className="group"
+                >
+                  <div className={itemIconClass}>
+                    <Upload className="size-3.5" />
+                  </div>
+                  <span>Importar Quadro de Backup (JSON)</span>
+                </CommandItem>
+              )}
 
               <CommandItem
                 keywords={['grade', 'lista', 'tabela', 'grid', 'visualização', 'layout']}
