@@ -15,6 +15,7 @@ import { type GridType, type GridSize, DEFAULT_GRID_OPACITY } from '../component
 import { Toolbar } from '../components/whiteboard/Toolbar';
 import { RemoteCursors } from '../components/whiteboard/RemoteCursors';
 import { LaserTrailOverlay, type LaserPoint } from '../components/whiteboard/LaserTrailOverlay';
+import { DEFAULT_LASER_COLOR, sanitizeLaserColor } from '../utils/laserGeometry.ts';
 import { CursorChat } from '../components/whiteboard/CursorChat';
 import { Navbar } from '../components/layout/Navbar';
 import { FollowUserBanner } from '../components/whiteboard/FollowUserBanner';
@@ -1061,10 +1062,34 @@ export const BoardPage: React.FC = () => {
   }, [isCursorChatOpen, myActiveMessage]);
 
   // Estado e refs de alta performance para o Apontador Laser (60/120fps sem re-render)
+  const [laserColor, setLaserColor] = useState<string>(() => {
+    const saved = localStorage.getItem('mirio_laser_color');
+    return saved ? sanitizeLaserColor(saved) : DEFAULT_LASER_COLOR;
+  });
+  const laserColorRef = useRef<string>(laserColor);
   const localLaserPosRef = useRef<{ x: number; y: number } | null>(null);
   const localLaserPointsRef = useRef<LaserPoint[]>([]);
   const isLocalLaserDrawingRef = useRef(false);
   const bufferedLaserPointsRef = useRef<Array<[number, number]>>([]);
+
+  const handleSelectLaserColor = useCallback((color: string) => {
+    const normalized = sanitizeLaserColor(color);
+    laserColorRef.current = normalized;
+    setLaserColor(normalized);
+    localStorage.setItem('mirio_laser_color', normalized);
+    if (localLaserPosRef.current) {
+      presenceControls.current?.updateCursor(
+        localLaserPosRef.current.x,
+        localLaserPosRef.current.y,
+        'laser',
+        {
+          isDrawing: isLocalLaserDrawingRef.current,
+          color: normalized,
+          timestamp: Date.now(),
+        }
+      );
+    }
+  }, []);
 
   const handleLaserDown = useCallback((worldPos: { x: number; y: number }) => {
     isLocalLaserDrawingRef.current = true;
@@ -1073,6 +1098,7 @@ export const BoardPage: React.FC = () => {
     const dispatched = presenceControls.current?.updateCursor(worldPos.x, worldPos.y, 'laser', {
       isDrawing: true,
       points: bufferedLaserPointsRef.current,
+      color: laserColorRef.current,
       timestamp: Date.now(),
     });
     if (dispatched) {
@@ -1090,6 +1116,7 @@ export const BoardPage: React.FC = () => {
     const dispatched = presenceControls.current?.updateCursor(worldPos.x, worldPos.y, 'laser', {
       isDrawing,
       points: bufferedLaserPointsRef.current,
+      color: laserColorRef.current,
       timestamp: Date.now(),
     });
     if (dispatched) {
@@ -1107,6 +1134,7 @@ export const BoardPage: React.FC = () => {
         'laser',
         {
           isDrawing: false,
+          color: laserColorRef.current,
           timestamp: Date.now(),
         }
       );
@@ -1120,6 +1148,7 @@ export const BoardPage: React.FC = () => {
       localLaserPosRef.current = { x, y };
       presenceControls.current?.updateCursor(x, y, 'laser', {
         isDrawing: isLocalLaserDrawingRef.current,
+        color: laserColorRef.current,
         timestamp: Date.now(),
       });
     } else {
@@ -2167,6 +2196,8 @@ export const BoardPage: React.FC = () => {
           scale={scale}
           isLaserActive={currentTool === 'laser'}
           onToggleLaser={() => setCurrentTool((prev) => (prev === 'laser' ? 'select' : 'laser'))}
+          laserColor={laserColor}
+          onSelectLaserColor={handleSelectLaserColor}
         />
       )}
 
@@ -2322,6 +2353,8 @@ export const BoardPage: React.FC = () => {
           currentTool={currentTool}
           onSelectTool={setCurrentTool}
           selectedColor={selectedColor}
+          laserColor={laserColor}
+          onSelectLaserColor={handleSelectLaserColor}
           onSelectColor={(color) => {
             setSelectedColor(color);
             if (selectedElementIds.length > 0) {
@@ -2544,6 +2577,7 @@ export const BoardPage: React.FC = () => {
       <LaserTrailOverlay
         currentTool={currentTool}
         currentUser={currentUser}
+        laserColor={laserColor}
         localLaserPosRef={localLaserPosRef}
         isLocalDrawingRef={isLocalLaserDrawingRef}
         localPointsRef={localLaserPointsRef}
@@ -2569,6 +2603,7 @@ export const BoardPage: React.FC = () => {
         onLaserDown={handleLaserDown}
         onLaserMove={handleLaserMove}
         onLaserUp={handleLaserUp}
+        laserColor={laserColor}
         localLaserPosRef={localLaserPosRef}
         isLocalLaserDrawingRef={isLocalLaserDrawingRef}
         localLaserPointsRef={localLaserPointsRef}

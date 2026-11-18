@@ -91,6 +91,7 @@ export interface UserPresence {
   laser?: {
     isDrawing: boolean;
     points?: Array<[number, number]>;
+    color?: string;
     timestamp: number;
   } | null;
   selectedElementId: string | null;

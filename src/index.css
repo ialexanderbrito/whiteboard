@@ -126,6 +126,12 @@ html, body {
   overscroll-behavior: none !important;
 }
 
+/* Apontador Laser: garante ocultação absoluta do cursor nativo sobre sub-elementos e durante cliques */
+[data-laser-active="true"],
+[data-laser-active="true"] * {
+  cursor: none !important;
+}
+
 #root {
   min-height: 100vh;
   width: 100%;

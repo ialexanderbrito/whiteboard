@@ -213,6 +213,7 @@ interface WhiteboardCanvasProps {
   onLaserMove?: (worldPos: { x: number; y: number }, isDrawing: boolean) => void;
   onLaserDown?: (worldPos: { x: number; y: number }) => void;
   onLaserUp?: () => void;
+  laserColor?: string;
   localLaserPosRef?: React.RefObject<{ x: number; y: number } | null>;
   isLocalLaserDrawingRef?: React.RefObject<boolean>;
   localLaserPointsRef?: React.RefObject<LaserPoint[]>;
@@ -412,6 +413,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
   onLaserMove,
   onLaserDown,
   onLaserUp,
+  laserColor = '#ff1744',
   localLaserPosRef,
   isLocalLaserDrawingRef,
   localLaserPointsRef,
@@ -3537,16 +3539,24 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     }
   }, [onFinishPartialErase, onBatchDeleteElements, onBatchUpdateElements, onAddElement]);
 
-  // Efeito para garantir commit seguro da borracha parcial caso o mouse solte fora da janela
+  // Efeito para garantir commit seguro da borracha parcial e liberação do laser caso o mouse solte fora da janela
   useEffect(() => {
     const handleGlobalMouseUp = () => {
       if (partialEraseActiveRef.current) {
         finishPartialErase();
       }
+      if (isLocalLaserDrawingRef?.current) {
+        isLocalLaserDrawingRef.current = false;
+        onLaserUp?.();
+      }
     };
     window.addEventListener('mouseup', handleGlobalMouseUp);
-    return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
-  }, [finishPartialErase]);
+    window.addEventListener('blur', handleGlobalMouseUp);
+    return () => {
+      window.removeEventListener('mouseup', handleGlobalMouseUp);
+      window.removeEventListener('blur', handleGlobalMouseUp);
+    };
+  }, [finishPartialErase, isLocalLaserDrawingRef, onLaserUp]);
 
   // Pressionar mouse no canvas
   const handleMouseDown = async (e: Konva.KonvaEventObject<MouseEvent>) => {
@@ -3574,7 +3584,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     }
 
     isMouseDownRef.current = true;
-    if (isDraggableStage || currentTool === 'laser') {
+    if (isDraggableStage) {
       setIsMouseDownState(true);
     }
     onCanvasClick?.();
@@ -3624,8 +3634,8 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       return;
     }
 
-    // Ignora qualquer clique que não seja com o botão primário esquerdo (button 0)
-    if (e.evt.button !== 0) {
+    // Ignora qualquer clique que não seja com o botão primário esquerdo (button 0) em dispositivos de mouse
+    if ('button' in e.evt && typeof e.evt.button === 'number' && e.evt.button !== 0) {
       return;
     }
 
@@ -3639,7 +3649,13 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       if (isLocalLaserDrawingRef) isLocalLaserDrawingRef.current = true;
       if (localLaserPosRef) localLaserPosRef.current = worldPos;
       if (localLaserPointsRef?.current) {
-        localLaserPointsRef.current.push({ x: worldPos.x, y: worldPos.y, timestamp: Date.now() });
+        localLaserPointsRef.current.push({
+          x: worldPos.x,
+          y: worldPos.y,
+          timestamp: Date.now(),
+          newStroke: true,
+          color: laserColor,
+        });
       }
       onLaserDown?.(worldPos);
       return;
@@ -4022,25 +4038,37 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     // Apontador Laser - Registra pontos do rastro efêmero e transmite ao vivo
     if (currentTool === 'laser') {
       if (localLaserPosRef) localLaserPosRef.current = worldPos;
-      const isDrawing = isLocalLaserDrawingRef ? isLocalLaserDrawingRef.current : isMouseDownState;
+      if (
+        isLocalLaserDrawingRef?.current &&
+        'buttons' in e.evt &&
+        typeof e.evt.buttons === 'number' &&
+        (e.evt.buttons & 1) === 0
+      ) {
+        isLocalLaserDrawingRef.current = false;
+        onLaserUp?.();
+      }
+      const isDrawing = isLocalLaserDrawingRef ? isLocalLaserDrawingRef.current : isMouseDownRef.current;
       if (isDrawing && localLaserPointsRef?.current) {
         const points = localLaserPointsRef.current;
         const last = points[points.length - 1];
         const now = Date.now();
-        if (!last) {
-          points.push({ x: worldPos.x, y: worldPos.y, timestamp: now });
+        const currentScale = scaleRef.current || 1;
+        const minStep = 2.2 / currentScale;
+        const maxStep = 18 / currentScale;
+        if (!last || (last.newStroke === undefined && points.length === 0)) {
+          points.push({ x: worldPos.x, y: worldPos.y, timestamp: now, newStroke: true, color: laserColor });
         } else {
+          const strokeColor = last.color || laserColor;
           const dist = Math.hypot(worldPos.x - last.x, worldPos.y - last.y);
-          // Filtra micro-tremores (< 3px) para evitar aglomeração de pontos e nós densos
-          if (dist >= 3) {
-            // Se o movimento foi rápido (> 20px), insere ponto intermediário suave (evita cantos retos)
-            if (dist > 20) {
+          // Filtra micro-tremores escalados pelo zoom para suavidade constante em qualquer escala
+          if (dist >= minStep) {
+            if (dist > maxStep) {
               const midX = (last.x + worldPos.x) / 2;
               const midY = (last.y + worldPos.y) / 2;
               const midT = Math.round((last.timestamp + now) / 2);
-              points.push({ x: midX, y: midY, timestamp: midT });
+              points.push({ x: midX, y: midY, timestamp: midT, color: strokeColor });
             }
-            points.push({ x: worldPos.x, y: worldPos.y, timestamp: now });
+            points.push({ x: worldPos.x, y: worldPos.y, timestamp: now, color: strokeColor });
           }
         }
       }
@@ -5218,7 +5246,17 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         container.style.cursor = canvasCursor;
       }
     }
-  }, [canvasCursor]);
+  }, [canvasCursor, currentTool]);
+
+  // Desativa hit-testing de elementos Konva durante o Apontador Laser para fluidez máxima e evitar conflitos de cursor
+  React.useEffect(() => {
+    const layer = elementsLayerRef.current;
+    if (!layer) return;
+    const shouldListen = !readOnly && currentTool !== 'laser';
+    if (layer.listening() !== shouldListen) {
+      layer.listening(shouldListen);
+    }
+  }, [readOnly, currentTool]);
 
   // Menu de contexto com botão direito no canvas ou sobre elementos
   const handleStageContextMenu = (e: Konva.KonvaEventObject<PointerEvent>) => {
@@ -5612,6 +5650,9 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       onDragOver={handleCanvasDragOver}
       onDragLeave={handleCanvasDragLeave}
       onDrop={handleCanvasDrop}
+      data-laser-active={
+        currentTool === 'laser' && !isDraggableStage && !isMiddlePanningState ? 'true' : undefined
+      }
       className="relative w-full h-full select-none overflow-hidden bg-background"
       style={{ cursor: canvasCursor, touchAction: 'none' }}
       onMouseLeave={() => {
@@ -5621,10 +5662,14 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         if (localLaserPosRef) {
           localLaserPosRef.current = null;
         }
+        if (isLocalLaserDrawingRef?.current) {
+          isLocalLaserDrawingRef.current = false;
+          onLaserUp?.();
+        }
         if (isMouseDownRef.current) {
-      isMouseDownRef.current = false;
-      setIsMouseDownState((prev) => (prev ? false : prev));
-    }
+          isMouseDownRef.current = false;
+          setIsMouseDownState((prev) => (prev ? false : prev));
+        }
       }}
     >
       {/* Overlay Visual de Drag & Drop de Imagens do Computador sobre o Canvas */}

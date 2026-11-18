@@ -23,7 +23,7 @@ export const presenceService = {
       x: number, 
       y: number, 
       activeTool?: string,
-      laser?: { isDrawing: boolean; points?: Array<[number, number]>; timestamp: number } | null
+      laser?: { isDrawing: boolean; points?: Array<[number, number]>; color?: string; timestamp: number } | null
     ) => boolean;
     updateSelection: (elementId: string | null) => void;
     sendCursorMessage: (message: string | null) => void;
@@ -36,6 +36,7 @@ export const presenceService = {
     let lastSentX = -9999;
     let lastSentY = -9999;
     let lastSentTool: string | undefined = undefined;
+    let lastSentLaserColor: string | undefined = undefined;
 
     // Calibrado para 50ms (~20 fps de rede): com a interpolação LERP de 60/120fps no cliente,
     // o movimento permanece 100% fluido enquanto reduz em 40% as gravações e o consumo de dados do RTDB
@@ -114,16 +115,22 @@ export const presenceService = {
           x: number, 
           y: number, 
           activeTool?: string,
-          laser?: { isDrawing: boolean; points?: Array<[number, number]>; timestamp: number } | null
+          laser?: { isDrawing: boolean; points?: Array<[number, number]>; color?: string; timestamp: number } | null
         ): boolean => {
           const now = Date.now();
           const dist = Math.hypot(x - lastSentX, y - lastSentY);
           const hasLaserActivity = Boolean(laser?.isDrawing || (laser?.points && laser.points.length > 0));
-          if (now - lastCursorUpdate >= THROTTLE_MS && (dist >= MIN_DISTANCE_PX || activeTool !== lastSentTool || hasLaserActivity)) {
+          const laserColorChanged = Boolean(laser?.color && laser.color !== lastSentLaserColor);
+          if (
+            laserColorChanged ||
+            (now - lastCursorUpdate >= THROTTLE_MS &&
+              (dist >= MIN_DISTANCE_PX || activeTool !== lastSentTool || hasLaserActivity))
+          ) {
             lastCursorUpdate = now;
             lastSentX = x;
             lastSentY = y;
             lastSentTool = activeTool;
+            if (laser?.color) lastSentLaserColor = laser.color;
             broadcastState({ 
               cursor: { x: Math.round(x), y: Math.round(y) }, 
               activeTool,
@@ -274,6 +281,7 @@ export const presenceService = {
         prev.cursor?.x !== next.cursor?.x ||
         prev.cursor?.y !== next.cursor?.y ||
         prev.laser?.isDrawing !== next.laser?.isDrawing ||
+        prev.laser?.color !== next.laser?.color ||
         prev.laser?.timestamp !== next.laser?.timestamp
       );
     };
@@ -314,18 +322,24 @@ export const presenceService = {
         x: number, 
         y: number, 
         activeTool?: string,
-        laser?: { isDrawing: boolean; points?: Array<[number, number]>; timestamp: number } | null
+        laser?: { isDrawing: boolean; points?: Array<[number, number]>; color?: string; timestamp: number } | null
       ): boolean => {
         if (document.hidden) return false;
         const now = Date.now();
         const dist = Math.hypot(x - lastSentX, y - lastSentY);
         const hasLaserActivity = Boolean(laser?.isDrawing || (laser?.points && laser.points.length > 0));
+        const laserColorChanged = Boolean(laser?.color && laser.color !== lastSentLaserColor);
 
-        if (now - lastCursorUpdate >= THROTTLE_MS && (dist >= MIN_DISTANCE_PX || activeTool !== lastSentTool || hasLaserActivity)) {
+        if (
+          laserColorChanged ||
+          (now - lastCursorUpdate >= THROTTLE_MS &&
+            (dist >= MIN_DISTANCE_PX || activeTool !== lastSentTool || hasLaserActivity))
+        ) {
           lastCursorUpdate = now;
           lastSentX = x;
           lastSentY = y;
           lastSentTool = activeTool;
+          if (laser?.color) lastSentLaserColor = laser.color;
 
           // Envia coordenadas, ferramenta e estado do laser efêmero
           update(userRef, {

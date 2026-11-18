@@ -42,6 +42,7 @@ import {
 } from '@/components/ui/icons';
 import type { ToolType } from '../../types/element';
 import { STICKY_COLORS, SHAPE_QUICK_SWATCHES } from '../../utils/colors';
+import { DEFAULT_LASER_COLOR, LASER_COLOR_OPTIONS } from '../../utils/laserGeometry.ts';
 import { subscribeCursorReadout } from '../../utils/cursorReadout';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
@@ -50,6 +51,8 @@ interface ToolbarProps {
   onSelectTool: (tool: ToolType) => void;
   selectedColor: string;
   onSelectColor: (color: string) => void;
+  laserColor?: string;
+  onSelectLaserColor?: (color: string) => void;
   hasSelection: boolean;
   selectionCount?: number;
   onDeleteSelected: () => void;
@@ -160,6 +163,8 @@ export const Toolbar: React.FC<ToolbarProps> = React.memo(({
   onSelectTool,
   selectedColor,
   onSelectColor,
+  laserColor = DEFAULT_LASER_COLOR,
+  onSelectLaserColor,
   hasSelection,
   selectionCount = 0,
   onDeleteSelected,
@@ -192,10 +197,32 @@ export const Toolbar: React.FC<ToolbarProps> = React.memo(({
   onToggleMinimap,
   onOpenTemplates,
 }) => {
-  const [activePicker, setActivePicker] = useState<'sticky' | 'checklist' | 'pen' | 'shapes' | 'connectors' | 'widgets' | null>(null);
+  const [activePicker, setActivePicker] = useState<'laser' | 'sticky' | 'checklist' | 'pen' | 'shapes' | 'connectors' | 'widgets' | null>(null);
   const [currentShape, setCurrentShape] = useState<ToolType>('rect');
   const [currentConnector, setCurrentConnector] = useState<ToolType>('arrow');
   const [currentWidget, setCurrentWidget] = useState<ToolType>('table');
+  const toolbarContainerRef = useRef<HTMLDivElement>(null);
+
+  // Fecha popovers abertos ao clicar fora da barra ou pressionar ESC
+  useEffect(() => {
+    if (!activePicker) return;
+    const handlePointerDownOutside = (e: PointerEvent) => {
+      if (toolbarContainerRef.current && !toolbarContainerRef.current.contains(e.target as Node)) {
+        setActivePicker(null);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setActivePicker(null);
+      }
+    };
+    window.addEventListener('pointerdown', handlePointerDownOutside);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDownOutside);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [activePicker]);
 
   const isBottom = position === 'bottom';
   const tooltipSide = isBottom ? 'top' : 'right';
@@ -218,6 +245,7 @@ export const Toolbar: React.FC<ToolbarProps> = React.memo(({
     <>
       {/* 1. Barra de Ferramentas Flutuante Principal */}
       <div
+        ref={toolbarContainerRef}
         className={`z-30 flex items-center bg-background/85 dark:bg-card/85 backdrop-blur-md rounded-xl shadow-md border border-border p-1 gap-1 ${
           isBottom
             ? 'fixed bottom-4 left-1/2 -translate-x-1/2 flex-row'
@@ -272,28 +300,91 @@ export const Toolbar: React.FC<ToolbarProps> = React.memo(({
             </TooltipContent>
           </Tooltip>
 
-          {/* Apontador Laser (L) - Acessível para todos, inclusive em modo de visualização */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={() => {
-                  onSelectTool('laser');
-                  setActivePicker(null);
-                }}
-                className={`size-8 rounded-md transition-colors flex items-center justify-center active:scale-[0.98] ${
-                  currentTool === 'laser'
-                    ? 'bg-primary text-primary-foreground shadow-xs'
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                }`}
+          {/* Apontador Laser (L) com Seletor de Cor - Acessível para todos, inclusive em modo de visualização */}
+          <div className="relative">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSelectTool('laser');
+                    setActivePicker(activePicker === 'laser' ? null : 'laser');
+                  }}
+                  className={`size-8 rounded-md transition-colors flex items-center justify-center relative active:scale-[0.98] ${
+                    currentTool === 'laser'
+                      ? 'bg-primary text-primary-foreground shadow-xs'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                  }`}
+                >
+                  <Laser className="size-4" />
+                  <span
+                    className="absolute bottom-1 right-1 size-1.5 rounded-full border border-background"
+                    style={{ backgroundColor: laserColor }}
+                  />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side={tooltipSide}>
+                <p className="font-medium text-xs">Apontador Laser <span className="opacity-60 text-[10px]">(L)</span></p>
+              </TooltipContent>
+            </Tooltip>
+
+            {/* Paleta flutuante de Cores do Laser */}
+            {activePicker === 'laser' && currentTool === 'laser' && (
+              <div
+                className={`absolute ${
+                  isBottom
+                    ? 'bottom-full mb-2.5 left-1/2 -translate-x-1/2 origin-bottom'
+                    : 'left-full ml-2 top-0 origin-left'
+                } bg-popover text-popover-foreground p-3 rounded-lg shadow-md border border-border flex flex-col gap-2 z-40 animate-in fade-in-0 zoom-in-95 duration-150 w-44`}
               >
-                <Laser className="size-4" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side={tooltipSide}>
-              <p className="font-medium text-xs">Apontador Laser <span className="opacity-60 text-[10px]">(L)</span></p>
-            </TooltipContent>
-          </Tooltip>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider block">
+                    Cor do Laser
+                  </span>
+                  <span className="text-[9px] font-mono text-muted-foreground truncate uppercase max-w-[60px]">
+                    {laserColor}
+                  </span>
+                </div>
+                <div className="grid grid-cols-5 gap-1.5">
+                  {LASER_COLOR_OPTIONS.map((c) => (
+                    <button
+                      key={c.value}
+                      type="button"
+                      onClick={() => {
+                        onSelectLaserColor?.(c.value);
+                        onSelectTool('laser');
+                        setActivePicker(null);
+                      }}
+                      className={`size-6 rounded-md transition-transform hover:scale-110 active:scale-95 border cursor-pointer ${
+                        laserColor.toLowerCase() === c.value.toLowerCase()
+                          ? 'ring-2 ring-primary ring-offset-1 ring-offset-background'
+                          : 'border-border'
+                      }`}
+                      style={{ backgroundColor: c.value }}
+                      title={c.name}
+                      aria-label={`Laser ${c.name}`}
+                    />
+                  ))}
+                  {/* Seletor Livre de Cor Personalizada para o Laser */}
+                  <label
+                    className="relative size-6 rounded-md border border-border flex items-center justify-center cursor-pointer transition-transform hover:scale-110 active:scale-95 bg-gradient-to-tr from-rose-500 via-indigo-500 to-emerald-400 shadow-xs"
+                    title="Escolher qualquer cor personalizada (Hex/RGB)"
+                  >
+                    <Pipette className="size-3 text-white drop-shadow" />
+                    <input
+                      type="color"
+                      value={laserColor.startsWith('#') && laserColor.length === 7 ? laserColor : DEFAULT_LASER_COLOR}
+                      onChange={(e) => {
+                        onSelectLaserColor?.(e.target.value);
+                        onSelectTool('laser');
+                      }}
+                      className="sr-only"
+                    />
+                  </label>
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Ferramentas de Criação e Edição (Ocultas em modo de visualização) */}
           {!readOnly && (

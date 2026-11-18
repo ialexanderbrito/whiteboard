@@ -28,7 +28,7 @@
             ".validate": "newData.val() === null || (newData.hasChildren(['x', 'y']) && newData.child('x').isNumber() && newData.child('y').isNumber())"
           },
           "laser": {
-            ".validate": "newData.val() === null || (newData.hasChildren(['isDrawing', 'timestamp']) && newData.child('isDrawing').isBoolean() && newData.child('timestamp').isNumber())"
+            ".validate": "newData.val() === null || (newData.hasChildren(['isDrawing', 'timestamp']) && newData.child('isDrawing').isBoolean() && newData.child('timestamp').isNumber() && (!newData.hasChild('color') || (newData.child('color').isString() && newData.child('color').val().matches(/^#[0-9a-fA-F]{6}$/))))"
           },
           "selectedElementId": {
             ".validate": "newData.val() === null || (newData.isString() && newData.val().length <= 64)"

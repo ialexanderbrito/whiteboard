@@ -2,23 +2,18 @@ import React, { useEffect, useRef } from 'react';
 import type { UserPresence, CurrentUser } from '../../types/board';
 import type { ToolType } from '../../types/element';
 import { getViewport } from '../../utils/viewport';
+import {
+  DEFAULT_LASER_COLOR,
+  computeRibbonSamples,
+  getLaserOpticalPalette,
+  sanitizeLaserColor,
+  smoothLaserStroke,
+  splitLaserStrokes,
+  type LaserPoint,
+  type RibbonSample,
+} from '../../utils/laserGeometry.ts';
 
-export interface LaserPoint {
-  x: number;
-  y: number;
-  timestamp: number;
-}
-
-interface LaserParticle {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  life: number;
-  maxLife: number;
-  size: number;
-  color: string;
-}
+export type { LaserPoint };
 
 interface LaserPulseRing {
   x: number;
@@ -31,25 +26,24 @@ interface LaserPulseRing {
 interface LaserTrailOverlayProps {
   currentTool: ToolType;
   currentUser?: CurrentUser | null;
+  laserColor?: string;
   localLaserPosRef: React.RefObject<{ x: number; y: number } | null>;
   isLocalDrawingRef: React.RefObject<boolean>;
   localPointsRef: React.RefObject<LaserPoint[]>;
   remoteUsers: UserPresence[];
 }
 
-// O laser é tradicionalmente e universalmente VERMELHO vívido de alta luminescência
-const LASER_COLOR = '#ff1744'; // Vermelho laser clássico puro
-const LASER_HOT_COLOR = '#ff5252'; // Vermelho vibrante de emissão
-const TRAIL_DURATION_MS = 1000; // 1s de cauda dinâmica ágil (Miro/FigJam/Keynote)
-const BASE_STROKE_WIDTH = 5.5; // Espessura base do feixe
+const TRAIL_DURATION_MS = 1050; // Cauda ágil estilo FigJam / Miro / Keynote
+const BASE_BEAM_RADIUS = 3.2; // Raio base do feixe em pixels de tela
 
-// Emil Kowalski easing curve para expansão orgânica de pulso/shockwave
+// Curva ease-out forte (Emil Kowalski) para expansão rápida e natural do pulso circular
 function easeOutCubic(t: number): number {
   return 1 - Math.pow(1 - t, 3);
 }
 
 export const LaserTrailOverlay: React.FC<LaserTrailOverlayProps> = ({
   currentTool,
+  laserColor = DEFAULT_LASER_COLOR,
   localLaserPosRef,
   isLocalDrawingRef,
   localPointsRef,
@@ -58,17 +52,23 @@ export const LaserTrailOverlay: React.FC<LaserTrailOverlayProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafId = useRef<number | null>(null);
   const currentToolRef = useRef(currentTool);
+  const laserColorRef = useRef(sanitizeLaserColor(laserColor));
   const remoteUsersRef = useRef(remoteUsers);
 
-  // Partículas dinâmicas e anéis de choque
-  const particlesRef = useRef<LaserParticle[]>([]);
+  // Anéis circulares de toque e intensidade suave (sem cruz geométrica)
   const pulseRingsRef = useRef<LaserPulseRing[]>([]);
   const lastDrawingStateRef = useRef<boolean>(false);
+  const localPressIntensityRef = useRef<number>(0);
   const remoteLastDrawingMap = useRef<Map<string, boolean>>(new Map());
+  const remotePressIntensityMap = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
     currentToolRef.current = currentTool;
   }, [currentTool]);
+
+  useEffect(() => {
+    laserColorRef.current = sanitizeLaserColor(laserColor);
+  }, [laserColor]);
 
   useEffect(() => {
     remoteUsersRef.current = remoteUsers;
@@ -81,11 +81,11 @@ export const LaserTrailOverlay: React.FC<LaserTrailOverlayProps> = ({
       Boolean(user.laser?.points?.length)
   );
 
-  // Mapeamento persistente de rastros de usuários remotos: userId -> LaserPoint[]
+  // Histórico persistente de rastros de colegas: userId -> LaserPoint[]
   const remoteTrailsRef = useRef<Map<string, LaserPoint[]>>(new Map());
   const lastHandledTimestamps = useRef<Map<string, number>>(new Map());
 
-  // Atualiza histórico dos colegas com distribuição temporal suave dos lotes recebidos
+  // Atualiza histórico dos colegas preservando quebras e cores entre cliques distintos
   useEffect(() => {
     const now = Date.now();
     const trails = remoteTrailsRef.current;
@@ -94,18 +94,20 @@ export const LaserTrailOverlay: React.FC<LaserTrailOverlayProps> = ({
 
     remoteUsers.forEach((user) => {
       if (!user.laser) return;
-      const { isDrawing, points, timestamp } = user.laser;
+      const { isDrawing, points, color, timestamp } = user.laser;
+      const remoteBeamColor = sanitizeLaserColor(color);
       const lastHandled = handledMap.get(user.userId) || 0;
 
-      // Dispara pulso de anel quando colega clica/inicia o desenho laser
       const wasDrawing = lastDrawingMap.get(user.userId) || false;
-      if (isDrawing && !wasDrawing && user.cursor) {
+      const startedNewStroke = Boolean(isDrawing && !wasDrawing);
+
+      if (startedNewStroke && user.cursor) {
         pulseRingsRef.current.push({
           x: user.cursor.x,
           y: user.cursor.y,
           startTime: now,
-          duration: 420,
-          color: user.color || LASER_COLOR,
+          duration: 360,
+          color: remoteBeamColor,
         });
       }
       lastDrawingMap.set(user.userId, Boolean(isDrawing));
@@ -119,20 +121,39 @@ export const LaserTrailOverlay: React.FC<LaserTrailOverlayProps> = ({
         const userTrail = trails.get(user.userId)!;
 
         if (points && points.length > 0) {
-          // Distribui os pontos no intervalo de tempo (~50ms) para que a cauda desvaneça de modo fluído e contínuo
           const batchCount = points.length;
           const batchWindow = Math.min(80, Math.max(20, batchCount * 12));
+          let markFirst = startedNewStroke;
+
           points.forEach(([px, py], idx) => {
             const last = userTrail[userTrail.length - 1];
-            if (!last || Math.hypot(px - last.x, py - last.y) >= 2.5) {
-              const pointTime = now - batchWindow + (idx / Math.max(1, batchCount - 1)) * batchWindow;
-              userTrail.push({ x: px, y: py, timestamp: pointTime });
+            if (markFirst || !last || Math.hypot(px - last.x, py - last.y) >= 1.8) {
+              const pointTime =
+                now - batchWindow + (idx / Math.max(1, batchCount - 1)) * batchWindow;
+              userTrail.push({
+                x: px,
+                y: py,
+                timestamp: pointTime,
+                color: remoteBeamColor,
+                ...(markFirst ? { newStroke: true } : {}),
+              });
+              markFirst = false;
             }
           });
         } else if (isDrawing && user.cursor) {
           const last = userTrail[userTrail.length - 1];
-          if (!last || Math.hypot(user.cursor.x - last.x, user.cursor.y - last.y) >= 2.5) {
-            userTrail.push({ x: user.cursor.x, y: user.cursor.y, timestamp: now });
+          if (
+            startedNewStroke ||
+            !last ||
+            Math.hypot(user.cursor.x - last.x, user.cursor.y - last.y) >= 1.8
+          ) {
+            userTrail.push({
+              x: user.cursor.x,
+              y: user.cursor.y,
+              timestamp: now,
+              color: remoteBeamColor,
+              ...(startedNewStroke ? { newStroke: true } : {}),
+            });
           }
         }
       }
@@ -144,11 +165,12 @@ export const LaserTrailOverlay: React.FC<LaserTrailOverlayProps> = ({
         trails.delete(id);
         handledMap.delete(id);
         lastDrawingMap.delete(id);
+        remotePressIntensityMap.current.delete(id);
       }
     }
   }, [remoteUsers]);
 
-  // Render loop 60/120fps nativo com feixe incandescente e emissor de partículas
+  // Render loop 60/120fps nativo com fita vetorial contínua e óptica radial pura multicor
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -158,22 +180,25 @@ export const LaserTrailOverlay: React.FC<LaserTrailOverlayProps> = ({
     let isRunning = true;
     const idleFramesToStop = 12;
     let idleFrames = 0;
+    let lastFramePerf = performance.now();
 
     let dpr = window.devicePixelRatio || 1;
     let width = window.innerWidth;
     let height = window.innerHeight;
 
-    const handleResize = () => {
+    const syncCanvasSize = () => {
       dpr = window.devicePixelRatio || 1;
       width = window.innerWidth;
       height = window.innerHeight;
-      if (canvas) {
-        canvas.width = Math.round(width * dpr);
-        canvas.height = Math.round(height * dpr);
+      const targetW = Math.round(width * dpr);
+      const targetH = Math.round(height * dpr);
+      if (canvas.width !== targetW || canvas.height !== targetH) {
+        canvas.width = targetW;
+        canvas.height = targetH;
       }
     };
-    handleResize();
-    window.addEventListener('resize', handleResize);
+    syncCanvasSize();
+    window.addEventListener('resize', syncCanvasSize);
 
     const hasActiveLaser = () => {
       if (currentToolRef.current === 'laser') return true;
@@ -183,28 +208,54 @@ export const LaserTrailOverlay: React.FC<LaserTrailOverlayProps> = ({
     };
 
     /**
-     * Emite partículas de brilho (laser plasma sparks) ao desenhar
+     * Preenche uma camada contínua da fita afunilada sem costuras ou sobreposição de alpha
      */
-    const spawnSparkles = (x: number, y: number, count = 2) => {
-      for (let i = 0; i < count; i++) {
-        if (particlesRef.current.length > 50) break; // Limite de proteção
-        const angle = Math.random() * Math.PI * 2;
-        const speed = 0.8 + Math.random() * 2.2;
-        particlesRef.current.push({
-          x,
-          y,
-          vx: Math.cos(angle) * speed,
-          vy: Math.sin(angle) * speed,
-          life: 0,
-          maxLife: 220 + Math.random() * 160,
-          size: 1.2 + Math.random() * 1.8,
-          color: Math.random() > 0.4 ? LASER_HOT_COLOR : '#ffffff',
-        });
+    const fillRibbonLayer = (
+      samples: readonly RibbonSample[],
+      maxRadius: number,
+      color: string,
+      alpha: number
+    ) => {
+      if (samples.length < 2 || alpha <= 0.004 || maxRadius <= 0.02) return;
+      const lastIdx = samples.length - 1;
+      const head = samples[lastIdx];
+      const headR = maxRadius * head.taper;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(samples[0].x, samples[0].y);
+
+      for (let i = 1; i <= lastIdx; i++) {
+        const s = samples[i];
+        const r = maxRadius * s.taper;
+        ctx.lineTo(s.x + s.nx * r, s.y + s.ny * r);
       }
+
+      if (headR > 0.02) {
+        const headAngle = Math.atan2(head.ny, head.nx);
+        ctx.arc(head.x, head.y, headR, headAngle, headAngle - Math.PI, true);
+      }
+
+      for (let i = lastIdx - 1; i >= 1; i--) {
+        const s = samples[i];
+        const r = maxRadius * s.taper;
+        ctx.lineTo(s.x - s.nx * r, s.y - s.ny * r);
+      }
+
+      ctx.closePath();
+      ctx.fillStyle = color;
+      ctx.globalAlpha = alpha;
+      ctx.fill();
+      ctx.restore();
     };
 
     const render = () => {
       if (!isRunning) return;
+
+      const nowPerf = performance.now();
+      const dt = Math.max(4, Math.min(50, nowPerf - lastFramePerf));
+      lastFramePerf = nowPerf;
+      const blendFactor = 1 - Math.exp(-dt / 55);
 
       const now = Date.now();
       const { x: stageX, y: stageY, scale } = getViewport();
@@ -219,201 +270,181 @@ export const LaserTrailOverlay: React.FC<LaserTrailOverlayProps> = ({
 
       let drewAnything = false;
 
-      // Detecta clique local para disparar onda de choque (Shockwave Ring)
       const isLocalDrawing = Boolean(isLocalDrawingRef.current);
       const localPos = localLaserPosRef.current;
-      if (currentToolRef.current === 'laser' && isLocalDrawing && !lastDrawingStateRef.current && localPos) {
+      const activeLocalColor = laserColorRef.current;
+
+      // Suavização contínua da intensidade óptica ao pressionar/soltar (sem saltos abruptos)
+      const targetLocalIntensity =
+        currentToolRef.current === 'laser' && isLocalDrawing ? 1 : 0;
+      localPressIntensityRef.current +=
+        (targetLocalIntensity - localPressIntensityRef.current) * blendFactor;
+      if (localPressIntensityRef.current < 0.005) {
+        localPressIntensityRef.current = 0;
+      }
+
+      // Dispara onda circular suave na cor ativa ao iniciar o clique do laser
+      if (
+        currentToolRef.current === 'laser' &&
+        isLocalDrawing &&
+        !lastDrawingStateRef.current &&
+        localPos
+      ) {
         pulseRingsRef.current.push({
           x: localPos.x,
           y: localPos.y,
           startTime: now,
-          duration: 400,
-          color: LASER_COLOR,
+          duration: 340,
+          color: activeLocalColor,
         });
-        spawnSparkles(localPos.x, localPos.y, 4);
       }
       lastDrawingStateRef.current = isLocalDrawing;
 
-      // Gera faíscas quando desenhando localmente com movimento
-      if (currentToolRef.current === 'laser' && isLocalDrawing && localPos && Math.random() > 0.4) {
-        spawnSparkles(localPos.x, localPos.y, 1);
-      }
-
       /**
-       * Desenha o rastro do laser contínuo e fluído sem emendas rígidas
-       * Renderização em 3 camadas ópticas: Halo de Bloom, Feixe Intenso e Núcleo Incandescente
+       * Renderiza todos os traços ativos como fitas ópticas afuniladas em 4 camadas luminosas
        */
-      const drawLaserTrail = (rawPoints: LaserPoint[]) => {
-        if (!rawPoints || rawPoints.length < 2) return;
+      const drawLaserStrokes = (
+        rawPoints: readonly LaserPoint[],
+        liveTip: { x: number; y: number } | null,
+        activelyDrawing: boolean,
+        fallbackColor: string
+      ) => {
+        if (!rawPoints || rawPoints.length === 0) return;
 
-        // 1. Filtra pontos expirados e remove jitter micro-duplicado (< 2.5px)
-        const valid: LaserPoint[] = [];
-        for (let i = 0; i < rawPoints.length; i++) {
-          const p = rawPoints[i];
-          if (now - p.timestamp > TRAIL_DURATION_MS) continue;
-          const last = valid[valid.length - 1];
-          if (!last || Math.hypot(p.x - last.x, p.y - last.y) >= 2.5) {
-            valid.push(p);
-          }
-        }
+        const strokes = splitLaserStrokes(rawPoints, now, TRAIL_DURATION_MS, {
+          minDist: 1.6 / scale,
+          maxGapMs: 280,
+          liveTip,
+          isDrawing: activelyDrawing,
+          activeColor: fallbackColor,
+        });
 
-        if (valid.length < 2) return;
+        const baseRadius = BASE_BEAM_RADIUS / scale;
+        const tailFeatherWorld = 22 / scale;
+        const minSubdivWorld = 1.8 / scale;
 
-        // 2. Segmentos com curvas Bézier quadráticas contínuas
-        const CHUNK_SIZE = 4;
-        const numPoints = valid.length;
+        for (let sIdx = 0; sIdx < strokes.length; sIdx++) {
+          const stroke = strokes[sIdx];
+          const smoothed = smoothLaserStroke(stroke, minSubdivWorld);
+          const { samples, headProgress } = computeRibbonSamples(
+            smoothed,
+            now,
+            TRAIL_DURATION_MS,
+            tailFeatherWorld
+          );
+          if (samples.length < 2 || headProgress <= 0.01) continue;
 
-        for (let i = 0; i < numPoints - 1; i += CHUNK_SIZE - 1) {
-          const endIdx = Math.min(i + CHUNK_SIZE, numPoints);
-          const chunk = valid.slice(i, endIdx);
-          if (chunk.length < 2) continue;
+          drewAnything = true;
+          const fade = Math.pow(headProgress, 0.55);
+          const palette = getLaserOpticalPalette(stroke[0]?.color || fallbackColor);
 
-          const midPoint = chunk[Math.floor(chunk.length / 2)];
-          const age = now - midPoint.timestamp;
-          const progress = Math.max(0.04, Math.min(1, 1 - age / TRAIL_DURATION_MS));
-
-          // Easing suave para afunilamento natural da cauda
-          const opacity = Math.pow(progress, 1.2);
-          const strokeW = Math.max(1.8, (BASE_STROKE_WIDTH * (0.2 + 0.8 * progress)) / scale);
-          const isFirstChunk = (i === 0);
-
-          const traceSpline = () => {
-            ctx.moveTo(chunk[0].x, chunk[0].y);
-            for (let j = 0; j < chunk.length - 1; j++) {
-              const pCurr = chunk[j];
-              const pNext = chunk[j + 1];
-              const midX = (pCurr.x + pNext.x) / 2;
-              const midY = (pCurr.y + pNext.y) / 2;
-              ctx.quadraticCurveTo(pCurr.x, pCurr.y, midX, midY);
-            }
-            ctx.lineTo(chunk[chunk.length - 1].x, chunk[chunk.length - 1].y);
-          };
-
-          // Camada 1: Halo Neon Vermelho Radiante
-          ctx.beginPath();
-          traceSpline();
-          ctx.strokeStyle = LASER_COLOR;
-          ctx.lineWidth = strokeW * 2.4;
-          ctx.lineCap = isFirstChunk ? 'round' : 'butt';
-          ctx.lineJoin = 'round';
-          ctx.globalAlpha = opacity * 0.38;
-          ctx.stroke();
-
-          // Camada 2: Feixe Vermelho Laser Intenso
-          ctx.beginPath();
-          traceSpline();
-          ctx.strokeStyle = LASER_HOT_COLOR;
-          ctx.lineWidth = strokeW;
-          ctx.lineCap = isFirstChunk ? 'round' : 'butt';
-          ctx.lineJoin = 'round';
-          ctx.globalAlpha = opacity * 0.92;
-          ctx.stroke();
-
-          // Camada 3: Núcleo Branco Incandescente (Hot Plasma Core)
-          ctx.beginPath();
-          traceSpline();
-          ctx.strokeStyle = '#ffffff';
-          ctx.lineWidth = Math.max(0.8, strokeW * 0.36);
-          ctx.lineCap = isFirstChunk ? 'round' : 'butt';
-          ctx.lineJoin = 'round';
-          ctx.globalAlpha = opacity * 0.98;
-          ctx.stroke();
+          // 1. Halo óptico externo difuso
+          fillRibbonLayer(samples, baseRadius * 2.55, palette.hex, 0.18 * fade);
+          // 2. Corona incandescente intermediária
+          fillRibbonLayer(samples, baseRadius * 1.55, palette.coronaRgb, 0.38 * fade);
+          // 3. Corpo saturado do feixe laser
+          fillRibbonLayer(samples, baseRadius, palette.hex, 0.94 * fade);
+          // 4. Núcleo branco incandescente
+          fillRibbonLayer(samples, baseRadius * 0.42, '#ffffff', 0.98 * fade);
         }
       };
 
       /**
-       * Desenha o ponto focal do laser na ponta da mira (com flare e anel difuso)
+       * Desenha exclusivamente o ponto focal circular do diodo laser com bloom radial suave
+       * (nunca desenha linhas em cruz '+' ao clicar ou arrastar)
        */
       const drawLaserPointerDot = (
         x: number,
         y: number,
-        isDrawing: boolean,
+        intensity: number,
+        beamColor: string,
         userName?: string,
         userColor?: string
       ) => {
-        const pulse = Math.sin(now / 110);
-        const haloRadius = Math.max(5, (8.5 + (isDrawing ? 3.5 : 1.8) * pulse) / scale);
-        const coreRadius = Math.max(2.6, 4.4 / scale);
-        const centerWhite = Math.max(1.3, 2.4 / scale);
+        const palette = getLaserOpticalPalette(beamColor);
+        const breath = Math.sin(now / 170);
+        const outerGlowRadius = (13.5 + 5.5 * intensity + 0.9 * breath) / scale;
+        const contrastRimRadius = (5.5 + 1.15 * intensity) / scale;
+        const coreRadius = (4.3 + 1.05 * intensity) / scale;
+        const hotCenterRadius = (1.95 + 0.8 * intensity) / scale;
 
-        // 1. Halo Difuso Pulsante
+        // 1. Bloom radial contínuo na cor escolhida (sem bordas chapadas e sem cruz)
         ctx.save();
+        const bloomGrad = ctx.createRadialGradient(x, y, 0, x, y, outerGlowRadius);
+        bloomGrad.addColorStop(
+          0,
+          `rgba(${palette.r}, ${palette.g}, ${palette.b}, ${(0.44 + 0.26 * intensity).toFixed(3)})`
+        );
+        bloomGrad.addColorStop(
+          0.45,
+          `rgba(${palette.r}, ${palette.g}, ${palette.b}, ${(0.18 + 0.14 * intensity).toFixed(3)})`
+        );
+        bloomGrad.addColorStop(1, `rgba(${palette.r}, ${palette.g}, ${palette.b}, 0)`);
         ctx.beginPath();
-        ctx.arc(x, y, haloRadius, 0, Math.PI * 2);
-        ctx.fillStyle = LASER_COLOR;
-        ctx.globalAlpha = isDrawing ? 0.55 : 0.32;
+        ctx.arc(x, y, outerGlowRadius, 0, Math.PI * 2);
+        ctx.fillStyle = bloomGrad;
         ctx.fill();
         ctx.restore();
 
-        // 2. Anel de Brilho Vermelho Sólido
+        // 2. Anel sutil de contraste óptico (garante nitidez em fundos claros e escuros)
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(x, y, contrastRimRadius, 0, Math.PI * 2);
+        ctx.fillStyle = palette.contrastRimRgba;
+        ctx.fill();
+        ctx.restore();
+
+        // 3. Corpo saturado do ponto laser na cor escolhida
         ctx.save();
         ctx.beginPath();
         ctx.arc(x, y, coreRadius, 0, Math.PI * 2);
-        ctx.fillStyle = LASER_HOT_COLOR;
-        ctx.globalAlpha = 0.95;
+        ctx.fillStyle = palette.hex;
+        ctx.globalAlpha = 0.98;
         ctx.fill();
         ctx.restore();
 
-        // 3. Núcleo Branco Incandescente de Luz Focal
+        // 4. Centro branco incandescente puro
         ctx.save();
         ctx.beginPath();
-        ctx.arc(x, y, centerWhite, 0, Math.PI * 2);
+        ctx.arc(x, y, hotCenterRadius, 0, Math.PI * 2);
         ctx.fillStyle = '#ffffff';
         ctx.globalAlpha = 1;
         ctx.fill();
         ctx.restore();
 
-        // 4. Lens Flare óptico dinâmico na ponta do feixe ao desenhar
-        if (isDrawing) {
-          ctx.save();
-          ctx.strokeStyle = '#ffffff';
-          ctx.lineWidth = Math.max(0.8, 1.3 / scale);
-          ctx.globalAlpha = 0.88;
-          const flareLen = Math.max(6, 12 / scale);
-
-          ctx.beginPath();
-          ctx.moveTo(x - flareLen, y);
-          ctx.lineTo(x + flareLen, y);
-          ctx.moveTo(x, y - flareLen);
-          ctx.lineTo(x, y + flareLen);
-          ctx.stroke();
-          ctx.restore();
-        }
-
-        // 5. Tag elegante de identificação do colega (se for usuário remoto)
+        // 5. Pílula discreta de identificação do colega (remoto)
         if (userName) {
           ctx.save();
-          const fontSize = Math.max(10, 11 / scale);
+          const fontSize = 11 / scale;
           ctx.font = `500 ${fontSize}px system-ui, -apple-system, sans-serif`;
-          const text = userName;
-          const textMetrics = ctx.measureText(text);
+          const textMetrics = ctx.measureText(userName);
           const textW = textMetrics.width;
           const padX = 6 / scale;
-          const tagH = 17 / scale;
+          const tagH = 18 / scale;
           const tagW = textW + padX * 2 + 10 / scale;
-          const tagX = x + 12 / scale;
-          const tagY = y - 22 / scale;
+          const tagX = x + 11 / scale;
+          const tagY = y - 23 / scale;
 
           ctx.beginPath();
-          ctx.roundRect(tagX, tagY, tagW, tagH, 8 / scale);
+          ctx.roundRect(tagX, tagY, tagW, tagH, 9 / scale);
           ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
           ctx.fill();
-          ctx.strokeStyle = userColor || LASER_COLOR;
-          ctx.lineWidth = Math.max(1, 1.2 / scale);
+          ctx.strokeStyle = palette.hex;
+          ctx.lineWidth = 1.2 / scale;
           ctx.stroke();
 
           ctx.beginPath();
           ctx.arc(tagX + padX + 3 / scale, tagY + tagH / 2, 2.5 / scale, 0, Math.PI * 2);
-          ctx.fillStyle = userColor || '#3b82f6';
+          ctx.fillStyle = userColor || palette.hex;
           ctx.fill();
 
           ctx.fillStyle = '#ffffff';
-          ctx.fillText(text, tagX + padX + 8 / scale, tagY + tagH / 2 + 3.5 / scale);
+          ctx.fillText(userName, tagX + padX + 8 / scale, tagY + tagH / 2 + 3.8 / scale);
           ctx.restore();
         }
       };
 
-      // A. Desenha os anéis de choque pulsantes (Laser Shockwaves)
+      // A. Ondas circulares sutis de foco ao clicar
       const activePulseRings: LaserPulseRing[] = [];
       pulseRingsRef.current.forEach((ring) => {
         const elapsed = now - ring.startTime;
@@ -422,14 +453,14 @@ export const LaserTrailOverlay: React.FC<LaserTrailOverlayProps> = ({
           drewAnything = true;
           const p = elapsed / ring.duration;
           const eased = easeOutCubic(p);
-          const radius = (6 + eased * 26) / scale;
-          const ringAlpha = (1 - p) * 0.75;
+          const radius = (5 + eased * 19) / scale;
+          const ringAlpha = (1 - p) * 0.65;
 
           ctx.save();
           ctx.beginPath();
           ctx.arc(ring.x, ring.y, radius, 0, Math.PI * 2);
           ctx.strokeStyle = ring.color;
-          ctx.lineWidth = Math.max(1, ((1 - p) * 2.2) / scale);
+          ctx.lineWidth = ((1 - p * 0.55) * 1.8) / scale;
           ctx.globalAlpha = ringAlpha;
           ctx.stroke();
           ctx.restore();
@@ -437,42 +468,28 @@ export const LaserTrailOverlay: React.FC<LaserTrailOverlayProps> = ({
       });
       pulseRingsRef.current = activePulseRings;
 
-      // B. Desenha partículas de plasma (Embers / Sparks)
-      const activeParticles: LaserParticle[] = [];
-      particlesRef.current.forEach((particle) => {
-        particle.life += 16;
-        if (particle.life < particle.maxLife) {
-          activeParticles.push(particle);
-          drewAnything = true;
-          particle.x += (particle.vx / scale) * 0.8;
-          particle.y += (particle.vy / scale) * 0.8;
-          particle.vx *= 0.94;
-          particle.vy *= 0.94;
-
-          const progress = 1 - particle.life / particle.maxLife;
-          const pSize = Math.max(0.8, (particle.size * progress) / scale);
-
-          ctx.save();
-          ctx.beginPath();
-          ctx.arc(particle.x, particle.y, pSize, 0, Math.PI * 2);
-          ctx.fillStyle = particle.color;
-          ctx.globalAlpha = progress * 0.9;
-          ctx.fill();
-          ctx.restore();
-        }
-      });
-      particlesRef.current = activeParticles;
-
-      // C. Desenha rastros e ponteiros dos colegas remotos
+      // B. Rastros e ponteiros dos colegas remotos
       const remoteTrails = remoteTrailsRef.current;
       const users = remoteUsersRef.current;
       users.forEach((user) => {
+        const remoteDrawing = Boolean(user.laser?.isDrawing);
+        const remoteBeamColor = sanitizeLaserColor(user.laser?.color);
+        const prevRemoteIntensity = remotePressIntensityMap.current.get(user.userId) ?? 0;
+        const nextRemoteIntensity =
+          prevRemoteIntensity + ((remoteDrawing ? 1 : 0) - prevRemoteIntensity) * blendFactor;
+        remotePressIntensityMap.current.set(
+          user.userId,
+          nextRemoteIntensity < 0.005 ? 0 : nextRemoteIntensity
+        );
+
         const trail = remoteTrails.get(user.userId);
         if (trail && trail.length > 0) {
           const valid = trail.filter((p) => now - p.timestamp <= TRAIL_DURATION_MS);
           remoteTrails.set(user.userId, valid);
-          if (valid.length > 0) drewAnything = true;
-          drawLaserTrail(valid);
+          if (valid.length > 0) {
+            drewAnything = true;
+            drawLaserStrokes(valid, user.cursor, remoteDrawing, remoteBeamColor);
+          }
         }
 
         if (user.activeTool === 'laser' && user.cursor) {
@@ -480,26 +497,39 @@ export const LaserTrailOverlay: React.FC<LaserTrailOverlayProps> = ({
           drawLaserPointerDot(
             user.cursor.x,
             user.cursor.y,
-            Boolean(user.laser?.isDrawing),
+            nextRemoteIntensity,
+            remoteBeamColor,
             user.name || 'Colega',
             user.color
           );
         }
       });
 
-      // D. Desenha o rastro do usuário local
+      // C. Rastro do usuário local
       const localPoints = localPointsRef.current;
       if (localPoints && localPoints.length > 0) {
         const validLocal = localPoints.filter((p) => now - p.timestamp <= TRAIL_DURATION_MS);
         localPointsRef.current = validLocal;
-        if (validLocal.length > 0) drewAnything = true;
-        drawLaserTrail(validLocal);
+        if (validLocal.length > 0) {
+          drewAnything = true;
+          drawLaserStrokes(
+            validLocal,
+            currentToolRef.current === 'laser' ? localPos : null,
+            currentToolRef.current === 'laser' && isLocalDrawing,
+            activeLocalColor
+          );
+        }
       }
 
-      // E. Desenha o ponto focal do laser do usuário local
+      // D. Ponto focal circular do usuário local
       if (currentToolRef.current === 'laser' && localPos) {
         drewAnything = true;
-        drawLaserPointerDot(localPos.x, localPos.y, isLocalDrawing);
+        drawLaserPointerDot(
+          localPos.x,
+          localPos.y,
+          localPressIntensityRef.current,
+          activeLocalColor
+        );
       }
 
       ctx.restore();
@@ -518,13 +548,18 @@ export const LaserTrailOverlay: React.FC<LaserTrailOverlayProps> = ({
       rafId.current = requestAnimationFrame(render);
     };
 
-    if (currentTool === 'laser' || hasRemoteLaser) {
+    const hasPendingDecay =
+      (localPointsRef.current?.length ?? 0) > 0 ||
+      pulseRingsRef.current.length > 0 ||
+      Array.from(remoteTrailsRef.current.values()).some((t) => t.length > 0);
+
+    if (currentTool === 'laser' || hasRemoteLaser || hasPendingDecay) {
       rafId.current = requestAnimationFrame(render);
     }
 
     return () => {
       isRunning = false;
-      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('resize', syncCanvasSize);
       if (rafId.current) {
         cancelAnimationFrame(rafId.current);
         rafId.current = null;

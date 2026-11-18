@@ -1,16 +1,18 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  ChevronLeft, 
-  ChevronRight, 
-  Minimize, 
-  ZoomIn, 
-  ZoomOut, 
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  Minimize,
+  ZoomIn,
+  ZoomOut,
   Tv,
-  Laser
+  Laser,
+  Pipette,
 } from '@/components/ui/icons';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { CanvasElement } from '@/types/element';
+import { DEFAULT_LASER_COLOR, LASER_COLOR_OPTIONS } from '@/utils/laserGeometry.ts';
 
 interface PresentationControlBarProps {
   frames: CanvasElement[];
@@ -23,6 +25,8 @@ interface PresentationControlBarProps {
   scale: number;
   isLaserActive?: boolean;
   onToggleLaser?: () => void;
+  laserColor?: string;
+  onSelectLaserColor?: (color: string) => void;
 }
 
 export const PresentationControlBar: React.FC<PresentationControlBarProps> = ({
@@ -36,8 +40,12 @@ export const PresentationControlBar: React.FC<PresentationControlBarProps> = ({
   scale,
   isLaserActive = false,
   onToggleLaser,
+  laserColor = DEFAULT_LASER_COLOR,
+  onSelectLaserColor,
 }) => {
   const [isHovered, setIsHovered] = useState(false);
+  const [isColorOpen, setIsColorOpen] = useState(false);
+  const laserGroupRef = useRef<HTMLDivElement>(null);
   const totalFrames = frames.length;
 
   const handlePrev = () => {
@@ -52,6 +60,17 @@ export const PresentationControlBar: React.FC<PresentationControlBarProps> = ({
     onNavigateFrame(next);
   };
 
+  useEffect(() => {
+    if (!isColorOpen) return;
+    const handlePointerDownOutside = (e: PointerEvent) => {
+      if (laserGroupRef.current && !laserGroupRef.current.contains(e.target as Node)) {
+        setIsColorOpen(false);
+      }
+    };
+    window.addEventListener('pointerdown', handlePointerDownOutside);
+    return () => window.removeEventListener('pointerdown', handlePointerDownOutside);
+  }, [isColorOpen]);
+
   // Atalhos de teclado para apresentação: Setas esquerda/direita navegam frames
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -62,6 +81,10 @@ export const PresentationControlBar: React.FC<PresentationControlBarProps> = ({
         e.preventDefault();
         handlePrev();
       } else if (e.key === 'Escape') {
+        if (isColorOpen) {
+          setIsColorOpen(false);
+          return;
+        }
         onExitPresentation();
       }
     };
@@ -75,7 +98,7 @@ export const PresentationControlBar: React.FC<PresentationControlBarProps> = ({
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 transition-opacity duration-300"
-      style={{ opacity: isHovered ? 1 : 0.85 }}
+      style={{ opacity: isHovered || isColorOpen ? 1 : 0.85 }}
     >
       <div className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/80 bg-background/90 dark:bg-card/90 backdrop-blur-xl shadow-2xl">
         {/* Indicador de Modo Apresentação */}
@@ -179,27 +202,107 @@ export const PresentationControlBar: React.FC<PresentationControlBarProps> = ({
         {/* Divisor */}
         <div className="h-4 w-px bg-border" />
 
-        {/* Apontador Laser na Apresentação */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant={isLaserActive ? 'default' : 'ghost'}
-              size="icon-sm"
-              onClick={onToggleLaser}
-              className={`size-7 rounded-full active:scale-[0.97] transition-all ${
-                isLaserActive
-                  ? 'bg-primary text-primary-foreground shadow-xs'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-              }`}
-            >
-              <Laser className="size-3.5" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="top">
-            <p className="font-medium text-xs">Apontador Laser <span className="opacity-60 text-[10px]">(L)</span></p>
-          </TooltipContent>
-        </Tooltip>
+        {/* Apontador Laser e Seletor de Cor na Apresentação */}
+        <div ref={laserGroupRef} className="relative flex items-center gap-1">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant={isLaserActive ? 'default' : 'ghost'}
+                size="icon-sm"
+                onClick={onToggleLaser}
+                className={`size-7 rounded-full active:scale-[0.97] transition-all relative ${
+                  isLaserActive
+                    ? 'bg-primary text-primary-foreground shadow-xs'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                }`}
+              >
+                <Laser className="size-3.5" />
+                <span
+                  className="absolute bottom-0.5 right-0.5 size-1.5 rounded-full border border-background"
+                  style={{ backgroundColor: laserColor }}
+                />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              <p className="font-medium text-xs">Apontador Laser <span className="opacity-60 text-[10px]">(L)</span></p>
+            </TooltipContent>
+          </Tooltip>
+
+          {onSelectLaserColor && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => setIsColorOpen((prev) => !prev)}
+                  aria-label="Escolher cor do laser"
+                  className="size-6 rounded-md flex items-center justify-center hover:bg-muted transition-transform duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.95] cursor-pointer"
+                >
+                  <span
+                    className="size-3.5 rounded-sm border border-border shadow-2xs"
+                    style={{ backgroundColor: laserColor }}
+                  />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                <p className="font-medium text-xs">Cor do Laser</p>
+              </TooltipContent>
+            </Tooltip>
+          )}
+
+          {isColorOpen && onSelectLaserColor && (
+            <div className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 origin-bottom bg-popover text-popover-foreground p-3 rounded-lg shadow-xl border border-border flex flex-col gap-2 z-50 animate-in fade-in-0 zoom-in-95 duration-150 w-44">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider block">
+                  Cor do Laser
+                </span>
+                <span className="text-[9px] font-mono text-muted-foreground truncate uppercase max-w-[60px]">
+                  {laserColor}
+                </span>
+              </div>
+              <div className="grid grid-cols-5 gap-1.5">
+                {LASER_COLOR_OPTIONS.map((c) => (
+                  <button
+                    key={c.value}
+                    type="button"
+                    onClick={() => {
+                      onSelectLaserColor(c.value);
+                      if (!isLaserActive) {
+                        onToggleLaser?.();
+                      }
+                      setIsColorOpen(false);
+                    }}
+                    className={`size-6 rounded-md transition-transform hover:scale-110 active:scale-95 border cursor-pointer ${
+                      laserColor.toLowerCase() === c.value.toLowerCase()
+                        ? 'ring-2 ring-primary ring-offset-1 ring-offset-background'
+                        : 'border-border'
+                    }`}
+                    style={{ backgroundColor: c.value }}
+                    title={c.name}
+                    aria-label={`Laser ${c.name}`}
+                  />
+                ))}
+                <label
+                  className="relative size-6 rounded-md border border-border flex items-center justify-center cursor-pointer transition-transform hover:scale-110 active:scale-95 bg-gradient-to-tr from-rose-500 via-indigo-500 to-emerald-400 shadow-xs"
+                  title="Escolher qualquer cor personalizada (Hex/RGB)"
+                >
+                  <Pipette className="size-3 text-white drop-shadow" />
+                  <input
+                    type="color"
+                    value={laserColor.startsWith('#') && laserColor.length === 7 ? laserColor : DEFAULT_LASER_COLOR}
+                    onChange={(e) => {
+                      onSelectLaserColor(e.target.value);
+                      if (!isLaserActive) {
+                        onToggleLaser?.();
+                      }
+                    }}
+                    className="sr-only"
+                  />
+                </label>
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Divisor */}
         <div className="h-4 w-px bg-border" />
