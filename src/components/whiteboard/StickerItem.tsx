@@ -3,6 +3,8 @@ import { Group, Image as KonvaImage, Rect, Text } from 'react-konva';
 import type Konva from 'konva';
 import type { CanvasElement } from '../../types/element';
 import { getAppleEmojiUrl } from '../../utils/appleEmoji';
+import { normalizeUrl } from '../../utils/textLinks';
+import { toKonvaPixelCrop } from '../../utils/imageCrop';
 import { isCoarseOrMobileViewport } from '../../utils/viewport';
 import { ElementReactionBadges } from './ElementReactionBadges';
 import { LockBadge } from './LockBadge';
@@ -13,6 +15,7 @@ interface StickerItemProps {
   userSelectionColor?: string;
   remoteSelector?: { name: string; color: string };
   draggable?: boolean;
+  canEdit?: boolean;
   currentUserId?: string;
   mirioReactionUnlocked?: boolean;
   ditadorReactionUnlocked?: boolean;
@@ -36,6 +39,7 @@ export const StickerItem: React.FC<StickerItemProps> = React.memo(({
   userSelectionColor = '#0284c7',
   remoteSelector,
   draggable,
+  canEdit = true,
   currentUserId,
   mirioReactionUnlocked = false,
   ditadorReactionUnlocked = false,
@@ -108,7 +112,8 @@ export const StickerItem: React.FC<StickerItemProps> = React.memo(({
       onClick={(e) => {
         if (element.linkUrl && (e.evt.ctrlKey || e.evt.metaKey)) {
           e.cancelBubble = true;
-          window.open(element.linkUrl, '_blank', 'noopener,noreferrer');
+          const safeUrl = normalizeUrl(element.linkUrl);
+          if (safeUrl) window.open(safeUrl, '_blank', 'noopener,noreferrer');
           return;
         }
         onSelect(e);
@@ -156,12 +161,17 @@ export const StickerItem: React.FC<StickerItemProps> = React.memo(({
       {/* Indicador de Elemento Bloqueado */}
       {element.locked && <LockBadge x={width - 22} y={4} />}
 
-      {/* 1. Imagem carregada (Apple Emoji ou Imagem personalizada) */}
+      {/* 1. Imagem carregada (Apple Emoji ou Imagem personalizada com suporte a Recorte) */}
       {image ? (
         <KonvaImage
           image={image}
           width={width}
           height={height}
+          crop={toKonvaPixelCrop(
+            element.crop,
+            image.naturalWidth || image.width,
+            image.naturalHeight || image.height
+          )}
           cornerRadius={8}
           shadowEnabled={!isCoarseOrMobileViewport()}
           shadowColor="rgba(0, 0, 0, 0.12)"
@@ -242,7 +252,7 @@ export const StickerItem: React.FC<StickerItemProps> = React.memo(({
         localBottomY={height}
         availableWidth={width}
         currentUserId={currentUserId}
-        canEdit
+        canEdit={canEdit}
         mirioReactionUnlocked={mirioReactionUnlocked}
         ditadorReactionUnlocked={ditadorReactionUnlocked}
         brigadeiroReactionUnlocked={brigadeiroReactionUnlocked}
@@ -258,11 +268,13 @@ export const StickerItem: React.FC<StickerItemProps> = React.memo(({
           y={-10}
           onClick={(e) => {
             e.cancelBubble = true;
-            window.open(element.linkUrl, '_blank', 'noopener,noreferrer');
+            const safeUrl = normalizeUrl(element.linkUrl!);
+            if (safeUrl) window.open(safeUrl, '_blank', 'noopener,noreferrer');
           }}
           onTap={(e) => {
             e.cancelBubble = true;
-            window.open(element.linkUrl, '_blank', 'noopener,noreferrer');
+            const safeUrl = normalizeUrl(element.linkUrl!);
+            if (safeUrl) window.open(safeUrl, '_blank', 'noopener,noreferrer');
           }}
           onMouseEnter={(e) => {
             const stage = e.target.getStage();

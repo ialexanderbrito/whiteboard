@@ -53,6 +53,7 @@ export const FrameItem: React.FC<FrameItemProps> = React.memo(({
       id={element.id}
       x={element.x}
       y={element.y}
+      rotation={element.rotation || 0}
       draggable={isItemDraggable}
       onDragEnd={(e) => {
         onChange({
