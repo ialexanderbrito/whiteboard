@@ -4,7 +4,7 @@
       "$boardId": {
         ".read": "auth != null",
         "$userId": {
-          ".write": "auth != null && (auth.uid === $userId || auth.uid === newData.child('userId').val() || (data.exists() && !newData.exists() && auth.uid === $userId))",
+          ".write": "auth != null && auth.uid === $userId",
           ".validate": "newData.hasChildren(['userId', 'name', 'color'])",
           "userId": {
             ".validate": "newData.isString() && newData.val() === auth.uid"
@@ -15,14 +15,41 @@
           "color": {
             ".validate": "newData.isString() && newData.val().matches(/^#[0-9a-fA-F]{6}$/)"
           },
+          "photoURL": {
+            ".validate": "newData.val() === null || (newData.isString() && newData.val().length <= 2048)"
+          },
+          "isAnonymous": {
+            ".validate": "newData.val() === null || newData.isBoolean()"
+          },
+          "activeTool": {
+            ".validate": "newData.val() === null || (newData.isString() && newData.val().length <= 32)"
+          },
           "cursor": {
             ".validate": "newData.val() === null || (newData.hasChildren(['x', 'y']) && newData.child('x').isNumber() && newData.child('y').isNumber())"
           },
+          "laser": {
+            ".validate": "newData.val() === null || (newData.hasChildren(['isDrawing', 'timestamp']) && newData.child('isDrawing').isBoolean() && newData.child('timestamp').isNumber())"
+          },
           "selectedElementId": {
-            ".validate": "newData.val() === null || newData.isString()"
+            ".validate": "newData.val() === null || (newData.isString() && newData.val().length <= 64)"
+          },
+          "message": {
+            ".validate": "newData.val() === null || (newData.isString() && newData.val().length <= 280)"
+          },
+          "messageTimestamp": {
+            ".validate": "newData.val() === null || newData.isNumber()"
+          },
+          "lastClickTimestamp": {
+            ".validate": "newData.val() === null || newData.isNumber()"
+          },
+          "reaction": {
+            ".validate": "newData.val() === null || (newData.hasChildren(['id', 'emoji', 'timestamp']) && newData.child('id').isString() && newData.child('emoji').isString() && newData.child('emoji').val().length <= 32 && newData.child('timestamp').isNumber())"
           },
           "lastSeen": {
             ".validate": "newData.val() === null || newData.isNumber()"
+          },
+          "$other": {
+            ".validate": false
           }
         }
       }
@@ -63,10 +90,13 @@
           ".validate": "newData.val() === null || newData.isBoolean()"
         },
         "lastAction": {
-          ".validate": "newData.val() === null || newData.isString()"
+          ".validate": "newData.val() === null || (newData.isString() && newData.val().length <= 32)"
         },
         "lastActionTimestamp": {
           ".validate": "newData.val() === null || newData.isNumber()"
+        },
+        "$other": {
+          ".validate": false
         }
       }
     },
@@ -74,9 +104,17 @@
       "$boardId": {
         ".read": "auth != null",
         ".write": "auth != null",
-        ".validate": "newData.val() === null || newData.hasChildren()",
         "session": {
           ".validate": "newData.val() === null || (newData.hasChildren(['id', 'status']) && newData.child('id').isString() && newData.child('status').isString())"
+        },
+        "previousSessions": {
+          ".validate": true
+        },
+        "votesByUser": {
+          ".validate": true
+        },
+        "$other": {
+          ".validate": false
         }
       }
     },
@@ -85,7 +123,16 @@
         ".read": "auth != null",
         "$eventId": {
           ".write": "auth != null && (newData.child('userId').val() === auth.uid || (data.exists() && !newData.exists()))",
-          ".validate": "newData.val() === null || (newData.hasChildren(['userId', 'reaction', 'timestamp']) && newData.child('userId').val() === auth.uid && newData.child('reaction').isString() && newData.child('reaction').val().length <= 32 && newData.child('timestamp').isNumber())"
+          ".validate": "newData.hasChildren(['id', 'userId', 'emoji', 'reaction', 'timestamp']) && newData.child('userId').val() === auth.uid && newData.child('emoji').isString() && newData.child('emoji').val().length <= 32 && newData.child('reaction').isString() && newData.child('reaction').val().length <= 32 && newData.child('timestamp').isNumber()",
+          "id": { ".validate": "newData.isString() && newData.val().length <= 64" },
+          "userId": { ".validate": "newData.isString() && newData.val() === auth.uid" },
+          "userName": { ".validate": "newData.val() === null || (newData.isString() && newData.val().length <= 50)" },
+          "emoji": { ".validate": "newData.isString() && newData.val().length <= 32" },
+          "reaction": { ".validate": "newData.isString() && newData.val().length <= 32" },
+          "timestamp": { ".validate": "newData.isNumber()" },
+          "originX": { ".validate": "newData.val() === null || newData.isNumber()" },
+          "originY": { ".validate": "newData.val() === null || newData.isNumber()" },
+          "$other": { ".validate": false }
         }
       }
     }

@@ -72,6 +72,7 @@ export function ThemeProvider({
 
       setResolvedTheme(isDarkTheme ? 'dark' : 'light');
       root.classList.add(isDarkTheme ? 'dark' : 'light');
+      root.style.backgroundColor = '';
     };
 
     applyTheme();

@@ -21,6 +21,10 @@ export interface ExtractedLink {
 export function normalizeUrl(url: string): string {
   const trimmed = url.trim();
   if (!trimmed) return '';
+  // Bloqueia esquemas perigosos (XSS / execução de código)
+  if (/^(javascript|data|vbscript|file):/i.test(trimmed)) {
+    return '';
+  }
   if (/^https?:\/\//i.test(trimmed)) {
     return trimmed;
   }

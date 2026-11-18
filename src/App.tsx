@@ -6,6 +6,7 @@ import { TooltipProvider } from './components/ui/tooltip';
 
 import { LoadingScreen } from './components/layout/LoadingScreen';
 import { DashboardPage } from './pages/DashboardPage';
+import { sanitizeRedirectPath } from './utils/security';
 
 // Divisão de código sob demanda (Lazy Loading) para carregamento inicial ultra-rápido
 const LoginPage = lazy(() => import('./pages/LoginPage').then(m => ({ default: m.LoginPage })));
@@ -27,7 +28,8 @@ const LegacyBoardRedirect: React.FC = () => {
 const RootRoute: React.FC = () => {
   const { currentUser, loading } = useAuth();
   const [searchParams] = useSearchParams();
-  const redirect = searchParams.get('redirect') || (typeof window !== 'undefined' ? sessionStorage.getItem('mirio_auth_redirect') : null);
+  const rawRedirect = searchParams.get('redirect') || (typeof window !== 'undefined' ? sessionStorage.getItem('mirio_auth_redirect') : null);
+  const redirect = rawRedirect ? sanitizeRedirectPath(rawRedirect, '/') : null;
 
   // Se a autenticação estiver carregando, renderiza o DashboardPage imediatamente
   // para que o Skeleton Screen Adaptativo apareça na tela sem o LoadingScreen global de tela cheia
@@ -49,13 +51,14 @@ const RootRoute: React.FC = () => {
 // Redireciona acessos à rota legada /login diretamente para a raiz "/", preservando parâmetros como ?redirect=
 const LegacyLoginRedirect: React.FC = () => {
   const [searchParams] = useSearchParams();
-  const redirect = searchParams.get('redirect');
+  const rawRedirect = searchParams.get('redirect');
+  const redirect = rawRedirect ? sanitizeRedirectPath(rawRedirect, '') : '';
   return <Navigate to={redirect ? `/?redirect=${encodeURIComponent(redirect)}` : '/'} replace />;
 };
 
 export const App: React.FC = () => {
   return (
-    <ThemeProvider defaultTheme="light" storageKey="mirio_theme">
+    <ThemeProvider defaultTheme="system" storageKey="mirio_theme">
       <TooltipProvider delayDuration={200}>
         <AuthProvider>
           <BrowserRouter>

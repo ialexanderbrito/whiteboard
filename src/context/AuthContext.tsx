@@ -1,8 +1,9 @@
 /* oxlint-disable react/only-export-components */
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { 
   signInWithPopup, 
   signInWithRedirect,
+  linkWithPopup,
   getRedirectResult,
   signInAnonymously, 
   updateProfile, 
@@ -28,8 +29,11 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const COLOR_STORAGE_KEY = 'mirio_user_color';
 const GUEST_STORAGE_KEY = 'mirio_guest_user';
+const GUEST_UID_ARCHIVE_KEY = 'mirio_guest_uid_archive';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const pendingGuestNameRef = useRef<string | null>(null);
+
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(() => {
     if (!isFirebaseConfigured || !auth) {
       if (typeof window === 'undefined') return null;
@@ -89,9 +93,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (!isMounted) return;
           if (user) {
             const color = getSavedColor();
+            const resolvedName =
+              user.displayName ||
+              (user.isAnonymous ? pendingGuestNameRef.current || 'Convidado' : 'Usuário');
             setCurrentUser({
               uid: user.uid,
-              displayName: user.displayName || (user.isAnonymous ? 'Convidado' : 'Usuário'),
+              displayName: resolvedName,
               email: user.email,
               photoURL: user.photoURL,
               isAnonymous: user.isAnonymous,
@@ -121,13 +128,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return signInWithRedirect(auth, googleProvider);
     }
 
+    // Se o usuário já possui sessão anônima ativa, tenta promover (linkWithPopup)
+    // preservando o mesmo UID e a posse de todos os quadros criados como convidado!
+    const activeUser = auth.currentUser;
+    const authPromise = activeUser && activeUser.isAnonymous
+      ? linkWithPopup(activeUser, googleProvider).catch((linkErr: unknown) => {
+          const code = (linkErr as { code?: string })?.code;
+          if (
+            code === 'auth/credential-already-in-use' ||
+            code === 'auth/email-already-in-use' ||
+            code === 'auth/provider-already-linked'
+          ) {
+            return signInWithPopup(auth!, googleProvider!);
+          }
+          throw linkErr;
+        })
+      : signInWithPopup(auth, googleProvider);
+
     // Executa signInWithPopup de forma síncrona dentro do evento de clique original do usuário
     // para preservar o transient user activation do navegador e evitar que o pop-up seja bloqueado.
-    return signInWithPopup(auth, googleProvider)
+    return authPromise
       .then((result) => {
         if (result?.user) {
-          // O popup pode concluir antes de onAuthStateChanged receber a sessão.
-          // Atualiza o contexto imediatamente para que a tela de login não permaneça visível.
           const color = getSavedColor();
           setCurrentUser({
             uid: result.user.uid,
@@ -147,10 +169,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return;
         }
 
-        // Se popup bloqueado (ad blocker, configuração do navegador, webview),
-        // redireciona para o fluxo de login do Google via navegação completa.
-        // Funciona sem loop porque o authDomain aponta para o próprio domínio da app
-        // (via proxy /__/auth/* no vercel.json), evitando cookies de terceiros.
+        // Se popup bloqueado, redireciona via navegação completa
         if (
           error?.code === 'auth/popup-blocked' ||
           error?.code === 'auth/cancelled-popup-request'
@@ -168,9 +187,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const color = getSavedColor();
 
     if (!isFirebaseConfigured || !auth) {
-      // Mock local
+      // Mock local: reutiliza o UID arquivado na máquina para não perder quadros locais após logout
+      const archivedUid = localStorage.getItem(GUEST_UID_ARCHIVE_KEY);
+      const uid = archivedUid || 'guest_' + Math.random().toString(36).substring(2, 9);
+      localStorage.setItem(GUEST_UID_ARCHIVE_KEY, uid);
       const guestUser: CurrentUser = {
-        uid: 'guest_' + Math.random().toString(36).substring(2, 9),
+        uid,
         displayName: trimmedName,
         email: null,
         photoURL: null,
@@ -182,26 +204,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
-    const userCredential = await signInAnonymously(auth);
-    await updateProfile(userCredential.user, {
-      displayName: trimmedName,
-    });
+    // Armazena o nome antes de signInAnonymously para evitar que onAuthStateChanged envie 'Convidado'
+    pendingGuestNameRef.current = trimmedName;
+    try {
+      const userCredential = await signInAnonymously(auth);
+      await updateProfile(userCredential.user, {
+        displayName: trimmedName,
+      });
 
-    setCurrentUser({
-      uid: userCredential.user.uid,
-      displayName: trimmedName,
-      email: null,
-      photoURL: null,
-      isAnonymous: true,
-      color,
-    });
+      setCurrentUser({
+        uid: userCredential.user.uid,
+        displayName: trimmedName,
+        email: null,
+        photoURL: null,
+        isAnonymous: true,
+        color,
+      });
+    } finally {
+      pendingGuestNameRef.current = null;
+    }
   };
 
   const updateGuestProfile = async (name: string, color?: string) => {
     if (!currentUser) return;
 
     const isGoogleAccount = !currentUser.isAnonymous;
-    // Usuários com conta Google mantêm sempre o nome oficial da conta Google
     const effectiveName = isGoogleAccount ? currentUser.displayName : (name.trim() || currentUser.displayName);
     const userColor = color || currentUser.color || getSavedColor();
 
@@ -210,7 +237,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     if (!isFirebaseConfigured || !auth || !auth.currentUser) {
-      // Mock local
       const updatedUser: CurrentUser = {
         ...currentUser,
         displayName: effectiveName,
@@ -221,7 +247,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
-    // Apenas convidados anônimos podem atualizar o displayName no Firebase Auth
     if (!isGoogleAccount && effectiveName !== currentUser.displayName) {
       try {
         await updateProfile(auth.currentUser, {

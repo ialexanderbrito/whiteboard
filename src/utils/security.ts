@@ -76,3 +76,19 @@ export async function verifyBoardPassword(
 
   return false;
 }
+
+/**
+ * Sanitiza rotas de redirecionamento interno pós-login para prevenir Open Redirect.
+ * Aceita estritamente caminhos relativos iniciados por '/' simples (ex: '/b/abc123').
+ */
+export function sanitizeRedirectPath(rawPath: string | null | undefined, fallback = '/'): string {
+  if (!rawPath || typeof rawPath !== 'string') return fallback;
+  const trimmed = rawPath.trim();
+  if (!trimmed.startsWith('/') || trimmed.startsWith('//') || trimmed.startsWith('/\\')) {
+    return fallback;
+  }
+  if (/^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(trimmed)) {
+    return fallback;
+  }
+  return trimmed;
+}

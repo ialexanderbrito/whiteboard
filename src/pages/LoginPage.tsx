@@ -6,21 +6,23 @@ import { LoginBoardShowcase } from '@/components/auth/LoginBoardShowcase';
 import { MirioLogo } from '@/components/layout/MirioLogo';
 import { ThemeToggle } from '@/components/layout/ThemeToggle';
 import { BuyMeACoffeeModal } from '@/components/layout/BuyMeACoffeeModal';
+import { sanitizeRedirectPath } from '../utils/security';
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const queryRedirect = searchParams.get('redirect');
-  const redirectUrl = queryRedirect || (typeof window !== 'undefined' ? sessionStorage.getItem('mirio_auth_redirect') : null) || '/';
+  const rawRedirect = queryRedirect || (typeof window !== 'undefined' ? sessionStorage.getItem('mirio_auth_redirect') : null);
+  const redirectUrl = sanitizeRedirectPath(rawRedirect, '/');
   const { currentUser, isConfigured, signInWithGoogle, signInAsGuest } = useAuth();
 
   // Se já estiver logado, redireciona para a rota solicitada ou para o workspace principal
   useEffect(() => {
     document.title = 'Entrar - Mirio';
     if (currentUser) {
-      const savedRedirect = sessionStorage.getItem('mirio_auth_redirect');
+      const savedRedirect = sanitizeRedirectPath(sessionStorage.getItem('mirio_auth_redirect'), '/');
       sessionStorage.removeItem('mirio_auth_redirect');
-      const target = (redirectUrl && redirectUrl !== '/') ? redirectUrl : (savedRedirect || '/');
+      const target = (redirectUrl && redirectUrl !== '/') ? redirectUrl : savedRedirect;
       navigate(target, { replace: true });
     }
   }, [currentUser, navigate, redirectUrl]);
@@ -99,9 +101,9 @@ export const LoginPage: React.FC = () => {
                 }}
                 onGuestLogin={async (name: string) => {
                   await signInAsGuest(name);
-                  const saved = sessionStorage.getItem('mirio_auth_redirect');
+                  const saved = sanitizeRedirectPath(sessionStorage.getItem('mirio_auth_redirect'), '/');
                   sessionStorage.removeItem('mirio_auth_redirect');
-                  const target = (redirectUrl && redirectUrl !== '/') ? redirectUrl : (saved || '/');
+                  const target = (redirectUrl && redirectUrl !== '/') ? redirectUrl : saved;
                   navigate(target, { replace: true });
                 }}
                 isFirebaseConfigured={isConfigured}

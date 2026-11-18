@@ -2,8 +2,8 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Função auxiliar: usuário logado (Google ou Convidado anônimo)
+
+    // Usuário autenticado (Google ou Convidado anônimo)
     function isAuthenticated() {
       return request.auth != null;
     }
@@ -13,82 +13,218 @@ service cloud.firestore {
       return isAuthenticated() && boardData.ownerId == request.auth.uid;
     }
 
-    // Verifica se o usuário foi expressamente expulso/removido do quadro
+    // Verifica se o usuário foi expressamente removido do quadro
     function isMemberRemoved(boardData) {
-      return ('removedMemberIds' in boardData) && (request.auth.uid in boardData.removedMemberIds);
+      return ('removedMemberIds' in boardData)
+        && boardData.removedMemberIds is list
+        && (request.auth.uid in boardData.removedMemberIds);
+    }
+
+    // Verifica se o e-mail autenticado consta na lista de colaboradores convidados
+    function isInvitedByEmail(boardData) {
+      return ('email' in request.auth.token)
+        && request.auth.token.email != null
+        && ('collaboratorEmails' in boardData)
+        && boardData.collaboratorEmails is list
+        && (request.auth.token.email.lower() in boardData.collaboratorEmails);
+    }
+
+    // Verifica se o usuário já passou pela Sala de Espera (ou se ela está desativada)
+    function passesWaitingRoom(boardData) {
+      return isBoardOwner(boardData)
+        || (('waitingRoomEnabled' in boardData) && boardData.waitingRoomEnabled == false)
+        || isInvitedByEmail(boardData)
+        || (
+          ('joinRequests' in boardData)
+          && boardData.joinRequests is map
+          && (request.auth.uid in boardData.joinRequests)
+          && boardData.joinRequests[request.auth.uid].status == 'approved'
+        )
+        || (
+          !isMemberRemoved(boardData)
+          && ('members' in boardData)
+          && boardData.members is map
+          && (request.auth.uid in boardData.members)
+          && boardData.members[request.auth.uid].role != 'none'
+        );
+    }
+
+    // Verifica se o participante tem permissão efetiva de leitura nos elementos do quadro
+    function canReadBoardElements(boardData) {
+      return isBoardOwner(boardData) || (
+        (
+          !isMemberRemoved(boardData)
+          || isInvitedByEmail(boardData)
+          || (('members' in boardData) && boardData.members is map && (request.auth.uid in boardData.members) && boardData.members[request.auth.uid].role != 'none')
+        )
+        && passesWaitingRoom(boardData)
+        && (
+          isInvitedByEmail(boardData)
+          || (('members' in boardData) && boardData.members is map && (request.auth.uid in boardData.members) && boardData.members[request.auth.uid].role != 'none')
+          || !('defaultPermission' in boardData)
+          || boardData.defaultPermission != 'none'
+          || (('isPasswordProtected' in boardData) && boardData.isPasswordProtected == true)
+        )
+      );
+    }
+
+    // Verifica se o participante tem permissão efetiva de escrita (edit ou comment) nos elementos
+    function canWriteBoardElements(boardData) {
+      return isBoardOwner(boardData) || (
+        canReadBoardElements(boardData) && (
+          (
+            ('members' in boardData)
+            && boardData.members is map
+            && (request.auth.uid in boardData.members)
+            && ('hasCustomRole' in boardData.members[request.auth.uid])
+            && boardData.members[request.auth.uid].hasCustomRole == true
+            && (boardData.members[request.auth.uid].role == 'edit' || boardData.members[request.auth.uid].role == 'comment')
+          )
+          || (
+            !(('members' in boardData) && boardData.members is map && (request.auth.uid in boardData.members) && ('hasCustomRole' in boardData.members[request.auth.uid]) && boardData.members[request.auth.uid].hasCustomRole == true)
+            && ('joinRequests' in boardData)
+            && boardData.joinRequests is map
+            && (request.auth.uid in boardData.joinRequests)
+            && boardData.joinRequests[request.auth.uid].status == 'approved'
+            && (!('assignedRole' in boardData.joinRequests[request.auth.uid]) || boardData.joinRequests[request.auth.uid].assignedRole == 'edit' || boardData.joinRequests[request.auth.uid].assignedRole == 'comment')
+          )
+          || (
+            !(('members' in boardData) && boardData.members is map && (request.auth.uid in boardData.members) && ('hasCustomRole' in boardData.members[request.auth.uid]) && boardData.members[request.auth.uid].hasCustomRole == true)
+            && !(('joinRequests' in boardData) && boardData.joinRequests is map && (request.auth.uid in boardData.joinRequests) && boardData.joinRequests[request.auth.uid].status == 'approved' && ('assignedRole' in boardData.joinRequests[request.auth.uid]) && boardData.joinRequests[request.auth.uid].assignedRole == 'view')
+            && (
+              (!('defaultPermission' in boardData) || (boardData.defaultPermission != 'view' && boardData.defaultPermission != 'none'))
+              || (('isPasswordProtected' in boardData) && boardData.isPasswordProtected == true && ('defaultPermission' in boardData) && boardData.defaultPermission == 'none')
+            )
+          )
+        )
+      );
+    }
+
+    // Valida atualização de joinRequests por não-proprietário (apenas próprio UID e status 'pending')
+    function validParticipantJoinRequests() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['joinRequests']) || (
+        ('joinRequests' in request.resource.data)
+        && request.resource.data.joinRequests is map
+        && (
+          (!('joinRequests' in resource.data) || !(resource.data.joinRequests is map))
+            ? request.resource.data.joinRequests.keys().hasOnly([request.auth.uid])
+            : request.resource.data.joinRequests.diff(resource.data.joinRequests).affectedKeys().hasOnly([request.auth.uid])
+        )
+        && (request.auth.uid in request.resource.data.joinRequests)
+        && request.resource.data.joinRequests[request.auth.uid].uid == request.auth.uid
+        && request.resource.data.joinRequests[request.auth.uid].status == 'pending'
+      );
+    }
+
+    // Valida atualização de members por não-proprietário (apenas próprio UID, sem escalar privilégio)
+    function validParticipantMembers() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['members']) || (
+        ('members' in request.resource.data)
+        && request.resource.data.members is map
+        && (
+          (!('members' in resource.data) || !(resource.data.members is map))
+            ? request.resource.data.members.keys().hasOnly([request.auth.uid])
+            : request.resource.data.members.diff(resource.data.members).affectedKeys().hasOnly([request.auth.uid])
+        )
+        && (
+          !(request.auth.uid in request.resource.data.members)
+          || request.resource.data.members[request.auth.uid].role == 'none'
+          || (
+            passesWaitingRoom(resource.data)
+            && !isMemberRemoved(resource.data)
+            && request.resource.data.members[request.auth.uid].uid == request.auth.uid
+            && (
+              (
+                ('members' in resource.data)
+                && resource.data.members is map
+                && (request.auth.uid in resource.data.members)
+                && request.resource.data.members[request.auth.uid].role == resource.data.members[request.auth.uid].role
+                && (
+                  (('hasCustomRole' in request.resource.data.members[request.auth.uid]) && request.resource.data.members[request.auth.uid].hasCustomRole == true)
+                  == (('hasCustomRole' in resource.data.members[request.auth.uid]) && resource.data.members[request.auth.uid].hasCustomRole == true)
+                )
+              )
+              || (
+                !(('members' in resource.data) && resource.data.members is map && (request.auth.uid in resource.data.members))
+                && (!('hasCustomRole' in request.resource.data.members[request.auth.uid]) || request.resource.data.members[request.auth.uid].hasCustomRole == false)
+              )
+            )
+          )
+        )
+      );
+    }
+
+    // Permite que um colaborador convidado por e-mail remova apenas a si mesmo da lista do quadro
+    function validCollaboratorSelfLeave() {
+      return ('email' in request.auth.token)
+        && request.auth.token.email != null
+        && ('collaboratorEmails' in resource.data)
+        && resource.data.collaboratorEmails is list
+        && (request.auth.token.email.lower() in resource.data.collaboratorEmails)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['collaborators', 'collaboratorEmails', 'members', 'updatedAt'])
+        && ('collaboratorEmails' in request.resource.data)
+        && request.resource.data.collaboratorEmails is list
+        && request.resource.data.collaboratorEmails.size() <= resource.data.collaboratorEmails.size()
+        && !(request.auth.token.email.lower() in request.resource.data.collaboratorEmails);
     }
 
     // Coleção de quadros (/boards/{boardId})
     match /boards/{boardId} {
-      // Leitura permitida para usuários autenticados
       allow read: if isAuthenticated();
-      
-      // Criação: apenas autenticados e o ownerId DEVE coincidir com o UID do criador
-      allow create: if isAuthenticated() 
+
+      allow create: if isAuthenticated()
         && request.resource.data.title is string
         && request.resource.data.title.size() > 0
         && request.resource.data.ownerId == request.auth.uid;
-      
-      // Atualização:
-      // 1. O proprietário pode atualizar o quadro (mas NUNCA transferir o ownerId para outro usuário)
-      // 2. Participantes/convidados só podem atualizar seus próprios nós (members/joinRequests/timer/updatedAt)
-      //    e NUNCA alterar: ownerId, title, defaultPermission, waitingRoomEnabled, password, isPasswordProtected, removedMemberIds
+
       allow update: if isAuthenticated() && (
         (isBoardOwner(resource.data) && request.resource.data.ownerId == resource.data.ownerId) ||
         (
           request.resource.data.ownerId == resource.data.ownerId
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'joinRequests', 'timer', 'updatedAt'])
-          && (!('password' in request.resource.data) || request.resource.data.password == resource.data.password)
-          && (!('isPasswordProtected' in request.resource.data) || request.resource.data.isPasswordProtected == resource.data.isPasswordProtected)
-          && (!('defaultPermission' in request.resource.data) || request.resource.data.defaultPermission == resource.data.defaultPermission)
-          && (!('waitingRoomEnabled' in request.resource.data) || request.resource.data.waitingRoomEnabled == resource.data.waitingRoomEnabled)
-          && (!('removedMemberIds' in request.resource.data) || request.resource.data.removedMemberIds == resource.data.removedMemberIds)
+          && request.resource.data.title == resource.data.title
+          && !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+            'ownerId', 'title', 'password', 'isPasswordProtected', 'defaultPermission', 'waitingRoomEnabled', 'removedMemberIds'
+          ])
+          && (
+            (
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'joinRequests', 'timer', 'voting', 'starredBy', 'previewSnapshot', 'updatedAt'])
+              && validParticipantJoinRequests()
+              && validParticipantMembers()
+            )
+            || validCollaboratorSelfLeave()
+          )
         )
       );
 
-      // Exclusão: ESTRITAMENTE o proprietário do quadro comprovado por UID
-      // (Elimina brecha IDOR de ownerId vazio ou nulo)
       allow delete: if isAuthenticated() && resource.data.ownerId == request.auth.uid;
-      
+
       // Subcoleção de elementos do canvas (/boards/{boardId}/elements/{elementId})
       match /elements/{elementId} {
-        // Leitura para usuários autenticados que não tenham sido removidos do quadro
-        allow read: if isAuthenticated() && (
-          isBoardOwner(get(/databases/$(database)/documents/boards/$(boardId)).data) ||
-          !isMemberRemoved(get(/databases/$(database)/documents/boards/$(boardId)).data)
-        );
-        
-        // Escrita: permitida apenas se o usuário não tiver sido removido do quadro
-        // e possuir privilégio de edição (dono ou permissão do quadro)
-        allow create, update, delete: if isAuthenticated() && (
-          // O proprietário sempre pode editar elementos
-          isBoardOwner(get(/databases/$(database)/documents/boards/$(boardId)).data) ||
-          // Participante não removido com papel de edição
-          (
-            !isMemberRemoved(get(/databases/$(database)/documents/boards/$(boardId)).data) &&
-            get(/databases/$(database)/documents/boards/$(boardId)).data.defaultPermission != 'view' &&
-            get(/databases/$(database)/documents/boards/$(boardId)).data.defaultPermission != 'none'
-          )
-        );
+        allow read: if isAuthenticated()
+          && exists(/databases/$(database)/documents/boards/$(boardId))
+          && canReadBoardElements(get(/databases/$(database)/documents/boards/$(boardId)).data);
+
+        allow create, update, delete: if isAuthenticated()
+          && exists(/databases/$(database)/documents/boards/$(boardId))
+          && canWriteBoardElements(get(/databases/$(database)/documents/boards/$(boardId)).data);
       }
     }
 
-    // Snapshot público do convite (/invites/{boardId}):
-    // contém APENAS título e nome do proprietário (nunca senha, membros ou permissões).
-    // Leitura pública alimenta a tela de convite de quem ainda não está autenticado.
+    // Snapshot público do convite (/invites/{boardId})
     match /invites/{boardId} {
       allow read: if true;
 
-      // Escrita: apenas o legítimo proprietário comprovado do quadro pai (/boards/{boardId}) pode criar/atualizar/remover
-      allow create: if isAuthenticated() 
+      allow create: if isAuthenticated()
         && request.resource.data.ownerId == request.auth.uid
         && exists(/databases/$(database)/documents/boards/$(boardId))
         && get(/databases/$(database)/documents/boards/$(boardId)).data.ownerId == request.auth.uid;
 
-      allow update, delete: if isAuthenticated() 
+      allow update: if isAuthenticated()
         && resource.data.ownerId == request.auth.uid
         && exists(/databases/$(database)/documents/boards/$(boardId))
         && get(/databases/$(database)/documents/boards/$(boardId)).data.ownerId == request.auth.uid;
+
+      allow delete: if isAuthenticated() && resource.data.ownerId == request.auth.uid;
     }
   }
 }

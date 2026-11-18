@@ -16,7 +16,7 @@ const ALLOWED_HOSTS = new Set([
  * Previne Reflected XSS, Host Header Injection e Web Cache Poisoning.
  */
 function getSafeHost(req) {
-  const rawHost = req.headers['x-forwarded-host'] || req.headers.host;
+  const rawHost = req.headers?.['x-forwarded-host'] || req.headers?.host;
   if (!rawHost || typeof rawHost !== 'string') {
     return 'mirio-wb.vercel.app';
   }
@@ -25,6 +25,10 @@ function getSafeHost(req) {
     return trimmed;
   }
   return 'mirio-wb.vercel.app';
+}
+
+function isLocalDevHost(host) {
+  return host.startsWith('localhost') || host.startsWith('127.0.0.1');
 }
 
 function escapeHtmlAttribute(str) {
@@ -45,36 +49,59 @@ export default function handler(req, res) {
   const ogImageName = isLight ? 'og-light.png' : 'og-dark.png';
   const themeColor = isLight ? '#ffffff' : '#09090b';
 
-  // Localiza o index.html na raiz do projeto ou na pasta dist/
-  const candidatePaths = [
-    path.join(process.cwd(), 'dist', 'index.html'),
+  const safeHost = getSafeHost(req);
+  const proto = req.headers?.['x-forwarded-proto'] === 'http' ? 'http' : 'https';
+  const origin = `${proto}://${safeHost}`;
+  const rawOgUrl = `${origin}/${ogImageName}`;
+  const ogUrl = escapeHtmlAttribute(rawOgUrl);
+
+  // Prioriza o dist/index.html compilado pelo Vite; só aceita index.html de dev (/src/main.tsx) em localhost/testes
+  const distHtmlPath = path.join(process.cwd(), 'dist', 'index.html');
+  const devCandidatePaths = [
     path.join(process.cwd(), 'index.html'),
     path.resolve('index.html')
   ];
 
   let rawHtml = '';
-  for (const p of candidatePaths) {
-    if (fs.existsSync(p)) {
-      try {
-        rawHtml = fs.readFileSync(p, 'utf8');
-        break;
-      } catch {
-        // tenta o próximo candidato
+  if (fs.existsSync(distHtmlPath)) {
+    try {
+      rawHtml = fs.readFileSync(distHtmlPath, 'utf8');
+    } catch {
+      rawHtml = '';
+    }
+  }
+
+  if (!rawHtml) {
+    for (const p of devCandidatePaths) {
+      if (fs.existsSync(p)) {
+        try {
+          const candidate = fs.readFileSync(p, 'utf8');
+          // Em produção real na Vercel, nunca serve /src/main.tsx não-compilado se não for ambiente local/teste
+          if (!process.env.VERCEL || isLocalDevHost(safeHost) || !candidate.includes('/src/main.tsx')) {
+            rawHtml = candidate;
+            break;
+          }
+        } catch {
+          // tenta o próximo candidato
+        }
       }
     }
   }
 
   if (!rawHtml) {
-    // Fallback de contingência caso index.html não seja legível
-    res.writeHead(302, { Location: `/${ogImageName}` });
-    return res.end();
+    // Contingência segura: redireciona para a rota limpa da SPA (sem ?theme=) para que o CDN estático sirva o app,
+    // preservando as metatags Open Graph para crawlers de redes sociais.
+    const rawUrl = typeof req.url === 'string' ? req.url : '/';
+    const cleanPath = rawUrl.split('?')[0] || '/';
+    const safePath = cleanPath.startsWith('/') && !cleanPath.startsWith('//') ? escapeHtmlAttribute(cleanPath) : '/';
+    const fallbackHtml = `<!doctype html><html lang="pt-BR" class="${theme}"><head><meta charset="UTF-8" /><title>Mirio — Ideias visuais em tempo real</title><meta property="og:title" content="Mirio — Ideias visuais em tempo real" /><meta property="og:image" content="${ogUrl}" /><meta property="og:image:secure_url" content="${ogUrl}" /><meta name="twitter:card" content="summary_large_image" /><meta name="twitter:image" content="${ogUrl}" /><meta name="theme-color" content="${themeColor}" /><script>try{localStorage.setItem('mirio_theme','${theme}');}catch(e){}window.location.replace('${safePath}');</script></head><body></body></html>`;
+    res.writeHead(200, {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'no-store, max-age=0',
+      'X-Content-Type-Options': 'nosniff'
+    });
+    return res.end(fallbackHtml);
   }
-
-  const safeHost = getSafeHost(req);
-  const proto = req.headers['x-forwarded-proto'] === 'http' ? 'http' : 'https';
-  const origin = `${proto}://${safeHost}`;
-  const rawOgUrl = `${origin}/${ogImageName}`;
-  const ogUrl = escapeHtmlAttribute(rawOgUrl);
 
   // Substituição das metatags para corresponder ao tema dinâmico
   let modifiedHtml = rawHtml
@@ -114,8 +141,7 @@ export default function handler(req, res) {
     'Content-Type': 'text/html; charset=utf-8',
     'Cache-Control': 'public, max-age=60, s-maxage=3600, stale-while-revalidate=86400',
     'Vary': 'Sec-CH-Prefers-Color-Scheme',
-    'X-Content-Type-Options': 'nosniff',
-    'Access-Control-Allow-Origin': '*'
+    'X-Content-Type-Options': 'nosniff'
   });
   res.end(modifiedHtml);
 }
