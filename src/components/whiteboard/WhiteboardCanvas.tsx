@@ -1,7 +1,12 @@
 import React, { useRef, useState, useEffect, useLayoutEffect, useCallback, useMemo } from 'react';
 import { Stage, Layer, Transformer, Rect, Circle, Line, Star, Path, Ellipse, Group, Text } from 'react-konva';
 import Konva from 'konva';
-import type { CanvasElement, ToolType, ElementType } from '../../types/element';
+import type {
+  CanvasElement,
+  ToolType,
+  ElementType,
+  KanbanColumnItem,
+} from '../../types/element';
 import { isGeometricShape } from '../../types/element';
 import type { UserPresence, CurrentUser, BoardMember } from '../../types/board';
 import { StickyNoteItem } from './StickyNoteItem';
@@ -15,6 +20,34 @@ import { TextItem } from './TextItem';
 import { RichTextEditor, type RichTextFinishPayload } from './RichTextEditor';
 import { FrameItem } from './FrameItem';
 import { StickerItem } from './StickerItem';
+import { CommentPinItem } from './CommentPinItem';
+import { CommentThreadPopover } from './CommentThreadPopover';
+import { TableItem } from './TableItem';
+import { KanbanItem } from './KanbanItem';
+import { CodeBlockItem } from './CodeBlockItem';
+import {
+  CODE_TOKEN_COLORS_DARK,
+  CODE_TOKEN_COLORS_LIGHT,
+  getDefaultCodeSnippet,
+  tokenizeCodeBlock,
+} from '../../utils/richEmbeds';
+import { RichLinkCardItem } from './RichLinkCardItem';
+import { ImageCropModal } from './ImageCropModal';
+import {
+  createDefaultTableData,
+  normalizeTableData,
+  computeTableDimensions,
+  getTableCellLocalRect,
+  updateTableCell,
+  createDefaultKanbanColumns,
+  computeKanbanDimensions,
+  getKanbanFieldLocalRect,
+  type KanbanEditableTarget,
+} from '../../utils/tableAndKanban';
+import { createMindMapRootPayload, isMindMapNode } from '../../utils/mindMap';
+import { useMindMapActions } from '../../hooks/canvas/useMindMapActions';
+import { useConnectorEndpointDrag } from '../../hooks/canvas/useConnectorEndpointDrag';
+import { buildRichPastedElementPayload } from '../../hooks/canvas/useRichPasteDetector';
 import { ElementLinkBalloon } from './ElementLinkBalloon';
 import { EditLinkModal } from './EditLinkModal';
 import { CanvasGrid, type GridType, type GridSize } from './CanvasGrid';
@@ -29,6 +62,17 @@ import {
 import { SelectionContextBar } from './SelectionContextBar';
 import { BoardContextMenu } from './BoardContextMenu';
 import { alignElements, type AlignmentType } from '../../utils/alignment';
+import {
+  expandSelectionWithGroups,
+  createGroupUpdates,
+  createUngroupUpdates,
+  generateGroupId,
+} from '../../utils/grouping';
+import {
+  copyElementStyle,
+  buildPasteStyleUpdates,
+  hasCopiedElementStyle,
+} from '../../utils/styleClipboard';
 import { getElementsContainedInFrame } from '../../utils/frameContainment.ts';
 import { cleanGifUrl } from '../../utils/gif';
 import { sortElementsByLayer, computeLayerReorderUpdates, getNextZIndex, selectionSupportsLayerReorder, resolveLayerShortcut } from '../../utils/layerOrder';
@@ -71,6 +115,7 @@ import {
   blendTouchVelocity,
   computePinchViewport,
   isCoarseOrMobileViewport,
+  publishElementDragOffset,
   publishViewport,
   stepInertialPan,
   type TouchVelocity,
@@ -149,6 +194,10 @@ interface WhiteboardCanvasProps {
   onOpenTemplates?: () => void;
   onOpenStickers?: () => void;
   onResetZoom?: () => void;
+  onOpenSearch?: () => void;
+  onToggleMinimap?: () => void;
+  showMinimap?: boolean;
+  isDarkMode?: boolean;
   gridType?: GridType;
   gridSize?: GridSize;
   gridOpacity?: number;
@@ -344,6 +393,10 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
   onOpenTemplates,
   onOpenStickers,
   onResetZoom,
+  onOpenSearch,
+  onToggleMinimap,
+  showMinimap = false,
+  isDarkMode = false,
   gridType = 'hybrid',
   gridSize = 'medium',
   gridOpacity,
@@ -395,6 +448,8 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
   interface DragSession {
     leaderId: string;
     initialLeaderPos: { x: number; y: number };
+    draggedIds: Set<string>;
+    initialBoundsById: Map<string, WorldBounds>;
     items: Map<string, DragSessionItem>;
     connectedArrows: DragArrowSession[];
     smartGuidesData: {
@@ -472,6 +527,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     targetElementIds: [],
   });
   const [isMouseDownState, setIsMouseDownState] = useState(false);
+  const isMouseDownRef = useRef(false);
 
   // Rastreamento do cursor no canvas e controle de área de transferência (Ctrl+C, Ctrl+V, Ctrl+X)
   const mouseWorldPosRef = useRef<{ x: number; y: number } | null>(null);
@@ -495,6 +551,327 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
   } | null>(null);
   // Alvo de snap magnético ao arrastar ponta de seta/conector
   const [snapTargetAnchor, setSnapTargetAnchor] = useState<{ x: number; y: number } | null>(null);
+
+  // Estados dedicados das novas ferramentas (Comentário em Thread, Recorte de Imagem e Editor de Células/Código)
+  const [activeCommentThreadId, setActiveCommentThreadId] = useState<string | null>(null);
+  const [cropModalElementId, setCropModalElementId] = useState<string | null>(null);
+  const [activeTableCell, setActiveTableCell] = useState<{
+    elementId: string;
+    rowIdx: number;
+    colIdx: number;
+  } | null>(null);
+  const activeTableCellRef = useRef(activeTableCell);
+  activeTableCellRef.current = activeTableCell;
+
+  type WidgetFieldEditorState =
+    | {
+        kind: 'table';
+        elementId: string;
+        rowIdx: number;
+        colIdx: number;
+        offsetX: number;
+        offsetY: number;
+        width: number;
+        height: number;
+        value: string;
+        selectAllOnFocus?: boolean;
+      }
+    | {
+        kind: 'kanban';
+        elementId: string;
+        target: KanbanEditableTarget;
+        offsetX: number;
+        offsetY: number;
+        width: number;
+        height: number;
+        value: string;
+        fallbackColumns?: KanbanColumnItem[];
+        selectAllOnFocus?: boolean;
+      }
+    | {
+        kind: 'code';
+        elementId: string;
+        offsetX: number;
+        offsetY: number;
+        width: number;
+        height: number;
+        value: string;
+        selectAllOnFocus?: boolean;
+      };
+
+  const [widgetFieldEditor, setWidgetFieldEditor] = useState<WidgetFieldEditorState | null>(null);
+  const widgetFieldEditorRef = useRef<WidgetFieldEditorState | null>(null);
+  widgetFieldEditorRef.current = widgetFieldEditor;
+  const widgetEditorControlRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+
+  const activeWidgetEditorKey = widgetFieldEditor
+    ? widgetFieldEditor.kind === 'table'
+      ? `table:${widgetFieldEditor.elementId}:${widgetFieldEditor.rowIdx}:${widgetFieldEditor.colIdx}`
+      : widgetFieldEditor.kind === 'kanban'
+        ? widgetFieldEditor.target.kind === 'boardTitle'
+          ? `kanban:${widgetFieldEditor.elementId}:title`
+          : widgetFieldEditor.target.kind === 'column'
+            ? `kanban:${widgetFieldEditor.elementId}:col:${widgetFieldEditor.target.colId}`
+            : `kanban:${widgetFieldEditor.elementId}:card:${widgetFieldEditor.target.colId}:${widgetFieldEditor.target.cardId}`
+        : `code:${widgetFieldEditor.elementId}`
+    : null;
+
+  useLayoutEffect(() => {
+    if (!activeWidgetEditorKey) return;
+    const ctrl = widgetEditorControlRef.current;
+    const currentEditor = widgetFieldEditorRef.current;
+    if (!ctrl || !currentEditor) return;
+    ctrl.focus({ preventScroll: true });
+    if (ctrl instanceof HTMLInputElement) {
+      if (currentEditor.selectAllOnFocus !== false) {
+        ctrl.select();
+      } else {
+        const len = ctrl.value.length;
+        ctrl.setSelectionRange(len, len);
+      }
+    }
+  }, [activeWidgetEditorKey]);
+
+  const commitWidgetFieldEditor = useCallback(
+    (overrideValue?: string): KanbanColumnItem[] | null => {
+      const active = widgetFieldEditorRef.current;
+      if (!active) return null;
+
+      widgetFieldEditorRef.current = null;
+      setWidgetFieldEditor(null);
+
+      const finalValue = overrideValue !== undefined ? overrideValue : active.value;
+      const targetEl = elementsRef.current.find((el) => el.id === active.elementId);
+
+      if (active.kind === 'table') {
+        if (!targetEl) return null;
+        onUpdateElement(
+          targetEl.id,
+          updateTableCell(targetEl, active.rowIdx, active.colIdx, finalValue)
+        );
+        return null;
+      }
+
+      if (active.kind === 'kanban') {
+        const t = active.target;
+        const baseCols =
+          (targetEl?.kanbanColumns && targetEl.kanbanColumns.length > 0
+            ? targetEl.kanbanColumns
+            : active.fallbackColumns) || createDefaultKanbanColumns();
+
+        if (t.kind === 'boardTitle') {
+          if (targetEl) {
+            onUpdateElement(targetEl.id, {
+              kanbanTitle: finalValue.trim() || 'Quadro Kanban',
+            });
+          }
+          return baseCols;
+        }
+
+        if (t.kind === 'column') {
+          const nextCols = baseCols.map((c) =>
+            c.id === t.colId ? { ...c, title: finalValue.trim() || c.title } : c
+          );
+          if (targetEl) {
+            onUpdateElement(targetEl.id, { kanbanColumns: nextCols });
+          }
+          return nextCols;
+        }
+
+        const hasTargetCardInLive = baseCols.some(
+          (c) => c.id === t.colId && c.cards.some((card) => card.id === t.cardId)
+        );
+        const sourceCols =
+          !hasTargetCardInLive && active.fallbackColumns ? active.fallbackColumns : baseCols;
+
+        const nextCols = sourceCols.map((c) =>
+          c.id === t.colId
+            ? {
+                ...c,
+                cards: c.cards.map((card) =>
+                  card.id === t.cardId
+                    ? { ...card, title: finalValue.trim() || card.title }
+                    : card
+                ),
+              }
+            : c
+        );
+        if (targetEl) {
+          const dims = computeKanbanDimensions(nextCols);
+          onUpdateElement(targetEl.id, {
+            kanbanColumns: nextCols,
+            width: dims.width,
+            height: dims.height,
+          });
+        }
+        return nextCols;
+      }
+
+      if (active.kind === 'code') {
+        if (!targetEl) return null;
+        const lineCount = Math.max(3, finalValue.split('\n').length);
+        onUpdateElement(targetEl.id, {
+          text: finalValue,
+          height: Math.max(targetEl.height || 150, 58 + lineCount * 21),
+        });
+        return null;
+      }
+
+      return null;
+    },
+    [onUpdateElement]
+  );
+
+  const { spawnMindMapRelative } = useMindMapActions({
+    elementsRef,
+    currentUser,
+    readOnly,
+    canCommentOnly,
+    onAddElement,
+    onBatchUpdateElements,
+    onSelectionChange,
+  });
+
+  const handleOpenCommentThread = useCallback((id: string) => {
+    setActiveCommentThreadId(id);
+  }, []);
+
+  const handleSelectTableCell = useCallback(
+    (elementId: string, rowIdx: number, colIdx: number) => {
+      const next = { elementId, rowIdx, colIdx };
+      activeTableCellRef.current = next;
+      setActiveTableCell(next);
+    },
+    []
+  );
+
+  const openTableCellEditorByCoords = useCallback(
+    (
+      el: CanvasElement,
+      rowIdx: number,
+      colIdx: number,
+      options?: { initialValue?: string; selectAll?: boolean }
+    ) => {
+      if (widgetFieldEditorRef.current) {
+        commitWidgetFieldEditor();
+      }
+      const latestEl = elementsRef.current.find((item) => item.id === el.id) || el;
+      const cellRect = getTableCellLocalRect(latestEl, rowIdx, colIdx);
+      const cellSel = { elementId: latestEl.id, rowIdx, colIdx };
+      activeTableCellRef.current = cellSel;
+      setActiveTableCell(cellSel);
+
+      const next: WidgetFieldEditorState = {
+        kind: 'table',
+        elementId: latestEl.id,
+        rowIdx,
+        colIdx,
+        offsetX: cellRect.offsetX,
+        offsetY: cellRect.offsetY,
+        width: cellRect.width,
+        height: cellRect.height,
+        value: options?.initialValue !== undefined ? options.initialValue : cellRect.value,
+        selectAllOnFocus: options?.selectAll ?? true,
+      };
+      widgetFieldEditorRef.current = next;
+      setWidgetFieldEditor(next);
+    },
+    [commitWidgetFieldEditor]
+  );
+
+  const handleEditTableCell = useCallback(
+    (
+      elementId: string,
+      rowIdx: number,
+      colIdx: number,
+      rect: { worldX: number; worldY: number; width: number; height: number },
+      currentValue: string
+    ) => {
+      if (widgetFieldEditorRef.current) {
+        commitWidgetFieldEditor();
+      }
+      const el = elementsRef.current.find((item) => item.id === elementId);
+      const localRect = el ? getTableCellLocalRect(el, rowIdx, colIdx) : null;
+      const cellSel = { elementId, rowIdx, colIdx };
+      activeTableCellRef.current = cellSel;
+      setActiveTableCell(cellSel);
+
+      const next: WidgetFieldEditorState = {
+        kind: 'table',
+        elementId,
+        rowIdx,
+        colIdx,
+        offsetX: localRect ? localRect.offsetX : el ? rect.worldX - el.x : 0,
+        offsetY: localRect ? localRect.offsetY : el ? rect.worldY - el.y : 0,
+        width: localRect ? localRect.width : rect.width,
+        height: localRect ? localRect.height : rect.height,
+        value: currentValue,
+        selectAllOnFocus: true,
+      };
+      widgetFieldEditorRef.current = next;
+      setWidgetFieldEditor(next);
+    },
+    [commitWidgetFieldEditor]
+  );
+
+  const handleEditKanbanField = useCallback(
+    (
+      elementId: string,
+      target: KanbanEditableTarget,
+      rect: { worldX: number; worldY: number; width: number; height: number },
+      currentValue: string,
+      fallbackColumns?: KanbanColumnItem[]
+    ) => {
+      if (widgetFieldEditorRef.current) {
+        commitWidgetFieldEditor();
+      }
+      const el = elementsRef.current.find((item) => item.id === elementId);
+      const cols =
+        (el?.kanbanColumns && el.kanbanColumns.length > 0
+          ? el.kanbanColumns
+          : fallbackColumns) || createDefaultKanbanColumns();
+      const localRect = getKanbanFieldLocalRect(cols, target);
+      const next: WidgetFieldEditorState = {
+        kind: 'kanban',
+        elementId,
+        target,
+        offsetX: el ? localRect.offsetX : rect.worldX,
+        offsetY: el ? localRect.offsetY : rect.worldY,
+        width: localRect.width,
+        height: localRect.height,
+        value: currentValue,
+        ...(fallbackColumns ? { fallbackColumns } : {}),
+      };
+      widgetFieldEditorRef.current = next;
+      setWidgetFieldEditor(next);
+    },
+    [commitWidgetFieldEditor]
+  );
+
+  const handleEditCodeBlock = useCallback(
+    (
+      elementId: string,
+      rect: { worldX: number; worldY: number; width: number; height: number },
+      currentCode: string
+    ) => {
+      if (widgetFieldEditorRef.current) {
+        commitWidgetFieldEditor();
+      }
+      const el = elementsRef.current.find((item) => item.id === elementId);
+      const next: WidgetFieldEditorState = {
+        kind: 'code',
+        elementId,
+        offsetX: el ? rect.worldX - el.x : 0,
+        offsetY: el ? rect.worldY - el.y : 34,
+        width: rect.width,
+        height: rect.height,
+        value: currentCode,
+      };
+      widgetFieldEditorRef.current = next;
+      setWidgetFieldEditor(next);
+    },
+    [commitWidgetFieldEditor]
+  );
 
   const handleStartQuickConnect = useCallback(
     (
@@ -1079,6 +1456,42 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         }
       }
     }
+
+    if (widgetFieldEditorRef.current) {
+      const wEditor = widgetFieldEditorRef.current;
+      const widgetInput = document.getElementById('widget-field-editor-control');
+      if (widgetInput) {
+        const elem = elementsRef.current.find((e) => e.id === wEditor.elementId);
+        if (elem) {
+          let offsetX = wEditor.offsetX;
+          let offsetY = wEditor.offsetY;
+          let fieldW = wEditor.width;
+          let fieldH = wEditor.height;
+          if (wEditor.kind === 'table') {
+            const r = getTableCellLocalRect(elem, wEditor.rowIdx, wEditor.colIdx);
+            offsetX = r.offsetX;
+            offsetY = r.offsetY;
+            fieldW = r.width;
+            fieldH = r.height;
+          } else if (wEditor.kind === 'kanban') {
+            const cols =
+              (elem.kanbanColumns && elem.kanbanColumns.length > 0
+                ? elem.kanbanColumns
+                : wEditor.fallbackColumns) || createDefaultKanbanColumns();
+            const r = getKanbanFieldLocalRect(cols, wEditor.target);
+            offsetX = r.offsetX;
+            offsetY = r.offsetY;
+            fieldW = r.width;
+            fieldH = r.height;
+          }
+          widgetInput.style.left = `${(elem.x + offsetX) * currentScale + pos.x}px`;
+          widgetInput.style.top = `${(elem.y + offsetY) * currentScale + pos.y}px`;
+          widgetInput.style.width = `${Math.max(120, fieldW * currentScale)}px`;
+          widgetInput.style.height = `${Math.max(wEditor.kind === 'code' ? 120 : 28, fieldH * currentScale)}px`;
+          widgetInput.style.fontSize = `${Math.max(11, 13 * currentScale)}px`;
+        }
+      }
+    }
   };
 
   const commitViewportToReact = (pos: { x: number; y: number }, currentScale: number, immediate = false) => {
@@ -1280,9 +1693,14 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
   // Atualiza nós anexados ao Konva Transformer (ignora nós bloqueados para não exibir alças de redimensionamento)
   useEffect(() => {
     if (!transformerRef.current || !stageRef.current) return;
+    if (dragSessionRef.current) {
+      return;
+    }
     if (readOnly) {
-      transformerRef.current.nodes([]);
-      transformerRef.current.getLayer()?.batchDraw();
+      if (transformerRef.current.nodes().length > 0) {
+        transformerRef.current.nodes([]);
+        transformerRef.current.getLayer()?.batchDraw();
+      }
       return;
     }
     if (selectedIds.length > 0) {
@@ -1301,15 +1719,25 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           if (node) nodes.push(node);
         }
       });
-      transformerRef.current.nodes(nodes);
+
+      const tr = transformerRef.current;
+      const currentNodes = tr.nodes();
+      const isSameNodeList =
+        currentNodes.length === nodes.length &&
+        currentNodes.every((existingNode, idx) => existingNode === nodes[idx]);
+
+      if (isSameNodeList) {
+        tr.forceUpdate();
+        tr.getLayer()?.batchDraw();
+        return;
+      }
+
+      tr.nodes(nodes);
 
       // Desativa o proxy drag interno redundante do Transformer no Konva.
       // O WhiteboardCanvas gerencia nativamente a movimentação coordenada dos nós
       // selecionados com cache O(1), suporte a itens bloqueados, snap magnético e setas conectadas.
-      // Isso evita que o Konva inicie múltiplos drag runners simultâneos (ex: 48 itens ao mesmo tempo),
-      // o que causava congelamento da aba e perda severa de performance.
-      const tr = transformerRef.current;
-      if (tr && typeof (tr as any)._getEventNamespace === 'function') {
+      if (typeof (tr as any)._getEventNamespace === 'function') {
         const ns = (tr as any)._getEventNamespace();
         nodes.forEach((node) => {
           node.off(`dragstart.${ns}`);
@@ -1318,8 +1746,8 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         });
       }
 
-      transformerRef.current.getLayer()?.batchDraw();
-    } else {
+      tr.getLayer()?.batchDraw();
+    } else if (transformerRef.current.nodes().length > 0) {
       transformerRef.current.nodes([]);
       transformerRef.current.getLayer()?.batchDraw();
     }
@@ -1610,6 +2038,20 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
                 ? mouseWorldPosRef.current.y
                 : Math.round((-stagePosRef.current.y + window.innerHeight / 2) / scaleRef.current);
 
+            const richPayload = buildRichPastedElementPayload(
+              trimmed,
+              { x: targetX, y: targetY },
+              getNextZIndex(elements),
+              currentUser.uid,
+              currentUser.displayName
+            );
+
+            if (richPayload) {
+              const richId = await onAddElement(richPayload);
+              if (richId) onSelectionChange([richId]);
+              return;
+            }
+
             const stickyElem: CanvasElement = {
               id: 'elem_' + Math.random().toString(36).substring(2, 11),
               type: 'sticky',
@@ -1669,8 +2111,12 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
 
       const now = Date.now();
       const idMap = new Map<string, string>();
+      const groupMap = new Map<string, string>();
       copiedElements.forEach((elem, idx) => {
         idMap.set(elem.id, 'elem_' + Math.random().toString(36).substring(2, 11) + idx);
+        if (elem.groupId && !groupMap.has(elem.groupId)) {
+          groupMap.set(elem.groupId, generateGroupId());
+        }
       });
 
       const newElements: CanvasElement[] = copiedElements.map((elem, idx) => {
@@ -1685,6 +2131,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           updatedBy: currentUser.uid,
           updatedByName: currentUser.displayName,
           updatedAt: now,
+          ...(elem.groupId ? { groupId: groupMap.get(elem.groupId) } : {}),
         };
 
         // Remapeia vínculos magnéticos de setas e linhas para os novos nós clonados
@@ -1788,8 +2235,69 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         fill: '#334155',
         textColor: '#ffffff',
       });
+    } else if (elem.type === 'arrow' || elem.type === 'line') {
+      const pts = elem.points && elem.points.length >= 4 ? elem.points : [0, 0, 150, 100];
+      const midIdx = Math.floor(pts.length / 4) * 2;
+      const mx = elem.x + (pts[midIdx] || 0);
+      const my = elem.y + (pts[midIdx + 1] || 0);
+      setInlineEditing({
+        elementId: elem.id,
+        type: elem.type,
+        worldX: Math.round(mx - 70),
+        worldY: Math.round(my - 18),
+        width: 140,
+        height: 36,
+        text: stripMarkdownLinks(elem.text || ''),
+        fill: isDarkMode ? '#18181b' : '#ffffff',
+        textColor: isDarkMode ? '#fafafa' : '#09090b',
+        fontSize: elem.fontSize || 13,
+        textAlign: 'center',
+      });
     }
-  }, [elements]);
+  }, [elements, isDarkMode]);
+
+  // Agrupar e Desagrupar seleção (Ctrl+G / Ctrl+Shift+G)
+  const handleGroupSelected = useCallback(() => {
+    if (readOnly || canCommentOnly || selectedIds.length < 2) return;
+    const result = createGroupUpdates(elements, selectedIds);
+    if (!result || result.updates.length === 0) return;
+    if (onBatchUpdateElements) {
+      onBatchUpdateElements(result.updates);
+    } else {
+      result.updates.forEach((u) => onUpdateElement(u.id, u.updates));
+    }
+    showCanvasToast('Elementos agrupados', `${result.updates.length} itens agora movem e selecionam juntos.`);
+  }, [readOnly, canCommentOnly, selectedIds, elements, onBatchUpdateElements, onUpdateElement, showCanvasToast]);
+
+  const handleUngroupSelected = useCallback(() => {
+    if (readOnly || canCommentOnly || selectedIds.length === 0) return;
+    const updates = createUngroupUpdates(elements, selectedIds);
+    if (updates.length === 0) return;
+    if (onBatchUpdateElements) {
+      onBatchUpdateElements(updates);
+    } else {
+      updates.forEach((u) => onUpdateElement(u.id, u.updates));
+    }
+    showCanvasToast('Grupo desfeito', 'Os elementos voltaram a ser independentes.');
+  }, [readOnly, canCommentOnly, selectedIds, elements, onBatchUpdateElements, onUpdateElement, showCanvasToast]);
+
+  const handleCopyStyleSelected = useCallback(() => {
+    if (selectedElements.length === 0) return;
+    copyElementStyle(selectedElements[0]);
+    showCanvasToast('Estilo copiado', 'Use Ctrl+Alt+V para aplicar o estilo em outros elementos.');
+  }, [selectedElements, showCanvasToast]);
+
+  const handlePasteStyleSelected = useCallback(() => {
+    if (readOnly || canCommentOnly || selectedElements.length === 0) return;
+    const updates = buildPasteStyleUpdates(selectedElements);
+    if (updates.length === 0) return;
+    if (onBatchUpdateElements) {
+      onBatchUpdateElements(updates);
+    } else {
+      updates.forEach((u) => onUpdateElement(u.id, u.updates));
+    }
+    showCanvasToast('Estilo aplicado', `Formatação colada em ${updates.length} ${updates.length === 1 ? 'item' : 'itens'}.`);
+  }, [readOnly, canCommentOnly, selectedElements, onBatchUpdateElements, onUpdateElement, showCanvasToast]);
 
   // Atalhos de teclado
   useEffect(() => {
@@ -1805,6 +2313,97 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
 
       if (e.code === 'Space') {
         setIsSpacePressed(true);
+      }
+
+      // Interação estilo planilha quando uma Tabela Editável está selecionada:
+      // digitar qualquer caractere, Enter, F2, Tab ou Setas opera direto na célula ativa sem disparar atalhos globais de ferramentas!
+      if (
+        !readOnly &&
+        !canCommentOnly &&
+        !inlineEditing &&
+        !widgetFieldEditorRef.current &&
+        selectedElements.length === 1 &&
+        selectedElements[0].type === 'table' &&
+        !selectedElements[0].locked
+      ) {
+        const tableEl = selectedElements[0];
+        const rows = normalizeTableData(tableEl.tableData);
+        const rowCount = rows.length;
+        const colCount = rows[0]?.length || 3;
+        const curCell =
+          activeTableCellRef.current?.elementId === tableEl.id
+            ? {
+                rowIdx: Math.max(0, Math.min(rowCount - 1, activeTableCellRef.current.rowIdx)),
+                colIdx: Math.max(0, Math.min(colCount - 1, activeTableCellRef.current.colIdx)),
+              }
+            : { rowIdx: Math.min(1, rowCount - 1), colIdx: 0 };
+
+        if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+          if (e.key === 'Enter' || e.key === 'F2') {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            openTableCellEditorByCoords(tableEl, curCell.rowIdx, curCell.colIdx, {
+              selectAll: true,
+            });
+            return;
+          }
+
+          if (e.key === 'Tab') {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            const total = rowCount * colCount;
+            const flat =
+              (curCell.rowIdx * colCount + curCell.colIdx + (e.shiftKey ? -1 : 1) + total) % total;
+            const nextCell = {
+              elementId: tableEl.id,
+              rowIdx: Math.floor(flat / colCount),
+              colIdx: flat % colCount,
+            };
+            activeTableCellRef.current = nextCell;
+            setActiveTableCell(nextCell);
+            return;
+          }
+
+          if (
+            activeTableCellRef.current?.elementId === tableEl.id &&
+            !e.shiftKey &&
+            ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)
+          ) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            const dRow = e.key === 'ArrowUp' ? -1 : e.key === 'ArrowDown' ? 1 : 0;
+            const dCol = e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : 0;
+            const nextCell = {
+              elementId: tableEl.id,
+              rowIdx: Math.max(0, Math.min(rowCount - 1, curCell.rowIdx + dRow)),
+              colIdx: Math.max(0, Math.min(colCount - 1, curCell.colIdx + dCol)),
+            };
+            activeTableCellRef.current = nextCell;
+            setActiveTableCell(nextCell);
+            return;
+          }
+
+          if (e.key === 'Backspace' && activeTableCellRef.current?.elementId === tableEl.id) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            onUpdateElement(tableEl.id, updateTableCell(tableEl, curCell.rowIdx, curCell.colIdx, ''));
+            openTableCellEditorByCoords(tableEl, curCell.rowIdx, curCell.colIdx, {
+              initialValue: '',
+              selectAll: false,
+            });
+            return;
+          }
+
+          if (e.key.length === 1 && e.code !== 'Space' && e.key !== '?') {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            openTableCellEditorByCoords(tableEl, curCell.rowIdx, curCell.colIdx, {
+              initialValue: e.key,
+              selectAll: false,
+            });
+            return;
+          }
+        }
       }
 
       // Deletar seleção
@@ -1886,18 +2485,90 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
 
       // Desmarcar tudo com Escape
       if (e.key === 'Escape') {
+        activeTableCellRef.current = null;
+        setActiveTableCell(null);
         onSelectionChange([]);
       }
 
-      // Iniciar edição de texto no elemento selecionado com Enter (Post-it, Forma, Texto)
+      // Mapa Mental: Tab cria nó filho conectado e Enter (em nós filhos) cria nó irmão
+      if (
+        (e.key === 'Tab' || e.key === 'Enter') &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.altKey &&
+        !readOnly &&
+        !canCommentOnly &&
+        selectedElements.length === 1 &&
+        !inlineEditing &&
+        isMindMapNode(selectedElements[0])
+      ) {
+        if (e.key === 'Tab') {
+          e.preventDefault();
+          void spawnMindMapRelative(selectedElements[0].id, 'child');
+          return;
+        }
+        if (e.key === 'Enter' && !e.shiftKey && selectedElements[0].mindmapParentId) {
+          e.preventDefault();
+          void spawnMindMapRelative(selectedElements[0].id, 'sibling');
+          return;
+        }
+      }
+
+      // Iniciar edição de texto no elemento selecionado com Enter (Post-it, Forma, Texto, Seta)
       if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
         if (!readOnly && !canCommentOnly && selectedElements.length === 1 && !inlineEditing) {
           const sel = selectedElements[0];
-          if (!sel.locked && (isGeometricShape(sel.type) || ['sticky', 'text', 'frame'].includes(sel.type))) {
+          if (!sel.locked && (isGeometricShape(sel.type) || ['sticky', 'text', 'frame', 'arrow', 'line'].includes(sel.type))) {
             e.preventDefault();
             handleStartEditingElement(sel.id);
             return;
           }
+        }
+      }
+
+      // Buscar texto no quadro: Ctrl+F / Cmd+F
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'f' || e.key === 'F')) {
+        if (onOpenSearch) {
+          e.preventDefault();
+          onOpenSearch();
+          return;
+        }
+      }
+
+      // Alternar Minimapa: M
+      if (!e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && (e.key === 'm' || e.key === 'M')) {
+        if (onToggleMinimap) {
+          e.preventDefault();
+          onToggleMinimap();
+          return;
+        }
+      }
+
+      // Agrupar / Desagrupar: Ctrl+G e Ctrl+Shift+G
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'g' || e.key === 'G')) {
+        if (!readOnly && !canCommentOnly) {
+          e.preventDefault();
+          if (e.shiftKey) {
+            handleUngroupSelected();
+          } else {
+            handleGroupSelected();
+          }
+          return;
+        }
+      }
+
+      // Copiar / Colar Estilo: Ctrl+Alt+C e Ctrl+Alt+V
+      if ((e.ctrlKey || e.metaKey) && e.altKey && !e.shiftKey) {
+        const k = e.key.toLowerCase();
+        if (k === 'c' && selectedElements.length >= 1) {
+          e.preventDefault();
+          handleCopyStyleSelected();
+          return;
+        }
+        if (k === 'v' && hasCopiedElementStyle() && selectedElements.length >= 1 && !readOnly && !canCommentOnly) {
+          e.preventDefault();
+          handlePasteStyleSelected();
+          return;
         }
       }
 
@@ -2046,6 +2717,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         if (e.key === 'v' || e.key === 'V') onSelectTool('select');
         if (e.key === 'h' || e.key === 'H') onSelectTool('pan');
         if (!readOnly && (e.key === 'n' || e.key === 'N')) onSelectTool('sticky');
+        if (!readOnly && (e.key === 'k' || e.key === 'K')) onSelectTool('comment');
         if (!readOnly && (e.key === 'c' || e.key === 'C')) onSelectTool('checklist');
         if (!readOnly && !canCommentOnly) {
           if (e.key === 'f' || e.key === 'F') onSelectTool('frame');
@@ -2135,6 +2807,14 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     smartDrawing,
     handleStartEditingElement,
     showCanvasToast,
+    handlePasteStyleSelected,
+    onToggleMinimap,
+    handleCopyStyleSelected,
+    handleGroupSelected,
+    handleUngroupSelected,
+    onOpenSearch,
+    spawnMindMapRelative,
+    openTableCellEditorByCoords,
   ]);
 
   // Listener do evento nativo de 'paste' para captura rica de dados (imagens, textos e itens)
@@ -2263,6 +2943,10 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     cancelInertia();
     updateContainerRect();
     const now = performance.now();
+
+    if (widgetFieldEditorRef.current) {
+      commitWidgetFieldEditor();
+    }
 
     if (touches.length >= 2) {
       e.evt.preventDefault();
@@ -2568,11 +3252,11 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       if (selectedIds.includes(elemId)) {
         onSelectionChange(selectedIds.filter((id) => id !== elemId));
       } else {
-        onSelectionChange([...selectedIds, elemId]);
+        onSelectionChange(expandSelectionWithGroups(elements, [...selectedIds, elemId]));
       }
     } else {
       if (!selectedIds.includes(elemId)) {
-        onSelectionChange([elemId]);
+        onSelectionChange(expandSelectionWithGroups(elements, [elemId]));
       }
     }
   }, [
@@ -2889,13 +3573,20 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       return;
     }
 
-    setIsMouseDownState(true);
+    isMouseDownRef.current = true;
+    if (isDraggableStage || currentTool === 'laser') {
+      setIsMouseDownState(true);
+    }
     onCanvasClick?.();
     const isClickedOnStage = e.target === stageRef.current;
     const worldPos = getPointerWorldPos();
 
     if (inlineEditing) {
       handleFinishEditing();
+    }
+
+    if (widgetFieldEditorRef.current) {
+      commitWidgetFieldEditor();
     }
 
     if (activeChecklistEditorRef.current) {
@@ -2970,7 +3661,31 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     }
 
     // Se estiver em modo apenas comentários (comment): bloqueia ferramentas de desenho e criação de formas
-    if (canCommentOnly && currentTool !== 'select' && currentTool !== 'sticky') {
+    if (canCommentOnly && currentTool !== 'select' && currentTool !== 'sticky' && currentTool !== 'comment') {
+      return;
+    }
+
+    // Criação imediata de Comentário Fixado em Thread em qualquer ponto do quadro
+    if (currentTool === 'comment') {
+      const commentId = await onAddElement({
+        type: 'comment',
+        x: Math.round(worldPos.x),
+        y: Math.round(worldPos.y - 36),
+        width: 38,
+        height: 38,
+        text: '',
+        commentAuthorColor: currentUser.color || '#2563eb',
+        commentResolved: false,
+        commentReplies: [],
+        zIndex: getNextZIndex(elements) + 100,
+        updatedBy: currentUser.uid,
+        updatedByName: currentUser.displayName,
+      });
+      if (commentId) {
+        onSelectionChange([commentId]);
+        setActiveCommentThreadId(commentId);
+      }
+      onSelectTool('select');
       return;
     }
 
@@ -3093,6 +3808,8 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         });
 
         if (!e.evt.ctrlKey && !e.evt.metaKey && !e.evt.shiftKey) {
+          activeTableCellRef.current = null;
+          setActiveTableCell(null);
           onSelectionChange([]);
         }
         return;
@@ -3129,6 +3846,80 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           fill: selectedColor || '#ffffff',
           checklistTitle: 'Lista de Tarefas',
           checklistItems: defaultItems,
+          zIndex: getNextZIndex(elements),
+          updatedBy: currentUser.uid,
+          updatedByName: currentUser.displayName,
+        });
+        onSelectionChange([id]);
+        onSelectTool('select');
+      } else if (currentTool === 'table') {
+        const defaultData = createDefaultTableData();
+        const dims = computeTableDimensions(defaultData);
+        const id = await onAddElement({
+          type: 'table',
+          x: Math.round(worldPos.x - dims.width / 2),
+          y: Math.round(worldPos.y - dims.height / 2),
+          width: dims.width,
+          height: dims.height,
+          tableData: defaultData,
+          tableColWidths: dims.colWidths,
+          tableHeaderRow: true,
+          zIndex: getNextZIndex(elements),
+          updatedBy: currentUser.uid,
+          updatedByName: currentUser.displayName,
+        });
+        if (id) {
+          const initialCell = { elementId: id, rowIdx: 1, colIdx: 0 };
+          activeTableCellRef.current = initialCell;
+          setActiveTableCell(initialCell);
+        }
+        onSelectionChange([id]);
+        onSelectTool('select');
+      } else if (currentTool === 'kanban') {
+        const cols = createDefaultKanbanColumns();
+        const dims = computeKanbanDimensions(cols);
+        const id = await onAddElement({
+          type: 'kanban',
+          x: Math.round(worldPos.x - dims.width / 2),
+          y: Math.round(worldPos.y - dims.height / 2),
+          width: dims.width,
+          height: dims.height,
+          kanbanTitle: 'Quadro Kanban',
+          kanbanColumns: cols,
+          zIndex: getNextZIndex(elements),
+          updatedBy: currentUser.uid,
+          updatedByName: currentUser.displayName,
+        });
+        onSelectionChange([id]);
+        onSelectTool('select');
+      } else if (currentTool === 'mindmap') {
+        const payload = createMindMapRootPayload(
+          worldPos.x,
+          worldPos.y,
+          getNextZIndex(elements),
+          currentUser.uid,
+          currentUser.displayName
+        );
+        const id = await onAddElement(payload);
+        onSelectionChange([id]);
+        onSelectTool('select');
+        showCanvasToast(
+          'Mapa Mental criado',
+          'Pressione Tab para adicionar nós filhos conectados e Enter para nós irmãos.',
+          'info',
+          2600
+        );
+      } else if (currentTool === 'code') {
+        const id = await onAddElement({
+          type: 'code',
+          x: Math.round(worldPos.x - 220),
+          y: Math.round(worldPos.y - 80),
+          width: 440,
+          height: 176,
+          text: getDefaultCodeSnippet('typescript'),
+          codeLanguage: 'typescript',
+          codeTheme: 'dark',
+          fontSize: 13,
           zIndex: getNextZIndex(elements),
           updatedBy: currentUser.uid,
           updatedByName: currentUser.displayName,
@@ -3384,7 +4175,10 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
 
   // Soltar botão do mouse
   const handleMouseUp = async (e: Konva.KonvaEventObject<MouseEvent>) => {
-    setIsMouseDownState(false);
+    if (isMouseDownRef.current) {
+      isMouseDownRef.current = false;
+      setIsMouseDownState((prev) => (prev ? false : prev));
+    }
 
     if (currentTool === 'laser') {
       if (isLocalLaserDrawingRef) isLocalLaserDrawingRef.current = false;
@@ -3773,8 +4567,33 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         textAlign: elem.textAlign || 'left',
         textColor: textColor || '#0f172a',
       });
+      return;
     }
-  }, []);
+
+    if (elem.type === 'arrow' || elem.type === 'line') {
+      setInlineEditing({
+        elementId: id,
+        type: elem.type,
+        worldX: x,
+        worldY: y,
+        width,
+        height,
+        text: cleanText,
+        fill: isDarkMode ? '#18181b' : '#ffffff',
+        fontSize: elem.fontSize || 13,
+        textAlign: 'center',
+        textColor: elem.textColor || (isDarkMode ? '#fafafa' : '#09090b'),
+      });
+    }
+  }, [isDarkMode]);
+
+  // Hook modular para arraste e reconexão magnética das extremidades de setas e linhas
+  const { handleArrowEndpointDragMove, handleArrowEndpointDragEnd } = useConnectorEndpointDrag({
+    elementsRef,
+    elementMap,
+    onUpdateElement,
+    setSnapTargetAnchor,
+  });
 
   const triggerCanvasConfetti = useCallback((worldX: number, worldY: number) => {
     try {
@@ -3843,6 +4662,14 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
   const quantizedStageY = Math.round(stagePos.y / 180) * 180;
   const quantizedScale = Math.round(scale * 10) / 10;
 
+  const activeWidgetEditorElementId = widgetFieldEditor?.elementId ?? null;
+  const activeKanbanEditorTarget =
+    widgetFieldEditor?.kind === 'kanban' ? widgetFieldEditor.target : null;
+  const activeTableEditorRow =
+    widgetFieldEditor?.kind === 'table' ? widgetFieldEditor.rowIdx : null;
+  const activeTableEditorCol =
+    widgetFieldEditor?.kind === 'table' ? widgetFieldEditor.colIdx : null;
+
   const mountedElements = React.useMemo(() => {
     const REACT_CULL_THRESHOLD = 150;
     if (sortedElements.length <= REACT_CULL_THRESHOLD) return sortedElements;
@@ -3851,11 +4678,20 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
     const viewH = typeof window !== 'undefined' ? window.innerHeight : 720;
     const alwaysMounted = new Set(selectedIds);
     if (inlineEditing) alwaysMounted.add(inlineEditing.elementId);
+    if (activeWidgetEditorElementId) alwaysMounted.add(activeWidgetEditorElementId);
+    for (const el of sortedElements) {
+      if (
+        (el.startBinding && alwaysMounted.has(el.startBinding.elementId)) ||
+        (el.endBinding && alwaysMounted.has(el.endBinding.elementId))
+      ) {
+        alwaysMounted.add(el.id);
+      }
+    }
     return sortedElements.filter((el) => {
       if (alwaysMounted.has(el.id)) return true;
       return isBoundsInViewport(getElementWorldBounds(el), viewport, viewW, viewH, 600);
     });
-  }, [sortedElements, quantizedStageX, quantizedStageY, quantizedScale, selectedIds, inlineEditing]);
+  }, [sortedElements, quantizedStageX, quantizedStageY, quantizedScale, selectedIds, inlineEditing, activeWidgetEditorElementId]);
 
   const handleOpenReactionPicker = useCallback(
     (elementId: string, anchor: { x: number; y: number }, mode?: 'picker' | 'overflow') => {
@@ -3905,6 +4741,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
               userSelectionColor={userSelectionColor}
               remoteSelector={remoteSelector}
               draggable={canDragItem}
+              canEdit={canEditItem}
               currentUserId={currentUser.uid}
               mirioReactionUnlocked={mirioReactionUnlocked}
               ditadorReactionUnlocked={ditadorReactionUnlocked}
@@ -4005,10 +4842,15 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
               userSelectionColor={userSelectionColor}
               remoteSelector={remoteSelector}
               draggable={canDragItem}
+              canEdit={canEditItem}
+              isDark={isDarkMode}
               allElements={elements}
               elementMap={elementMap}
               onSelect={handlers.onSelect}
               onChange={handlers.onChange}
+              onStartEditing={handlers.onStartEditing}
+              onEndpointDragMove={handleArrowEndpointDragMove}
+              onEndpointDragEnd={handleArrowEndpointDragEnd}
             />
           );
         }
@@ -4052,6 +4894,112 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           );
         }
 
+        if (elem.type === 'comment') {
+          const canMovePin =
+            currentTool === 'select' &&
+            !readOnly &&
+            (canCommentOnly ? isOwnElement : !elem.locked);
+          return (
+            <CommentPinItem
+              key={elem.id}
+              element={elem}
+              isSelected={isSelected}
+              isActiveThread={activeCommentThreadId === elem.id}
+              draggable={canMovePin}
+              onSelect={handlers.onSelect}
+              onChange={handlers.onChange}
+              onOpenThread={handleOpenCommentThread}
+            />
+          );
+        }
+
+        if (elem.type === 'table') {
+          const tableActiveCell =
+            activeTableCell?.elementId === elem.id
+              ? { rowIdx: activeTableCell.rowIdx, colIdx: activeTableCell.colIdx }
+              : null;
+          const tableEditingCell =
+            activeWidgetEditorElementId === elem.id &&
+            activeTableEditorRow !== null &&
+            activeTableEditorCol !== null
+              ? { rowIdx: activeTableEditorRow, colIdx: activeTableEditorCol }
+              : null;
+          return (
+            <TableItem
+              key={elem.id}
+              element={elem}
+              isSelected={isSelected}
+              userSelectionColor={userSelectionColor}
+              remoteSelector={remoteSelector}
+              draggable={canDragItem}
+              canEdit={canEditItem}
+              isDark={isDarkMode}
+              activeCell={tableActiveCell}
+              editingCell={tableEditingCell}
+              onSelectCell={handleSelectTableCell}
+              onCommitActiveEdit={commitWidgetFieldEditor}
+              onSelect={handlers.onSelect}
+              onChange={handlers.onChange}
+              onEditCell={handleEditTableCell}
+            />
+          );
+        }
+
+        if (elem.type === 'kanban') {
+          const activeKanbanTarget =
+            activeWidgetEditorElementId === elem.id ? activeKanbanEditorTarget : null;
+          return (
+            <KanbanItem
+              key={elem.id}
+              element={elem}
+              isSelected={isSelected}
+              userSelectionColor={userSelectionColor}
+              remoteSelector={remoteSelector}
+              draggable={canDragItem}
+              canEdit={canEditItem}
+              isDark={isDarkMode}
+              activeEditingTarget={activeKanbanTarget}
+              onCommitActiveEdit={commitWidgetFieldEditor}
+              onSelect={handlers.onSelect}
+              onChange={handlers.onChange}
+              onEditKanbanField={handleEditKanbanField}
+            />
+          );
+        }
+
+        if (elem.type === 'code') {
+          return (
+            <CodeBlockItem
+              key={elem.id}
+              element={elem}
+              isSelected={isSelected}
+              userSelectionColor={userSelectionColor}
+              remoteSelector={remoteSelector}
+              draggable={canDragItem}
+              canEdit={canEditItem}
+              onSelect={handlers.onSelect}
+              onChange={handlers.onChange}
+              onEditCode={handleEditCodeBlock}
+            />
+          );
+        }
+
+        if (elem.type === 'embed') {
+          return (
+            <RichLinkCardItem
+              key={elem.id}
+              element={elem}
+              isSelected={isSelected}
+              userSelectionColor={userSelectionColor}
+              remoteSelector={remoteSelector}
+              draggable={canDragItem}
+              isDark={isDarkMode}
+              onSelect={handlers.onSelect}
+              onChange={handlers.onChange}
+            />
+          );
+        }
+
         return null;
       }),
     [
@@ -4073,6 +5021,21 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
       mirioReactionUnlocked,
       ditadorReactionUnlocked,
       brigadeiroReactionUnlocked,
+      isDarkMode,
+      handleArrowEndpointDragMove,
+      handleArrowEndpointDragEnd,
+      activeCommentThreadId,
+      handleOpenCommentThread,
+      handleEditTableCell,
+      handleSelectTableCell,
+      handleEditKanbanField,
+      handleEditCodeBlock,
+      commitWidgetFieldEditor,
+      activeWidgetEditorElementId,
+      activeKanbanEditorTarget,
+      activeTableCell,
+      activeTableEditorRow,
+      activeTableEditorCol,
     ]
   );
 
@@ -4658,7 +5621,10 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         if (localLaserPosRef) {
           localLaserPosRef.current = null;
         }
-        setIsMouseDownState(false);
+        if (isMouseDownRef.current) {
+      isMouseDownRef.current = false;
+      setIsMouseDownState((prev) => (prev ? false : prev));
+    }
       }}
     >
       {/* Overlay Visual de Drag & Drop de Imagens do Computador sobre o Canvas */}
@@ -4764,6 +5730,8 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           }
         }}
         onBatchUpdateElements={onBatchUpdateElements}
+        onGroupElements={handleGroupSelected}
+        onUngroupElements={handleUngroupSelected}
         onDeleteElement={(id) => {
           // Proteção total com aviso: elemento bloqueado não é apagado pelo menu de contexto.
           const target = elements.find((item) => item.id === id);
@@ -4803,6 +5771,10 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         onReorderLayer={handleReorderLayer}
         onCopyElements={handleCopy}
         onCutElements={handleCut}
+        onOpenCropModal={(id) => setCropModalElementId(id)}
+        onSpawnMindMapNode={(id, mode) => {
+          void spawnMindMapRelative(id, mode);
+        }}
         onStartEditing={(elem) => {
           setInlineEditing({
             elementId: elem.id,
@@ -5179,6 +6151,9 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         height={window.innerHeight}
         draggable={isDraggableStage}
         onDragStart={(e) => {
+          if (widgetFieldEditorRef.current) {
+            commitWidgetFieldEditor();
+          }
           if (isMiddlePanning.current) {
             e.cancelBubble = true;
             return;
@@ -5210,6 +6185,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           const draggedIdsSet = new Set(draggedIds);
 
           const items = new Map<string, DragSessionItem>();
+          const initialBoundsById = new Map<string, WorldBounds>();
           draggedIds.forEach((id) => {
             const node = id === targetId ? e.target : stageRef.current?.findOne('#' + id);
             const elem = elementsById.get(id) || elementsRef.current.find((el) => el.id === id);
@@ -5227,6 +6203,17 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
                 gifEl,
                 reactionsEl,
               });
+            }
+            if (elem) {
+              const b = getElementWorldBounds(elem);
+              initialBoundsById.set(id, {
+                x: b.x + (initX - elem.x),
+                y: b.y + (initY - elem.y),
+                w: b.w,
+                h: b.h,
+              });
+            } else {
+              initialBoundsById.set(id, { x: initX, y: initY, w: 120, h: 120 });
             }
             dragStartPositions.current.set(id, { x: initX, y: initY });
           });
@@ -5318,10 +6305,20 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           dragSessionRef.current = {
             leaderId: targetId,
             initialLeaderPos: { x: e.target.x(), y: e.target.y() },
+            draggedIds: draggedIdsSet,
+            initialBoundsById,
             items,
             connectedArrows,
             smartGuidesData,
           };
+
+          publishElementDragOffset({
+            active: true,
+            draggedIds: draggedIdsSet,
+            initialBoundsById,
+            dx: 0,
+            dy: 0,
+          });
         }}
         onDragMove={(e) => {
           if (e.target === stageRef.current) {
@@ -5443,8 +6440,21 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
               }
               updateChecklistEditorInputPos(id, newX, newY);
             });
-            transformerRef.current?.update();
-            transformerRef.current?.getLayer()?.batchDraw();
+          }
+
+          if (session) {
+            publishElementDragOffset({
+              active: true,
+              draggedIds: session.draggedIds,
+              initialBoundsById: session.initialBoundsById,
+              dx: rawDx,
+              dy: rawDy,
+            });
+          }
+
+          if (transformerRef.current && transformerRef.current.nodes().length > 0) {
+            transformerRef.current.forceUpdate();
+            transformerRef.current.getLayer()?.batchDraw();
           }
 
           // Atualização contínua das setas magnéticas conectadas aos elementos movidos a 60/120 FPS
@@ -5475,16 +6485,41 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           }
         }}
         onDragEnd={(e) => {
+          const endedSession = dragSessionRef.current;
           clearSmartGuides();
           dragSmartGuidesData.current = null;
           dragSessionRef.current = null;
           draggedFrameChildIdsRef.current = [];
           if (e.target === stageRef.current) {
+            publishElementDragOffset(null);
             applyStagePan(
               { x: Math.round(e.target.x()), y: Math.round(e.target.y()) },
               scaleRef.current,
               'immediate'
             );
+            return;
+          }
+          if (endedSession) {
+            const finalDx = Math.round(e.target.x() - endedSession.initialLeaderPos.x);
+            const finalDy = Math.round(e.target.y() - endedSession.initialLeaderPos.y);
+            publishElementDragOffset({
+              active: false,
+              draggedIds: endedSession.draggedIds,
+              initialBoundsById: endedSession.initialBoundsById,
+              dx: finalDx,
+              dy: finalDy,
+            });
+            if (transformerRef.current && transformerRef.current.nodes().length > 0) {
+              transformerRef.current.forceUpdate();
+              transformerRef.current.getLayer()?.batchDraw();
+            }
+            requestAnimationFrame(() => {
+              if (!dragSessionRef.current) {
+                publishElementDragOffset(null);
+              }
+            });
+          } else {
+            publishElementDragOffset(null);
           }
         }}
         onWheel={handleWheel}
@@ -6204,6 +7239,287 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
         />
       )}
 
+      {/* Popover de Thread de Comentários Fixados no Canvas */}
+      {activeCommentThreadId &&
+        (() => {
+          const commentEl = elements.find(
+            (el) => el.id === activeCommentThreadId && el.type === 'comment'
+          );
+          if (!commentEl) return null;
+          return (
+            <CommentThreadPopover
+              commentElement={commentEl}
+              currentUser={currentUser}
+              canEditOrComment={!readOnly}
+              boardMembers={boardMembers}
+              onUpdateComment={onUpdateElement}
+              onDeleteComment={(id) => {
+                onDeleteElement(id);
+                setActiveCommentThreadId(null);
+              }}
+              onClose={() => setActiveCommentThreadId(null)}
+            />
+          );
+        })()}
+
+      {/* Modal Interativo de Recorte Não-Destrutivo de Imagens */}
+      {cropModalElementId && (
+        <ImageCropModal
+          open={Boolean(cropModalElementId)}
+          element={elements.find((el) => el.id === cropModalElementId) || null}
+          onOpenChange={(open) => {
+            if (!open) setCropModalElementId(null);
+          }}
+          onApplyCrop={(elementId, nextCrop, newDims) => {
+            onUpdateElement(elementId, {
+              crop: nextCrop,
+              ...(newDims ? { width: newDims.width, height: newDims.height } : {}),
+            });
+          }}
+        />
+      )}
+
+      {/* Editor Inline para Células de Tabela, Campos Kanban e Blocos de Código */}
+      {widgetFieldEditor &&
+        (() => {
+          const targetEl = elements.find((el) => el.id === widgetFieldEditor.elementId);
+          if (!targetEl) return null;
+
+          let offsetX = widgetFieldEditor.offsetX;
+          let offsetY = widgetFieldEditor.offsetY;
+          let fieldW = widgetFieldEditor.width;
+          let fieldH = widgetFieldEditor.height;
+
+          if (widgetFieldEditor.kind === 'table') {
+            const liveTable = getTableCellLocalRect(
+              targetEl,
+              widgetFieldEditor.rowIdx,
+              widgetFieldEditor.colIdx
+            );
+            offsetX = liveTable.offsetX;
+            offsetY = liveTable.offsetY;
+            fieldW = liveTable.width;
+            fieldH = liveTable.height;
+          } else if (widgetFieldEditor.kind === 'kanban') {
+            const cols =
+              (targetEl.kanbanColumns && targetEl.kanbanColumns.length > 0
+                ? targetEl.kanbanColumns
+                : widgetFieldEditor.fallbackColumns) || createDefaultKanbanColumns();
+            const liveLocal = getKanbanFieldLocalRect(cols, widgetFieldEditor.target);
+            offsetX = liveLocal.offsetX;
+            offsetY = liveLocal.offsetY;
+            fieldW = liveLocal.width;
+            fieldH = liveLocal.height;
+          }
+
+          const editorTargetKey = activeWidgetEditorKey || 'widget-editor';
+          const leftPx = (targetEl.x + offsetX) * scale + stagePos.x;
+          const topPx = (targetEl.y + offsetY) * scale + stagePos.y;
+          const widthPx = Math.max(80, fieldW * scale);
+          const heightPx = Math.max(24, fieldH * scale);
+
+          if (widgetFieldEditor.kind === 'code') {
+            const isLightCode = targetEl.codeTheme === 'light';
+            const livePalette = isLightCode ? CODE_TOKEN_COLORS_LIGHT : CODE_TOKEN_COLORS_DARK;
+            const liveLines = tokenizeCodeBlock(
+              widgetFieldEditor.value,
+              targetEl.codeLanguage || 'typescript'
+            );
+            const scaledFontPx = Math.max(11, (targetEl.fontSize || 13) * scale);
+            const editorBoxH = Math.max(120, heightPx);
+
+            return (
+              <div
+                key={editorTargetKey}
+                onMouseDown={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+                style={{
+                  left: `${leftPx}px`,
+                  top: `${topPx}px`,
+                  width: `${widthPx}px`,
+                  height: `${editorBoxH}px`,
+                }}
+                className={`absolute z-50 overflow-hidden rounded-b-xl border-2 border-primary shadow-2xl ${
+                  isLightCode ? 'bg-[#f8fafc]' : 'bg-[#0d1117]'
+                }`}
+              >
+                <pre
+                  aria-hidden="true"
+                  style={{
+                    fontSize: `${scaledFontPx}px`,
+                    lineHeight: 1.55,
+                    tabSize: 2,
+                  }}
+                  className="pointer-events-none absolute inset-0 m-0 overflow-hidden whitespace-pre p-3 font-mono tracking-normal"
+                >
+                  {liveLines.map((tokens, lIdx) => (
+                    <React.Fragment key={lIdx}>
+                      {lIdx > 0 && '\n'}
+                      {tokens.map((tok, tIdx) => (
+                        <span
+                          key={tIdx}
+                          style={{
+                            color: livePalette[tok.kind],
+                            fontWeight:
+                              tok.kind === 'keyword' || tok.kind === 'heading' ? 700 : 400,
+                            fontStyle: tok.kind === 'comment' ? 'italic' : 'normal',
+                          }}
+                        >
+                          {tok.text}
+                        </span>
+                      ))}
+                    </React.Fragment>
+                  ))}
+                  {widgetFieldEditor.value.endsWith('\n') ? ' ' : ''}
+                </pre>
+                <textarea
+                  id="widget-field-editor-control"
+                  ref={(node) => {
+                    widgetEditorControlRef.current = node;
+                  }}
+                  value={widgetFieldEditor.value}
+                  spellCheck={false}
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onScroll={(e) => {
+                    const pre = e.currentTarget.previousElementSibling as HTMLElement | null;
+                    if (pre) {
+                      pre.scrollTop = e.currentTarget.scrollTop;
+                      pre.scrollLeft = e.currentTarget.scrollLeft;
+                    }
+                  }}
+                  onChange={(e) => {
+                    const next = { ...widgetFieldEditor, value: e.target.value };
+                    widgetFieldEditorRef.current = next;
+                    setWidgetFieldEditor(next);
+                  }}
+                  onBlur={() => {
+                    commitWidgetFieldEditor();
+                  }}
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                      e.preventDefault();
+                      commitWidgetFieldEditor();
+                    } else if (e.key === 'Escape') {
+                      e.preventDefault();
+                      commitWidgetFieldEditor();
+                    } else if (e.key === 'Tab') {
+                      e.preventDefault();
+                      const ta = e.currentTarget;
+                      const s = ta.selectionStart;
+                      const end = ta.selectionEnd;
+                      const nextVal =
+                        widgetFieldEditor.value.slice(0, s) +
+                        '  ' +
+                        widgetFieldEditor.value.slice(end);
+                      const next = { ...widgetFieldEditor, value: nextVal };
+                      widgetFieldEditorRef.current = next;
+                      setWidgetFieldEditor(next);
+                      requestAnimationFrame(() => {
+                        ta.selectionStart = s + 2;
+                        ta.selectionEnd = s + 2;
+                      });
+                    }
+                  }}
+                  style={{
+                    fontSize: `${scaledFontPx}px`,
+                    lineHeight: 1.55,
+                    tabSize: 2,
+                    color: 'transparent',
+                    caretColor: isLightCode ? '#0f172a' : '#f8fafc',
+                  }}
+                  className="relative h-full w-full select-text resize-none overflow-auto whitespace-pre bg-transparent p-3 font-mono tracking-normal selection:bg-sky-500/30 focus:outline-none"
+                />
+              </div>
+            );
+          }
+
+          const isTableHeaderEdit =
+            widgetFieldEditor.kind === 'table' &&
+            widgetFieldEditor.rowIdx === 0 &&
+            targetEl.tableHeaderRow !== false;
+
+          return (
+            <input
+              id="widget-field-editor-control"
+              key={editorTargetKey}
+              ref={(node) => {
+                widgetEditorControlRef.current = node;
+              }}
+              type="text"
+              value={widgetFieldEditor.value}
+              onMouseDown={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+              onChange={(e) => {
+                const next = { ...widgetFieldEditor, value: e.target.value };
+                widgetFieldEditorRef.current = next;
+                setWidgetFieldEditor(next);
+              }}
+              onBlur={() => {
+                commitWidgetFieldEditor();
+              }}
+              onKeyDown={(e) => {
+                e.stopPropagation();
+                if (e.key === 'Tab' && widgetFieldEditor.kind === 'table') {
+                  e.preventDefault();
+                  const curRow = widgetFieldEditor.rowIdx;
+                  const curCol = widgetFieldEditor.colIdx;
+                  const savedValue = widgetFieldEditor.value;
+                  const rows = normalizeTableData(targetEl.tableData);
+                  const rowCount = rows.length;
+                  const colCount = rows[0]?.length || 3;
+                  const patch = updateTableCell(targetEl, curRow, curCol, savedValue);
+                  const updatedTableEl = { ...targetEl, ...patch };
+                  commitWidgetFieldEditor(savedValue);
+
+                  const total = rowCount * colCount;
+                  const flat =
+                    (curRow * colCount + curCol + (e.shiftKey ? -1 : 1) + total) % total;
+                  const nextRow = Math.floor(flat / colCount);
+                  const nextCol = flat % colCount;
+                  openTableCellEditorByCoords(updatedTableEl, nextRow, nextCol, {
+                    selectAll: true,
+                  });
+                } else if (e.key === 'Enter') {
+                  e.preventDefault();
+                  if (widgetFieldEditor.kind === 'table') {
+                    const curRow = widgetFieldEditor.rowIdx;
+                    const curCol = widgetFieldEditor.colIdx;
+                    const rows = normalizeTableData(targetEl.tableData);
+                    commitWidgetFieldEditor();
+                    const nextCell = {
+                      elementId: targetEl.id,
+                      rowIdx: Math.min(rows.length - 1, curRow + 1),
+                      colIdx: curCol,
+                    };
+                    activeTableCellRef.current = nextCell;
+                    setActiveTableCell(nextCell);
+                  } else {
+                    commitWidgetFieldEditor();
+                  }
+                } else if (e.key === 'Escape') {
+                  e.preventDefault();
+                  widgetFieldEditorRef.current = null;
+                  setWidgetFieldEditor(null);
+                }
+              }}
+              style={{
+                left: `${leftPx}px`,
+                top: `${topPx}px`,
+                width: `${widthPx}px`,
+                height: `${heightPx}px`,
+                fontSize: `${Math.max(11, Math.min(20, targetEl.fontSize || 13) * scale)}px`,
+              }}
+              className={`absolute z-50 select-text px-2.5 rounded-md bg-background text-foreground border-2 border-primary shadow-lg focus:outline-none ${
+                isTableHeaderEdit ? 'font-bold' : 'font-medium'
+              }`}
+            />
+          );
+        })()}
+
       {/* Menu de contexto nativo com botão direito */}
       {contextMenuState.isOpen && (
         <BoardContextMenu
@@ -6225,6 +7541,14 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = React.memo(({
           onToggleLock={handleToggleLockSelected}
           onReorderLayer={handleReorderLayer}
           onAlign={handleAlignSelected}
+          onGroup={handleGroupSelected}
+          onUngroup={handleUngroupSelected}
+          onCopyStyle={handleCopyStyleSelected}
+          onPasteStyle={handlePasteStyleSelected}
+          hasCopiedStyle={hasCopiedElementStyle()}
+          onOpenSearch={onOpenSearch}
+          onToggleMinimap={onToggleMinimap}
+          showMinimap={showMinimap}
           onStartEditing={handleStartEditingElement}
           onOpenTemplates={onOpenTemplates}
           onOpenStickers={onOpenStickers}

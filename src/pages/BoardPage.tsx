@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback, Suspense, lazy } from 'react';
 import Konva from 'konva';
 import { useParams, useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -28,6 +28,21 @@ import { votingService, canEndVotingSession, type BoardVotingData, type VotingSe
 import { playChimeSound } from '../utils/audioChime';
 import { STICKY_COLORS } from '../utils/colors';
 import { alignElements, type AlignmentType } from '../utils/alignment';
+import {
+  sortFramesSpatially,
+  exportFullBoardToDataUrl,
+  generateBoardSvgMarkup,
+  exportBoardOrFramesToPdfBytes,
+} from '../utils/boardExport';
+import { setActiveStorageBoardId } from '../services/storageService';
+import { MobileCollabDock } from '../components/whiteboard/MobileCollabDock';
+import {
+  createGroupUpdates,
+  createUngroupUpdates,
+  generateGroupId,
+} from '../utils/grouping';
+import { CanvasSearchBar } from '../components/whiteboard/CanvasSearchBar';
+import { BoardMinimap } from '../components/whiteboard/BoardMinimap';
 import { getNextZIndex } from '../utils/layerOrder';
 import { getUserBoardPermission, isBoardOwner, shouldShowWaitingRoom } from '../utils/permissions';
 import { verifyBoardPassword } from '../utils/security';
@@ -61,6 +76,7 @@ import {
 import { publishCursorReadout } from '../utils/cursorReadout';
 import { computeFitToContentViewport } from '../utils/viewport';
 import { getElementWorldBounds } from '../utils/elementBounds';
+import { normalizeTableData } from '../utils/tableAndKanban';
 import { computeImageGridLayout } from '../utils/imageUpload';
 import {
   diffElementsToPatch,
@@ -94,7 +110,20 @@ export const BoardPage: React.FC = () => {
   const [board, setBoard] = useState<Board | null>(null);
   const [boardLoading, setBoardLoading] = useState<boolean>(() => Boolean(boardId));
   const [boardNotFound, setBoardNotFound] = useState<boolean>(() => !boardId);
-  const [elements, setElements] = useState<CanvasElement[]>([]);
+  const [rawElements, setElements] = useState<CanvasElement[]>([]);
+  const elements = useMemo(
+    () =>
+      rawElements.some(
+        (el) =>
+          el.type === 'table' &&
+          (!Array.isArray(el.tableData) || !Array.isArray(el.tableData[0]))
+      )
+        ? rawElements.map((el) =>
+            el.type === 'table' ? { ...el, tableData: normalizeTableData(el.tableData) } : el
+          )
+        : rawElements,
+    [rawElements]
+  );
   // Espelho síncrono da lista para callbacks estáveis (evita recriar handlers
   // e re-renderizar todos os itens a cada alteração de elemento).
   const elementsRef = useRef(elements);
@@ -255,6 +284,8 @@ export const BoardPage: React.FC = () => {
   // operações locais, preservando edições alheias em campos não tocados.
   const historyRef = useRef<{ past: UndoPatch[]; future: UndoPatch[] }>({ past: [], future: [] });
   const pendingBeforeRef = useRef<CanvasElement[] | null>(null);
+  const isLocalMutationRef = useRef<boolean>(false);
+  const importJsonInputRef = useRef<HTMLInputElement | null>(null);
   const [historyMeta, setHistoryMeta] = useState({ canUndo: false, canRedo: false });
 
   // Registro das edições locais recentes: permite detectar quando outro usuário
@@ -304,6 +335,20 @@ export const BoardPage: React.FC = () => {
   const [isCoffeeModalOpen, setIsCoffeeModalOpen] = useState(false);
   // Painel de Camadas (desktop)
   const [isLayersPanelOpen, setIsLayersPanelOpen] = useState(false);
+  // Busca no Quadro (Ctrl+F), Minimapa Retrátil (M) e Modo Interativo Mobile
+  const [isCanvasSearchOpen, setIsCanvasSearchOpen] = useState(false);
+  const [mobileInteractActive, setMobileInteractActive] = useState(false);
+  const [showMinimap, setShowMinimap] = useState<boolean>(() => {
+    return localStorage.getItem('mirio_show_minimap') === 'true';
+  });
+
+  const handleToggleMinimap = useCallback((show?: boolean) => {
+    setShowMinimap((prev) => {
+      const next = typeof show === 'boolean' ? show : !prev;
+      localStorage.setItem('mirio_show_minimap', String(next));
+      return next;
+    });
+  }, []);
 
   const { isDark, toggleTheme, resolvedTheme } = useTheme();
 
@@ -403,8 +448,11 @@ export const BoardPage: React.FC = () => {
   const [isPresentationMode, setIsPresentationMode] = useState(false);
   const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
 
-  // Frames para navegação de slides na apresentação
-  const frames = React.useMemo(() => elements.filter((e) => e.type === 'frame'), [elements]);
+  // Frames ordenados espacialmente (topo->base, esquerda->direita) para navegação previsível de slides
+  const frames = React.useMemo(
+    () => sortFramesSpatially(elements.filter((e) => e.type === 'frame')),
+    [elements]
+  );
 
   const handleEnterPresentation = () => {
     setIsPresentationMode(true);
@@ -474,7 +522,7 @@ export const BoardPage: React.FC = () => {
       let dataUrl: string | null = null;
       if (typeof Konva !== 'undefined' && Konva.stages && Konva.stages.length > 0) {
         const stage = Konva.stages[0];
-        dataUrl = stage.toDataURL({ pixelRatio: 2 });
+        dataUrl = exportFullBoardToDataUrl(stage, elementsRef.current, isDark);
       } else {
         const canvas = document.querySelector('.konvajs-content canvas') as HTMLCanvasElement | null;
         if (canvas) {
@@ -499,6 +547,33 @@ export const BoardPage: React.FC = () => {
         }
       } catch {}
     }
+  };
+
+  const handleExportSVG = () => {
+    if (!board) return;
+    const svg = generateBoardSvgMarkup(elementsRef.current, board.title || 'Mirio', isDark);
+    const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${(board.title || 'quadro').replace(/\s+/g, '_')}_export.svg`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportPDF = () => {
+    if (!board) return;
+    if (typeof Konva === 'undefined' || !Konva.stages || Konva.stages.length === 0) return;
+    const stage = Konva.stages[0];
+    const pdfBytes = exportBoardOrFramesToPdfBytes(stage, elementsRef.current, isDark);
+    if (!pdfBytes) return;
+    const blob = new Blob([pdfBytes as unknown as BlobPart], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${(board.title || 'quadro').replace(/\s+/g, '_')}_slides.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const handleStartTimerQuick = (seconds: number) => {
@@ -544,13 +619,17 @@ export const BoardPage: React.FC = () => {
   const isOwner = isBoardOwner(board, currentUser);
   const isWaitingInRoom = shouldShowWaitingRoom(board, currentUser, isUnlocked);
   const boardPermission = getUserBoardPermission(board, currentUser, isUnlocked);
-  const isCommentOnly = !isMobile && !isOwner && boardPermission === 'comment';
-  const isReadOnly = isMobile || (!isOwner && boardPermission === 'view');
+  const canMobileEdit = isOwner || boardPermission === 'edit';
+  const canMobileComment = boardPermission === 'comment';
+  const isCommentOnly = !isOwner && boardPermission === 'comment';
+  const isReadOnly =
+    (isMobile ? !mobileInteractActive || (!canMobileEdit && !canMobileComment) : false) ||
+    (!isOwner && boardPermission === 'view');
   const hasNoAccess = !isOwner && (boardPermission === 'none' || isWaitingInRoom || isPasswordRequired) && !isUnlocked;
   const isAccessBlocked = isPasswordRequired || isWaitingInRoom || hasNoAccess;
 
   const handleUnlockPassword = async (passwordEntered: string): Promise<boolean> => {
-    const isMatch = await verifyBoardPassword(passwordEntered, board?.password);
+    const isMatch = await verifyBoardPassword(passwordEntered, board?.password, boardId);
     if (isMatch) {
       setIsUnlocked(true);
       if (boardId) {
@@ -679,19 +758,20 @@ export const BoardPage: React.FC = () => {
   // Referência para os controles de presença
   const presenceControls = useRef<ReturnType<typeof presenceService.joinBoard> | null>(null);
 
-  // Marca o estado pré-mutação. O patch real (diff antes/depois) é calculado
-  // no flush, depois que o estado de elementos se atualiza.
+  // Marca o estado pré-mutação local. Edições remotas vindas do Firestore não consomem este snapshot.
   const recordSnapshot = useCallback(() => {
     if (pendingBeforeRef.current === null) {
       pendingBeforeRef.current = elementsRef.current;
     }
+    isLocalMutationRef.current = true;
   }, []);
 
-  // Converte a mutação pendente em um patch e empilha no histórico.
-  // Roda a cada mudança de elementos; só age quando há mutação local pendente.
+  // Converte a mutação local pendente em um patch e empilha no histórico.
   useEffect(() => {
+    if (!isLocalMutationRef.current) return;
     const beforeState = pendingBeforeRef.current;
     if (beforeState === null) return;
+    isLocalMutationRef.current = false;
     pendingBeforeRef.current = null;
 
     const patch = diffElementsToPatch(beforeState, elements);
@@ -1115,50 +1195,36 @@ export const BoardPage: React.FC = () => {
     // 2. Elementos novos no snapshot de destino
     const toAdd = targetSnapshot.filter((e) => !currentMap.has(e.id));
 
-    // 3. Elementos existentes em ambos, atualizando apenas os que realmente mudaram
+    // 3. Elementos existentes em ambos: envia APENAS os campos que mudaram (e `undefined` para chaves removidas -> deleteField)
+    const VOLATILE_SYNC_KEYS = new Set(['id', 'updatedAt', 'updatedBy', 'updatedByName']);
     const toUpdate: { id: string; updates: Partial<CanvasElement> }[] = [];
     for (const targetEl of targetSnapshot) {
       const currentEl = currentMap.get(targetEl.id);
       if (!currentEl) continue;
 
-      const isModified =
-        currentEl.x !== targetEl.x ||
-        currentEl.y !== targetEl.y ||
-        currentEl.width !== targetEl.width ||
-        currentEl.height !== targetEl.height ||
-        currentEl.rotation !== targetEl.rotation ||
-        currentEl.text !== targetEl.text ||
-        currentEl.fill !== targetEl.fill ||
-        currentEl.stroke !== targetEl.stroke ||
-        currentEl.strokeWidth !== targetEl.strokeWidth ||
-        currentEl.dash?.join(',') !== targetEl.dash?.join(',') ||
-        currentEl.opacity !== targetEl.opacity ||
-        currentEl.zIndex !== targetEl.zIndex ||
-        currentEl.locked !== targetEl.locked ||
-        currentEl.radius !== targetEl.radius ||
-        currentEl.fontSize !== targetEl.fontSize ||
-        currentEl.fontWeight !== targetEl.fontWeight ||
-        currentEl.fontStyle !== targetEl.fontStyle ||
-        currentEl.textDecoration !== targetEl.textDecoration ||
-        currentEl.textAlign !== targetEl.textAlign ||
-        currentEl.textColor !== targetEl.textColor ||
-        currentEl.checklistTitle !== targetEl.checklistTitle ||
-        JSON.stringify(currentEl.checklistItems) !== JSON.stringify(targetEl.checklistItems) ||
-        JSON.stringify(currentEl.startBinding) !== JSON.stringify(targetEl.startBinding) ||
-        JSON.stringify(currentEl.endBinding) !== JSON.stringify(targetEl.endBinding) ||
-        currentEl.connectorStyle !== targetEl.connectorStyle ||
-        JSON.stringify(currentEl.richText) !== JSON.stringify(targetEl.richText) ||
-        currentEl.src !== targetEl.src ||
-        currentEl.alt !== targetEl.alt ||
-        currentEl.linkUrl !== targetEl.linkUrl ||
-        JSON.stringify(currentEl.links) !== JSON.stringify(targetEl.links) ||
-        currentEl.points?.length !== targetEl.points?.length ||
-        (currentEl.points &&
-          targetEl.points &&
-          currentEl.points.some((p, i) => p !== targetEl.points![i]));
+      const deltaFields: Record<string, unknown> = {};
+      const allKeys = new Set([...Object.keys(currentEl), ...Object.keys(targetEl)]);
+      let hasFieldDiff = false;
 
-      if (isModified) {
-        toUpdate.push({ id: targetEl.id, updates: targetEl });
+      for (const key of allKeys) {
+        if (VOLATILE_SYNC_KEYS.has(key)) continue;
+        const curVal = (currentEl as unknown as Record<string, unknown>)[key];
+        const nextVal = (targetEl as unknown as Record<string, unknown>)[key];
+        const same =
+          curVal === nextVal ||
+          (curVal !== undefined &&
+            nextVal !== undefined &&
+            typeof curVal === 'object' &&
+            typeof nextVal === 'object' &&
+            JSON.stringify(curVal) === JSON.stringify(nextVal));
+        if (!same) {
+          deltaFields[key] = nextVal;
+          hasFieldDiff = true;
+        }
+      }
+
+      if (hasFieldDiff) {
+        toUpdate.push({ id: targetEl.id, updates: deltaFields as Partial<CanvasElement> });
       }
     }
 
@@ -1281,7 +1347,15 @@ export const BoardPage: React.FC = () => {
       updatedByName: currentUser.displayName,
     };
     setElements((prev) =>
-      prev.map((el) => (el.id === id ? { ...el, ...enrichedUpdates, updatedAt: Date.now() } : el))
+      prev.map((el) => {
+        if (el.id !== id) return el;
+        const next: Record<string, unknown> = { ...el, updatedAt: Date.now() };
+        for (const [k, v] of Object.entries(enrichedUpdates)) {
+          if (v === undefined) delete next[k];
+          else next[k] = v;
+        }
+        return next as unknown as CanvasElement;
+      })
     );
     await elementService.updateElement(boardId, id, enrichedUpdates);
   }, [boardId, currentUser, isReadOnly, isCommentOnly, recordSnapshot]);
@@ -1307,13 +1381,17 @@ export const BoardPage: React.FC = () => {
       prev.map((el) => {
         const up = updateMap.get(el.id);
         if (up) {
-          return {
+          const next: Record<string, unknown> = {
             ...el,
-            ...up,
             updatedBy: currentUser.uid,
             updatedByName: currentUser.displayName,
             updatedAt: now,
           };
+          for (const [k, v] of Object.entries(up)) {
+            if (v === undefined) delete next[k];
+            else next[k] = v;
+          }
+          return next as unknown as CanvasElement;
         }
         return el;
       })
@@ -1389,8 +1467,12 @@ export const BoardPage: React.FC = () => {
     recordSnapshot();
     const now = Date.now();
     const idMap = new Map<string, string>();
+    const groupMap = new Map<string, string>();
     elemsToDup.forEach((elem, idx) => {
       idMap.set(elem.id, 'elem_' + Math.random().toString(36).substring(2, 11) + idx);
+      if (elem.groupId && !groupMap.has(elem.groupId)) {
+        groupMap.set(elem.groupId, generateGroupId());
+      }
     });
 
     const duplicates: CanvasElement[] = elemsToDup.map((elem, idx) => {
@@ -1405,6 +1487,7 @@ export const BoardPage: React.FC = () => {
         updatedBy: currentUser.uid,
         updatedByName: currentUser.displayName,
         updatedAt: now,
+        ...(elem.groupId ? { groupId: groupMap.get(elem.groupId) } : {}),
       };
 
       // Remapeia conectores se ambos os elementos ou um deles foi duplicado junto
@@ -1437,10 +1520,10 @@ export const BoardPage: React.FC = () => {
     setSelectedElementIds(newElements.map((el) => el.id));
   }, [boardId, currentUser, isReadOnly, isCommentOnly, recordSnapshot]);
 
-  // Alternar reação de emoji em post-its
+  // Alternar reação de emoji em post-its e stickers (escrita atômica concorrente)
   const handleToggleReaction = useCallback(
     async (elementId: string, emoji: string) => {
-      if (!boardId || !currentUser) return;
+      if (!boardId || !currentUser || isReadOnly) return;
       if (isMirioReaction(emoji) && !mirioReactionUnlocked) return;
       if (isDitadorReaction(emoji) && !ditadorReactionUnlocked) return;
       if (isBrigadeiroReaction(emoji) && !brigadeiroReactionUnlocked) return;
@@ -1455,6 +1538,7 @@ export const BoardPage: React.FC = () => {
         ? BRIGADEIRO_REACTION
         : emoji;
       const reactions = { ...(elem.reactions || {}) };
+      let legacyRemoved: string | undefined;
 
       // Se houver chave legada __mirio_original__, migra para mirio_original para não quebrar no Firestore
       if (reactions['__mirio_original__']) {
@@ -1463,6 +1547,7 @@ export const BoardPage: React.FC = () => {
           ...new Set([...(reactions[MIRIO_REACTION] || []), ...legacyUsers]),
         ];
         delete reactions['__mirio_original__'];
+        legacyRemoved = '__mirio_original__';
       }
 
       if (reactions['__ditador_original__']) {
@@ -1471,6 +1556,7 @@ export const BoardPage: React.FC = () => {
           ...new Set([...(reactions[DITADOR_REACTION] || []), ...legacyUsers]),
         ];
         delete reactions['__ditador_original__'];
+        legacyRemoved = '__ditador_original__';
       }
 
       if (reactions['__brigadeiro_original__']) {
@@ -1479,6 +1565,7 @@ export const BoardPage: React.FC = () => {
           ...new Set([...(reactions[BRIGADEIRO_REACTION] || []), ...legacyUsers]),
         ];
         delete reactions['__brigadeiro_original__'];
+        legacyRemoved = '__brigadeiro_original__';
       }
 
       if (reactions['__brisadeiro_original__']) {
@@ -1487,16 +1574,15 @@ export const BoardPage: React.FC = () => {
           ...new Set([...(reactions[BRIGADEIRO_REACTION] || []), ...legacyUsers]),
         ];
         delete reactions['__brisadeiro_original__'];
+        legacyRemoved = '__brisadeiro_original__';
       }
 
       const currentUsers = reactions[targetEmoji] || [];
+      const shouldAdd = !currentUsers.includes(currentUser.uid);
 
-      let updatedUsers: string[];
-      if (currentUsers.includes(currentUser.uid)) {
-        updatedUsers = currentUsers.filter((uid) => uid !== currentUser.uid);
-      } else {
-        updatedUsers = [...currentUsers, currentUser.uid];
-      }
+      const updatedUsers = shouldAdd
+        ? [...currentUsers, currentUser.uid]
+        : currentUsers.filter((uid) => uid !== currentUser.uid);
 
       if (updatedUsers.length > 0) {
         reactions[targetEmoji] = updatedUsers;
@@ -1508,17 +1594,26 @@ export const BoardPage: React.FC = () => {
       setElements((prev) =>
         prev.map((el) => (el.id === elementId ? { ...el, reactions } : el))
       );
-      await elementService.updateElement(boardId, elementId, { reactions });
+      await elementService.toggleElementReaction(
+        boardId,
+        elementId,
+        targetEmoji,
+        currentUser.uid,
+        shouldAdd,
+        reactions,
+        legacyRemoved
+      );
     },
-    [boardId, currentUser, mirioReactionUnlocked, ditadorReactionUnlocked, brigadeiroReactionUnlocked]
+    [boardId, currentUser, isReadOnly, mirioReactionUnlocked, ditadorReactionUnlocked, brigadeiroReactionUnlocked]
   );
 
-  // Início de sessão de borracha parcial: grava snapshot de histórico antes da remoção
+  // Início de sessão de borracha parcial: captura o estado inicial de forma isolada
+  const partialEraseBeforeRef = useRef<CanvasElement[] | null>(null);
   const handleStartPartialErase = useCallback(() => {
-    recordSnapshot();
-  }, [recordSnapshot]);
+    partialEraseBeforeRef.current = elementsRef.current;
+  }, []);
 
-  // Finalização da borracha parcial ao soltar o mouse: persiste modificações em lote no Firestore
+  // Finalização da borracha parcial ao soltar o mouse: atualiza UI + Undo local e persiste em lote no Firestore
   const handleFinishPartialErase = useCallback(
     async (
       updatedList: { id: string; points: number[] }[],
@@ -1527,6 +1622,31 @@ export const BoardPage: React.FC = () => {
     ) => {
       if (!boardId || !currentUser) return;
       const now = Date.now();
+
+      if (partialEraseBeforeRef.current) {
+        pendingBeforeRef.current = partialEraseBeforeRef.current;
+        partialEraseBeforeRef.current = null;
+        isLocalMutationRef.current = true;
+      }
+
+      const deletedSet = new Set(deletedIds);
+      const updatedPointsMap = new Map(updatedList.map((u) => [u.id, u.points]));
+      setElements((prev) => [
+        ...prev
+          .filter((el) => !deletedSet.has(el.id))
+          .map((el) =>
+            updatedPointsMap.has(el.id)
+              ? {
+                  ...el,
+                  points: updatedPointsMap.get(el.id)!,
+                  updatedBy: currentUser.uid,
+                  updatedByName: currentUser.displayName,
+                  updatedAt: now,
+                }
+              : el
+          ),
+        ...addedList,
+      ]);
 
       if (deletedIds.length > 0) {
         await elementService.batchDeleteElements(boardId, deletedIds);
@@ -1663,13 +1783,91 @@ export const BoardPage: React.FC = () => {
     setSelectedElementIds(newElements.map((el) => el.id));
   };
 
-  // Controles de zoom
-  const handleZoomIn = useCallback(() => setScale((prev) => Math.min(5, prev * 1.2)), []);
-  const handleZoomOut = useCallback(() => setScale((prev) => Math.max(0.1, prev / 1.2)), []);
+  // Controles de zoom ancorados exatamente no centro da tela (evita deslocamento brusco para (0,0))
+  const applyCenteredZoom = useCallback((factor: number) => {
+    setScale((prevScale) => {
+      const nextScale = Math.max(0.1, Math.min(5, prevScale * factor));
+      if (nextScale === prevScale) return prevScale;
+      const cx = typeof window !== 'undefined' ? window.innerWidth / 2 : 640;
+      const cy = typeof window !== 'undefined' ? window.innerHeight / 2 : 360;
+      setStagePos((prevPos) => {
+        const worldX = (cx - prevPos.x) / prevScale;
+        const worldY = (cy - prevPos.y) / prevScale;
+        return {
+          x: Math.round(cx - worldX * nextScale),
+          y: Math.round(cy - worldY * nextScale),
+        };
+      });
+      return nextScale;
+    });
+  }, []);
+
+  const handleZoomIn = useCallback(() => applyCenteredZoom(1.2), [applyCenteredZoom]);
+  const handleZoomOut = useCallback(() => applyCenteredZoom(1 / 1.2), [applyCenteredZoom]);
   const handleResetZoom = useCallback(() => {
     setScale(1);
     setStagePos({ x: 0, y: 0 });
   }, []);
+
+  // Atalhos de teclado de Zoom (+, -, Ctrl+0) sincronizados com os tooltips e central de ajuda (?)
+  useEffect(() => {
+    const handleZoomKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable)
+      ) {
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === '0' || e.code === 'Digit0')) {
+        e.preventDefault();
+        handleResetZoom();
+        return;
+      }
+
+      if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (e.key === '+' || e.key === '=') {
+          e.preventDefault();
+          handleZoomIn();
+        } else if (e.key === '-' || e.key === '_') {
+          e.preventDefault();
+          handleZoomOut();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleZoomKeyDown);
+    return () => window.removeEventListener('keydown', handleZoomKeyDown);
+  }, [handleZoomIn, handleZoomOut, handleResetZoom]);
+
+  const handleNavigateMinimapPoint = useCallback(
+    (worldX: number, worldY: number) => {
+      const cx = typeof window !== 'undefined' ? window.innerWidth / 2 : 640;
+      const cy = typeof window !== 'undefined' ? window.innerHeight / 2 : 360;
+      setStagePos({
+        x: Math.round(cx - worldX * scale),
+        y: Math.round(cy - worldY * scale),
+      });
+    },
+    [scale]
+  );
+
+  const handleGroupSelectedFromBoard = useCallback(() => {
+    if (isReadOnly || isCommentOnly || selectedElementIds.length < 2) return;
+    const res = createGroupUpdates(elementsRef.current, selectedElementIds);
+    if (res && res.updates.length > 0) {
+      void handleBatchUpdateElements(res.updates);
+    }
+  }, [isReadOnly, isCommentOnly, selectedElementIds, handleBatchUpdateElements]);
+
+  const handleUngroupSelectedFromBoard = useCallback(() => {
+    if (isReadOnly || isCommentOnly || selectedElementIds.length === 0) return;
+    const updates = createUngroupUpdates(elementsRef.current, selectedElementIds);
+    if (updates.length > 0) {
+      void handleBatchUpdateElements(updates);
+    }
+  }, [isReadOnly, isCommentOnly, selectedElementIds, handleBatchUpdateElements]);
 
   const handleFitToContent = useCallback(() => {
     const currentElements = elementsRef.current;
@@ -1690,6 +1888,87 @@ export const BoardPage: React.FC = () => {
       setScale(fitted.scale);
     }
   }, [isMobile]);
+
+  const handleTriggerImportJSON = () => {
+    if (isReadOnly || isCommentOnly) return;
+    importJsonInputRef.current?.click();
+  };
+
+  const handleImportJSONFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !boardId || !currentUser || isReadOnly || isCommentOnly) return;
+
+    try {
+      const rawText = await file.text();
+      const parsed = JSON.parse(rawText);
+      recordSnapshot();
+      await boardService.importBoardBackup(parsed, currentUser, boardId);
+      setTimeout(() => handleFitToContent(), 120);
+    } catch (err) {
+      console.error('Erro ao importar backup JSON:', err);
+      alert('Não foi possível importar este arquivo JSON. Verifique se é um backup válido do Mirio.');
+    }
+  };
+
+  // Sincroniza o boardId ativo no serviço de Object Storage e salva previewSnapshot leve em background
+  useEffect(() => {
+    setActiveStorageBoardId(boardId || '');
+  }, [boardId]);
+
+  useEffect(() => {
+    if (!boardId || !isOwner || isAccessBlocked || elements.length === 0) return;
+    const timer = setTimeout(() => {
+      void boardService.saveBoardPreviewSnapshot(boardId, elementsRef.current);
+    }, 3500);
+    return () => clearTimeout(timer);
+  }, [boardId, isOwner, isAccessBlocked, elements]);
+
+  const handleMobileQuickAddSticky = useCallback(async () => {
+    if (!boardId || !currentUser || (!canMobileEdit && !canMobileComment)) return;
+    setMobileInteractActive(true);
+    const cx = typeof window !== 'undefined' ? window.innerWidth / 2 : 195;
+    const cy = typeof window !== 'undefined' ? window.innerHeight / 2 : 400;
+    const worldX = Math.round((cx - stagePos.x) / scale - 90);
+    const worldY = Math.round((cy - stagePos.y) / scale - 90);
+    const newId = await handleAddElement({
+      type: 'sticky',
+      x: worldX,
+      y: worldY,
+      width: 180,
+      height: 180,
+      fill: selectedColor || '#fef08a',
+      text: 'Nova nota',
+      zIndex: getNextZIndex(elementsRef.current),
+      updatedBy: currentUser.uid,
+      updatedByName: currentUser.displayName,
+    });
+    if (newId) setSelectedElementIds([newId]);
+  }, [boardId, currentUser, canMobileEdit, canMobileComment, stagePos.x, stagePos.y, scale, selectedColor, handleAddElement]);
+
+  const handleMobileQuickAddComment = useCallback(async () => {
+    if (!boardId || !currentUser || (!canMobileEdit && !canMobileComment)) return;
+    setMobileInteractActive(true);
+    const cx = typeof window !== 'undefined' ? window.innerWidth / 2 : 195;
+    const cy = typeof window !== 'undefined' ? window.innerHeight / 2 : 400;
+    const worldX = Math.round((cx - stagePos.x) / scale - 18);
+    const worldY = Math.round((cy - stagePos.y) / scale - 18);
+    const newId = await handleAddElement({
+      type: 'comment',
+      x: worldX,
+      y: worldY,
+      width: 38,
+      height: 38,
+      text: 'Comentário pelo celular',
+      commentAuthorColor: currentUser.color || '#2563eb',
+      commentResolved: false,
+      commentReplies: [],
+      zIndex: getNextZIndex(elementsRef.current) + 100,
+      updatedBy: currentUser.uid,
+      updatedByName: currentUser.displayName,
+    });
+    if (newId) setSelectedElementIds([newId]);
+  }, [boardId, currentUser, canMobileEdit, canMobileComment, stagePos.x, stagePos.y, scale, handleAddElement]);
 
   const hasAutoFittedRef = useRef<string | null>(null);
   useEffect(() => {
@@ -1783,15 +2062,27 @@ export const BoardPage: React.FC = () => {
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-background selection:bg-foreground selection:text-background">
       {isMobile && !isPresentationMode && (
-        <MobileBoardNavbar
-          boardTitle={board.title || 'Quadro sem título'}
-          scale={scale}
-          elementCount={elements.length}
-          onlineCount={remoteUsers.length}
-          onBackToDashboard={() => navigate('/')}
-          onFitToContent={handleFitToContent}
-          onOpenMobileGuide={handleOpenMobileGuide}
-        />
+        <>
+          <MobileBoardNavbar
+            boardTitle={board.title || 'Quadro sem título'}
+            scale={scale}
+            elementCount={elements.length}
+            onlineCount={remoteUsers.length}
+            onBackToDashboard={() => navigate('/')}
+            onFitToContent={handleFitToContent}
+            onOpenMobileGuide={handleOpenMobileGuide}
+          />
+          <MobileCollabDock
+            boardId={boardId || ''}
+            userName={currentUser.displayName || 'Participante'}
+            canEdit={canMobileEdit}
+            canComment={canMobileComment}
+            mobileInteractActive={mobileInteractActive}
+            onToggleInteractMode={setMobileInteractActive}
+            onQuickAddSticky={handleMobileQuickAddSticky}
+            onQuickAddComment={handleMobileQuickAddComment}
+          />
+        </>
       )}
 
       <MobileReadOnlyDrawer
@@ -1879,8 +2170,8 @@ export const BoardPage: React.FC = () => {
         />
       )}
 
-      {/* Container Central Flutuante: Timer no topo, Barra de Votação logo abaixo (Empilhados sem sobreposição) */}
-      {!isMobile && <div className="fixed top-14 left-1/2 -translate-x-1/2 z-40 flex flex-col items-center gap-2 pointer-events-none max-w-[95vw]">
+      {/* Container Central Flutuante: Timer no topo, Barra de Votação logo abaixo (Acessível em Desktop e Mobile!) */}
+      <div className={`fixed ${isMobile ? 'top-16' : 'top-14'} left-1/2 -translate-x-1/2 z-40 flex flex-col items-center gap-2 pointer-events-none max-w-[95vw]`}>
         {/* Timer Colaborativo Flutuante Sincronizado */}
         <BoardTimerWidget
           boardId={boardId || ''}
@@ -1901,10 +2192,39 @@ export const BoardPage: React.FC = () => {
             onToggleComplete={handleToggleVotingComplete}
           />
         )}
-      </div>}
+      </div>
 
       {/* Overlay de Reações Flutuantes Globais em Tempo Real */}
-      {!isMobile && <GlobalReactionsOverlay boardId={boardId || ''} />}
+      <GlobalReactionsOverlay boardId={boardId || ''} />
+
+      {/* Input oculto para importação de Backup JSON */}
+      <input
+        ref={importJsonInputRef}
+        type="file"
+        accept=".json,application/json"
+        className="hidden"
+        onChange={handleImportJSONFileChange}
+      />
+
+      {/* Barra Flutuante de Busca no Quadro (Ctrl+F) */}
+      <CanvasSearchBar
+        open={isCanvasSearchOpen}
+        elements={elements}
+        onClose={() => setIsCanvasSearchOpen(false)}
+        onFocusElement={handleFocusElement}
+      />
+
+      {/* Minimapa Interativo Retrátil (M) */}
+      {!isMobile && !isPresentationMode && (
+        <BoardMinimap
+          open={showMinimap}
+          elements={elements}
+          stagePos={stagePos}
+          scale={scale}
+          onNavigateToWorldPoint={handleNavigateMinimapPoint}
+          onClose={() => handleToggleMinimap(false)}
+        />
+      )}
 
       {/* Toast discreto: outro usuário sobrescreveu um elemento que você editou (LWW) */}
       {overwriteToast && (
@@ -2005,16 +2325,20 @@ export const BoardPage: React.FC = () => {
           onSelectColor={(color) => {
             setSelectedColor(color);
             if (selectedElementIds.length > 0) {
+              const batchUpdates: { id: string; updates: Partial<CanvasElement> }[] = [];
               selectedElementIds.forEach((id) => {
                 const elem = elements.find((e) => e.id === id);
                 if (elem && !elem.locked) {
                   if (['pen', 'line', 'arrow'].includes(elem.type)) {
-                    handleUpdateElement(id, { stroke: color });
+                    batchUpdates.push({ id, updates: { stroke: color } });
                   } else {
-                    handleUpdateElement(id, { fill: color });
+                    batchUpdates.push({ id, updates: { fill: color } });
                   }
                 }
               });
+              if (batchUpdates.length > 0) {
+                void handleBatchUpdateElements(batchUpdates);
+              }
             }
           }}
           hasSelection={selectedElementIds.length > 0}
@@ -2035,12 +2359,16 @@ export const BoardPage: React.FC = () => {
           onSelectPenStrokeWidth={(width) => {
             setPenStrokeWidth(width);
             if (selectedElementIds.length > 0) {
+              const batchUpdates: { id: string; updates: Partial<CanvasElement> }[] = [];
               selectedElementIds.forEach((id) => {
                 const elem = elements.find((e) => e.id === id);
                 if (elem && !elem.locked && ['pen', 'line', 'arrow'].includes(elem.type)) {
-                  handleUpdateElement(id, { strokeWidth: width });
+                  batchUpdates.push({ id, updates: { strokeWidth: width } });
                 }
               });
+              if (batchUpdates.length > 0) {
+                void handleBatchUpdateElements(batchUpdates);
+              }
             }
           }}
           smartDrawing={smartDrawing}
@@ -2062,6 +2390,8 @@ export const BoardPage: React.FC = () => {
           canCommentOnly={isCommentOnly}
           position={toolbarPosition}
           onOpenShortcuts={() => setIsShortcutsModalOpen(true)}
+          showMinimap={showMinimap}
+          onToggleMinimap={() => handleToggleMinimap()}
           onOpenTemplates={() => setIsSprintTemplatesOpen(true)}
         />
       )}
@@ -2163,7 +2493,15 @@ export const BoardPage: React.FC = () => {
           onOpenStickers: () => setIsStickersModalOpen(true),
           onOpenShortcuts: () => setIsShortcutsModalOpen(true),
           onExportPNG: handleExportPNG,
+          onExportSVG: handleExportSVG,
+          onExportPDF: handleExportPDF,
           onExportJSON: handleExportJSON,
+          onImportJSON: handleTriggerImportJSON,
+          onOpenSearch: () => setIsCanvasSearchOpen(true),
+          onToggleMinimap: () => handleToggleMinimap(),
+          showMinimap,
+          onGroupElements: handleGroupSelectedFromBoard,
+          onUngroupElements: handleUngroupSelectedFromBoard,
           onShare: () => setIsShareModalOpen(true),
           onCopyLink: handleCopyShareLink,
           onResetZoom: handleResetZoom,
@@ -2268,6 +2606,10 @@ export const BoardPage: React.FC = () => {
         onOpenTemplates={handleOpenTemplates}
         onOpenStickers={handleOpenStickers}
         onResetZoom={handleResetZoom}
+        onOpenSearch={() => setIsCanvasSearchOpen(true)}
+        onToggleMinimap={() => handleToggleMinimap()}
+        showMinimap={showMinimap}
+        isDarkMode={isDark}
         gridType={gridType}
         gridSize={gridSize}
         gridOpacity={gridOpacity}
