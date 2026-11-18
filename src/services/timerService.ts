@@ -361,9 +361,11 @@ export const timerService = {
 
     if (currentState.isRunning && currentState.endsAt) {
       const newEnds = currentState.endsAt + 60 * 1000;
+      const newRemaining = Math.max(0, Math.round((newEnds - now) / 1000));
       await this.updateTimer(boardId, {
         ...currentState,
         durationSeconds: currentState.durationSeconds + 60,
+        remainingSeconds: newRemaining,
         endsAt: newEnds,
         updatedByName: userName || 'Participante',
         isOpenForEveryone: true,
@@ -406,5 +408,10 @@ export const timerService = {
       ...currentState,
       volume: Math.max(0, Math.min(100, volume)),
     });
+  },
+
+  clearMemoryCache(rawBoardId: string): void {
+    const boardId = cleanBoardId(rawBoardId);
+    timerMemoryCache.delete(boardId);
   },
 };

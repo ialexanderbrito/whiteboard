@@ -253,6 +253,10 @@ export const votingService = {
               };
               saveLocalVoting(boardId, safeData);
               notifySubscribers(boardId, safeData);
+            } else if (memoryVotesCache.get(boardId)?.session) {
+              const resetData: BoardVotingData = { ...DEFAULT_VOTING };
+              saveLocalVoting(boardId, resetData);
+              notifySubscribers(boardId, resetData);
             }
           },
           () => {}
@@ -282,19 +286,23 @@ export const votingService = {
     // Garante que não haja nenhum undefined nos dados para o Firestore
     const firestoreData = cleanForFirestore(safeData);
 
-    // 2. Sincronização Primária via Firestore (100% garantida entre todos os usuários remotos)
+    // 2. Sincronização Primária via Firestore (sem jamais sobrescrever o título do quadro!)
     if (isFirebaseConfigured && db) {
       const payload = {
-        title: 'Quadro de Ideias',
         voting: firestoreData,
         updatedAt: Date.now(),
       };
 
       try {
         const boardDocRef = doc(db, 'boards', boardId);
-        await setDoc(boardDocRef, payload, { merge: true });
-      } catch (e) {
-        console.warn('Erro ao persistir votação no Firestore:', e);
+        await updateDoc(boardDocRef, payload);
+      } catch {
+        try {
+          const boardDocRef = doc(db, 'boards', boardId);
+          await setDoc(boardDocRef, payload, { merge: true });
+        } catch (e) {
+          console.warn('Erro ao persistir votação no Firestore:', e);
+        }
       }
     }
 
@@ -496,15 +504,8 @@ export const votingService = {
       session: { ...session, votes, userNames },
     });
 
-    // 2. Persistência atômica: só o mapa deste usuário é sobrescrito
-    const ok = await this.updateUserVotes(boardId, user.uid, userMap, userNames[user.uid]);
-    if (!ok) {
-      // Fallback: escrita completa (documento pode não existir ainda)
-      await this.updateVoting(boardId, {
-        ...getLocalVoting(boardId),
-        session: { ...(getLocalVoting(boardId).session || session), votes, userNames },
-      });
-    }
+    // 2. Persistência atômica por usuário (evita sobrescrever votos simultâneos de colegas)
+    await this.updateUserVotes(boardId, user.uid, userMap, userNames[user.uid]);
 
     return true;
   },
@@ -543,13 +544,7 @@ export const votingService = {
     });
 
     // 2. Persistência atômica (remove o campo do usuário quando o mapa fica vazio)
-    const ok = await this.updateUserVotes(boardId, user.uid, userMap);
-    if (!ok) {
-      await this.updateVoting(boardId, {
-        ...getLocalVoting(boardId),
-        session: { ...(getLocalVoting(boardId).session || session), votes },
-      });
-    }
+    await this.updateUserVotes(boardId, user.uid, userMap);
 
     return true;
   },
@@ -582,7 +577,6 @@ export const votingService = {
     });
 
     // 2. Persistência atômica por usuário (não sobrescreve votos alheios)
-    let ok = true;
     if (isFirebaseConfigured && db) {
       try {
         await updateDoc(doc(db, 'boards', boardId), {
@@ -590,8 +584,7 @@ export const votingService = {
           updatedAt: Date.now(),
         });
       } catch (e) {
-        ok = false;
-        console.warn('Escrita atômica de "concluído" falhou (usando fallback completo):', e);
+        console.warn('Escrita atômica de "concluído" falhou no Firestore:', e);
       }
     }
     if (isFirebaseConfigured && rtdb) {
@@ -603,13 +596,6 @@ export const votingService = {
         console.warn('Erro ao persistir "concluído" no RTDB:', err);
       }
     }
-    if (!ok) {
-      await this.updateVoting(boardId, {
-        ...getLocalVoting(boardId),
-        session: { ...(getLocalVoting(boardId).session || session), completedUsers },
-      });
-    }
-
 
     return isNowDone;
   },
@@ -652,8 +638,15 @@ export const votingService = {
     element: CanvasElement
   ): boolean {
     if (!session) return false;
-    // Não permitir votação em linhas/setas ou frames de fundo
-    if (element.type === 'arrow' || element.type === 'frame') return false;
+    // Não permitir votação em linhas, setas, traços de caneta ou frames de fundo
+    if (
+      element.type === 'arrow' ||
+      element.type === 'line' ||
+      element.type === 'pen' ||
+      element.type === 'frame'
+    ) {
+      return false;
+    }
 
     if (session.scope === 'selection') {
       return Boolean(session.allowedElementIds?.includes(element.id));
@@ -661,14 +654,22 @@ export const votingService = {
     if (session.scope === 'sticky_only') {
       return (
         element.type === 'sticky' ||
+        element.type === 'checklist' ||
         element.type === 'rect' ||
         element.type === 'circle' ||
         element.type === 'diamond' ||
         element.type === 'triangle' ||
-        element.type === 'star'
+        element.type === 'star' ||
+        element.type === 'hexagon' ||
+        element.type === 'cylinder'
       );
     }
     return true; // 'all'
+  },
+
+  clearMemoryCache(rawBoardId: string): void {
+    const boardId = cleanBoardId(rawBoardId);
+    memoryVotesCache.delete(boardId);
   },
 
   /**

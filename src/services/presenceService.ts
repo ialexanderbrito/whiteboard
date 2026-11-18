@@ -260,6 +260,24 @@ export const presenceService = {
       }
     });
 
+    const hasVisualPresenceChanged = (prev: UserPresence | undefined, next: UserPresence): boolean => {
+      if (!prev) return true;
+      return (
+        prev.name !== next.name ||
+        prev.color !== next.color ||
+        prev.photoURL !== next.photoURL ||
+        prev.selectedElementId !== next.selectedElementId ||
+        prev.activeTool !== next.activeTool ||
+        prev.message !== next.message ||
+        prev.messageTimestamp !== next.messageTimestamp ||
+        prev.lastClickTimestamp !== next.lastClickTimestamp ||
+        prev.cursor?.x !== next.cursor?.x ||
+        prev.cursor?.y !== next.cursor?.y ||
+        prev.laser?.isDrawing !== next.laser?.isDrawing ||
+        prev.laser?.timestamp !== next.laser?.timestamp
+      );
+    };
+
     const unsubChanged = onChildChanged(boardPresenceRef, (snapshot) => {
       const data = snapshot.val() as UserPresence | null;
       if (data && snapshot.key) {
@@ -274,8 +292,12 @@ export const presenceService = {
             isAnonymous: data.isAnonymous,
           };
           handleRemoteReaction(sanitized);
+          const prev = remoteUsersMap.get(snapshot.key);
           remoteUsersMap.set(snapshot.key, sanitized);
-          scheduleNotify();
+          // Evita re-renderizar BoardPage/cursores remotos quando apenas 'reaction' ou 'lastSeen' mudarem
+          if (hasVisualPresenceChanged(prev, sanitized)) {
+            scheduleNotify();
+          }
         }
       }
     });
