@@ -32,7 +32,13 @@ import {
   Plus,
   LayoutTemplate,
   Hexagon,
-  Cylinder
+  Cylinder,
+  Table2,
+  FolderKanban,
+  GitBranch,
+  Code2,
+  MessagePin,
+  Map
 } from '@/components/ui/icons';
 import type { ToolType } from '../../types/element';
 import { STICKY_COLORS, SHAPE_QUICK_SWATCHES } from '../../utils/colors';
@@ -80,6 +86,9 @@ interface ToolbarProps {
   position?: 'left' | 'bottom';
   // Central de Ajuda & Atalhos
   onOpenShortcuts?: () => void;
+  // Minimapa Interativo Retrátil
+  showMinimap?: boolean;
+  onToggleMinimap?: () => void;
   // Templates de Sprint (Padrão Miro / FigJam)
   onOpenTemplates?: () => void;
 }
@@ -120,6 +129,13 @@ const SHAPE_OPTIONS = [
 const CONNECTOR_OPTIONS = [
   { id: 'arrow' as ToolType, label: 'Seta Conectora', icon: ArrowUpRight, shortcut: 'A' },
   { id: 'line' as ToolType, label: 'Linha Reta', icon: Minus },
+];
+
+const WIDGET_OPTIONS = [
+  { id: 'table' as ToolType, label: 'Tabela Editável', icon: Table2 },
+  { id: 'kanban' as ToolType, label: 'Quadro Kanban', icon: FolderKanban },
+  { id: 'mindmap' as ToolType, label: 'Mapa Mental', icon: GitBranch },
+  { id: 'code' as ToolType, label: 'Bloco de Código', icon: Code2 },
 ];
 
 /**
@@ -172,17 +188,21 @@ export const Toolbar: React.FC<ToolbarProps> = React.memo(({
   canCommentOnly = false,
   position = 'left',
   onOpenShortcuts,
+  showMinimap = false,
+  onToggleMinimap,
   onOpenTemplates,
 }) => {
-  const [activePicker, setActivePicker] = useState<'sticky' | 'checklist' | 'pen' | 'shapes' | 'connectors' | null>(null);
+  const [activePicker, setActivePicker] = useState<'sticky' | 'checklist' | 'pen' | 'shapes' | 'connectors' | 'widgets' | null>(null);
   const [currentShape, setCurrentShape] = useState<ToolType>('rect');
   const [currentConnector, setCurrentConnector] = useState<ToolType>('arrow');
+  const [currentWidget, setCurrentWidget] = useState<ToolType>('table');
 
   const isBottom = position === 'bottom';
   const tooltipSide = isBottom ? 'top' : 'right';
 
   const isShapeActive = SHAPE_OPTIONS.some((s) => s.id === currentTool);
   const isConnectorActive = CONNECTOR_OPTIONS.some((c) => c.id === currentTool);
+  const isWidgetActive = WIDGET_OPTIONS.some((w) => w.id === currentTool);
   const isDrawingActive = ['pen', 'highlighter', 'eraser'].includes(currentTool);
 
   const activeShapeOption = SHAPE_OPTIONS.find((s) => s.id === currentShape) || SHAPE_OPTIONS[0];
@@ -190,6 +210,9 @@ export const Toolbar: React.FC<ToolbarProps> = React.memo(({
 
   const activeConnectorOption = CONNECTOR_OPTIONS.find((c) => c.id === currentConnector) || CONNECTOR_OPTIONS[0];
   const ActiveConnectorIcon = activeConnectorOption.icon;
+
+  const activeWidgetOption = WIDGET_OPTIONS.find((w) => w.id === currentWidget) || WIDGET_OPTIONS[0];
+  const ActiveWidgetIcon = activeWidgetOption.icon;
 
   return (
     <>
@@ -331,6 +354,32 @@ export const Toolbar: React.FC<ToolbarProps> = React.memo(({
               </div>
             )}
           </div>
+
+          {/* Comentário Fixado em Thread (Disponível para Editores e Comentadores) */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={() => {
+                  onSelectTool('comment');
+                  setActivePicker(null);
+                }}
+                className={`size-8 rounded-md transition-colors flex items-center justify-center active:scale-[0.98] ${
+                  currentTool === 'comment'
+                    ? 'bg-primary text-primary-foreground shadow-xs'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+                aria-label="Comentário Fixado em Thread"
+              >
+                <MessagePin className="size-4" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side={tooltipSide}>
+              <p className="font-medium text-xs">
+                Comentário em Thread <span className="opacity-60 text-[10px]">(K)</span>
+              </p>
+            </TooltipContent>
+          </Tooltip>
 
           {/* Checklist Interativo (Micro-Widget Vivo) */}
           <div className="relative">
@@ -947,6 +996,72 @@ export const Toolbar: React.FC<ToolbarProps> = React.memo(({
             </TooltipContent>
           </Tooltip>
 
+          {/* Widgets Estruturados: Tabela, Kanban, Mapa Mental e Bloco de Código */}
+          <div className="relative">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isWidgetActive) {
+                      setActivePicker(activePicker === 'widgets' ? null : 'widgets');
+                    } else {
+                      setActivePicker(activePicker === 'widgets' ? null : 'widgets');
+                      onSelectTool(currentWidget);
+                    }
+                  }}
+                  className={`size-8 rounded-md transition-colors flex items-center justify-center relative active:scale-[0.98] ${
+                    isWidgetActive
+                      ? 'bg-primary text-primary-foreground shadow-xs'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                  }`}
+                  aria-label="Tabela, Kanban, Mapa Mental e Código"
+                >
+                  <ActiveWidgetIcon className="size-4" />
+                  <span className="absolute -bottom-0.5 -right-0.5 text-[8px] opacity-70">▾</span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side={tooltipSide}>
+                <p className="font-medium text-xs">{activeWidgetOption.label}</p>
+              </TooltipContent>
+            </Tooltip>
+
+            {activePicker === 'widgets' && (
+              <div
+                className={`absolute ${
+                  isBottom ? 'bottom-full mb-2.5 left-1/2 -translate-x-1/2' : 'left-full ml-2 top-0'
+                } bg-popover text-popover-foreground p-1 rounded-md shadow-md border border-border flex flex-col gap-0.5 z-40 animate-in fade-in-0 zoom-in-95 w-48`}
+              >
+                <div className="px-2 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                  Widgets & Ferramentas
+                </div>
+                {WIDGET_OPTIONS.map((w) => {
+                  const WIcon = w.icon;
+                  const isCur = currentTool === w.id;
+                  return (
+                    <button
+                      key={w.id}
+                      type="button"
+                      onClick={() => {
+                        setCurrentWidget(w.id);
+                        onSelectTool(w.id);
+                        setActivePicker(null);
+                      }}
+                      className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs transition cursor-pointer ${
+                        isCur
+                          ? 'bg-primary text-primary-foreground font-semibold'
+                          : 'hover:bg-muted text-foreground'
+                      }`}
+                    >
+                      <WIcon className="size-3.5 shrink-0" />
+                      <span>{w.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           {/* Templates de Sprint e Frameworks (Padrão Miro & FigJam na barra de ferramentas) */}
           {onOpenTemplates && (
             <Tooltip>
@@ -1139,28 +1254,58 @@ export const Toolbar: React.FC<ToolbarProps> = React.memo(({
           </Tooltip>
         </div>
 
+        {(onToggleMinimap || onOpenShortcuts) && (
+          <div className="h-3.5 w-px bg-border/60" />
+        )}
+
+        {/* Botão Rápido do Minimapa (ao lado do Zoom e do ?) */}
+        {onToggleMinimap && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                data-minimap-toggle="true"
+                aria-label={showMinimap ? 'Ocultar Minimapa' : 'Abrir Minimapa'}
+                aria-pressed={showMinimap}
+                onClick={onToggleMinimap}
+                className={`size-6 rounded-md transition-[transform,background-color,color] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] flex items-center justify-center active:scale-[0.96] cursor-pointer ${
+                  showMinimap
+                    ? 'bg-primary text-primary-foreground shadow-xs'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                }`}
+              >
+                <Map className="size-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              <p className="flex items-center gap-1.5">
+                <span>{showMinimap ? 'Ocultar Minimapa' : 'Minimapa do Quadro'}</span>
+                <kbd className="px-1 py-0.2 bg-muted text-[10px] font-mono rounded border border-border">M</kbd>
+              </p>
+            </TooltipContent>
+          </Tooltip>
+        )}
+
         {/* Botão de Ajuda & Atalhos (?) */}
         {onOpenShortcuts && (
-          <>
-            <div className="h-3.5 w-px bg-border/60" />
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  onClick={onOpenShortcuts}
-                  className="size-6 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition flex items-center justify-center active:scale-[0.96] cursor-pointer font-bold text-xs"
-                >
-                  <HelpCircle className="size-3.5" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="top">
-                <p className="flex items-center gap-1.5">
-                  <span>Atalhos do Teclado</span>
-                  <kbd className="px-1 py-0.2 bg-muted text-[10px] font-mono rounded border border-border">?</kbd>
-                </p>
-              </TooltipContent>
-            </Tooltip>
-          </>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                aria-label="Atalhos do Teclado"
+                onClick={onOpenShortcuts}
+                className="size-6 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-[transform,background-color,color] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] flex items-center justify-center active:scale-[0.96] cursor-pointer font-bold text-xs"
+              >
+                <HelpCircle className="size-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              <p className="flex items-center gap-1.5">
+                <span>Atalhos do Teclado</span>
+                <kbd className="px-1 py-0.2 bg-muted text-[10px] font-mono rounded border border-border">?</kbd>
+              </p>
+            </TooltipContent>
+          </Tooltip>
         )}
       </div>
     </>

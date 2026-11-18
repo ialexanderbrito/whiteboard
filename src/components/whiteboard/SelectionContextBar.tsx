@@ -35,10 +35,13 @@ import {
   BringToFront,
   SendToBack,
   CheckSquare,
-  StickyNote
+  StickyNote,
+  Boxes
 } from '@/components/ui/icons';
+import { SpecializedElementControls } from './context-bar/SpecializedElementControls';
 import type { CanvasElement, ConnectorStyle } from '../../types/element';
 import { isGeometricShape } from '../../types/element';
+import { selectionHasGroup, selectionIsSingleGroup } from '../../utils/grouping';
 import { resolveConnectorGeometry } from '../../utils/connectors.ts';
 import { 
   convertStickyToChecklist,
@@ -80,6 +83,9 @@ import { Button } from '@/components/ui/button';
 import {
   getViewport,
   subscribeViewport,
+  getElementDragOffset,
+  subscribeElementDragOffset,
+  resolveDraggedWorldBounds,
   type ViewportState,
 } from '../../utils/viewport';
 import { Badge } from '@/components/ui/badge';
@@ -117,6 +123,10 @@ interface SelectionContextBarProps {
   onCutElements?: (elements: CanvasElement[]) => void;
   onStartEditing?: (element: CanvasElement) => void;
   onReorderLayer?: (action: 'bringToFront' | 'sendToBack' | 'bringForward' | 'sendBackward') => void;
+  onGroupElements?: () => void;
+  onUngroupElements?: () => void;
+  onOpenCropModal?: (elementId: string) => void;
+  onSpawnMindMapNode?: (elementId: string, mode: 'child' | 'sibling') => void;
   scale: number;
   stagePos: { x: number; y: number };
   /** Distância (px) entre a seleção e a base da barra. */
@@ -391,6 +401,10 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
   onCutElements,
   onStartEditing,
   onReorderLayer,
+  onGroupElements,
+  onUngroupElements,
+  onOpenCropModal,
+  onSpawnMindMapNode,
   scale,
   stagePos,
   topOffset = 48,
@@ -471,31 +485,76 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
   // sobrepõem a barra com seu canto superior girado.
   // O deslocamento é escrito direto no DOM durante a navegação: um setState por
   // frame re-renderizaria esta barra (e seus dezenas de controles) a cada wheel.
-  const selectionBounds = selectedElements.map(getElementWorldBounds);
-  const minX = selectionBounds.length > 0 ? Math.min(...selectionBounds.map((b) => b.x)) : 0;
-  const minY = selectionBounds.length > 0 ? Math.min(...selectionBounds.map((b) => b.y)) : 0;
+  const selectionEntries = useMemo(
+    () =>
+      selectedElements.map((el) => ({
+        id: el.id,
+        bounds: getElementWorldBounds(el),
+      })),
+    [selectedElements]
+  );
+  const selectionEntriesRef = useRef(selectionEntries);
+
+  const activeDragSnapshot = getElementDragOffset();
+  let minX = 0;
+  let minY = 0;
+  if (selectionEntries.length > 0) {
+    minX = Infinity;
+    minY = Infinity;
+    for (let i = 0; i < selectionEntries.length; i++) {
+      const b = resolveDraggedWorldBounds(
+        selectionEntries[i].id,
+        selectionEntries[i].bounds,
+        activeDragSnapshot
+      );
+      if (b.x < minX) minX = b.x;
+      if (b.y < minY) minY = b.y;
+    }
+  }
   const barRef = useRef<HTMLDivElement>(null);
-  const barAnchorRef = useRef({ minX, minY });
 
   const placeBar = useCallback((viewport: ViewportState) => {
     const node = barRef.current;
     if (!node) return;
-    const anchor = barAnchorRef.current;
-    const screenX = anchor.minX * viewport.scale + viewport.x;
-    const screenY = anchor.minY * viewport.scale + viewport.y;
+    const entries = selectionEntriesRef.current;
+    if (entries.length === 0) return;
+
+    const drag = getElementDragOffset();
+    let liveMinX = Infinity;
+    let liveMinY = Infinity;
+    let isActivelyDraggingSelection = false;
+
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i];
+      if (drag?.active && drag.draggedIds.has(entry.id)) {
+        isActivelyDraggingSelection = true;
+      }
+      const b = resolveDraggedWorldBounds(entry.id, entry.bounds, drag);
+      if (b.x < liveMinX) liveMinX = b.x;
+      if (b.y < liveMinY) liveMinY = b.y;
+    }
+
+    const screenX = liveMinX * viewport.scale + viewport.x;
+    const screenY = liveMinY * viewport.scale + viewport.y;
     node.style.left = `${Math.max(16, Math.min(window.innerWidth - 440, screenX))}px`;
     node.style.top = `${Math.max(68, screenY - topOffset)}px`;
+    node.style.pointerEvents = isActivelyDraggingSelection ? 'none' : '';
   }, [topOffset]);
 
   useEffect(() => {
     placeBar(getViewport());
-    return subscribeViewport(placeBar);
+    const unsubViewport = subscribeViewport(placeBar);
+    const unsubDrag = subscribeElementDragOffset(() => placeBar(getViewport()));
+    return () => {
+      unsubViewport();
+      unsubDrag();
+    };
   }, [placeBar]);
 
   useLayoutEffect(() => {
-    barAnchorRef.current = { minX, minY };
+    selectionEntriesRef.current = selectionEntries;
     placeBar(getViewport());
-  }, [minX, minY, placeBar]);
+  }, [selectionEntries, placeBar]);
 
   if (selectedElements.length === 0) return null;
 
@@ -638,7 +697,7 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
     return (
       <div
         ref={barRef}
-        className="absolute z-40 flex items-center gap-1.5 bg-popover/95 text-popover-foreground backdrop-blur-md px-2.5 py-1 rounded-lg shadow-sm border border-border select-none"
+        className="absolute z-40 w-max whitespace-nowrap flex items-center gap-1.5 bg-popover/95 text-popover-foreground backdrop-blur-md px-2.5 py-1 rounded-lg shadow-sm border border-border select-none"
         style={{
           left: `${barLeft}px`,
           top: `${barTop}px`,
@@ -657,6 +716,36 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
           onUnlock={() => handleBatchLock(false)}
           onLock={() => handleBatchLock(true)}
         />
+
+        {/* Agrupar / Desagrupar Elementos (Ctrl+G / Ctrl+Shift+G) */}
+        {(onGroupElements || onUngroupElements) && !allLocked && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant={selectionIsSingleGroup(selectedElements) ? 'secondary' : 'ghost'}
+                size="icon-sm"
+                onClick={() => {
+                  if (selectionIsSingleGroup(selectedElements)) {
+                    onUngroupElements?.();
+                  } else {
+                    onGroupElements?.();
+                  }
+                }}
+                className="size-7 rounded-md cursor-pointer active:scale-[0.97]"
+              >
+                <Boxes className="size-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              {selectionIsSingleGroup(selectedElements)
+                ? 'Desagrupar elementos (Ctrl+Shift+G)'
+                : selectionHasGroup(selectedElements)
+                ? 'Reagrupar seleção (Ctrl+G)'
+                : 'Agrupar elementos (Ctrl+G)'}
+            </TooltipContent>
+          </Tooltip>
+        )}
 
         {/* Cores rápidas para aplicar em lote via Popover */}
         <div className="flex items-center pr-1 border-r border-border">
@@ -1948,7 +2037,7 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
     <div
       ref={barRef}
       data-mirio-text-toolbar="true"
-      className="absolute z-40 flex items-center gap-1 bg-popover/95 text-popover-foreground backdrop-blur-md px-1.5 py-1 rounded-xl shadow-md border border-border select-none"
+      className="absolute z-40 w-max whitespace-nowrap flex items-center gap-1 bg-popover/95 text-popover-foreground backdrop-blur-md px-1.5 py-1 rounded-xl shadow-md border border-border select-none"
       style={{
         left: `${barLeft}px`,
         top: `${barTop}px`,
@@ -2062,6 +2151,14 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
           </PopoverContent>
         </Popover>
       )}
+
+      {/* Controles Modulares Especializados (Tabela, Kanban, Bloco de Código, Mapa Mental, Recorte e Embed) */}
+      <SpecializedElementControls
+        element={primaryElement}
+        onUpdateElement={onUpdateElement}
+        onOpenCropModal={onOpenCropModal}
+        onSpawnMindMapNode={onSpawnMindMapNode}
+      />
 
       {/* Botão de conversão mútua entre Post-it e Checklist */}
       {isSticky && (
@@ -3247,8 +3344,90 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
                       <DottedStrokeIcon className="size-4.5" />
                     </button>
                   </div>
+
+                  {/* Direção das pontas (exclusivo para Setas) */}
+                  {primaryElement.type === 'arrow' && (
+                    <>
+                      <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-1 mt-2.5 mb-1.5">
+                        Pontas da seta
+                      </div>
+                      <div className="grid grid-cols-3 gap-1">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onUpdateElement(primaryElement.id, {
+                              startArrowhead: 'none',
+                              endArrowhead: 'arrow',
+                            })
+                          }
+                          title="Seta direcional (→)"
+                          className={`h-7 rounded-lg text-xs font-mono flex items-center justify-center transition active:scale-95 border cursor-pointer ${
+                            primaryElement.startArrowhead !== 'arrow' && primaryElement.endArrowhead !== 'none'
+                              ? 'border-primary bg-primary/10 text-primary font-bold'
+                              : 'border-transparent text-muted-foreground hover:bg-muted hover:text-foreground'
+                          }`}
+                        >
+                          →
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onUpdateElement(primaryElement.id, {
+                              startArrowhead: 'arrow',
+                              endArrowhead: 'arrow',
+                            })
+                          }
+                          title="Seta bidirecional (↔)"
+                          className={`h-7 rounded-lg text-xs font-mono flex items-center justify-center transition active:scale-95 border cursor-pointer ${
+                            primaryElement.startArrowhead === 'arrow' && primaryElement.endArrowhead !== 'none'
+                              ? 'border-primary bg-primary/10 text-primary font-bold'
+                              : 'border-transparent text-muted-foreground hover:bg-muted hover:text-foreground'
+                          }`}
+                        >
+                          ↔
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onUpdateElement(primaryElement.id, {
+                              startArrowhead: 'none',
+                              endArrowhead: 'none',
+                            })
+                          }
+                          title="Sem pontas (—)"
+                          className={`h-7 rounded-lg text-xs font-mono flex items-center justify-center transition active:scale-95 border cursor-pointer ${
+                            primaryElement.startArrowhead !== 'arrow' && primaryElement.endArrowhead === 'none'
+                              ? 'border-primary bg-primary/10 text-primary font-bold'
+                              : 'border-transparent text-muted-foreground hover:bg-muted hover:text-foreground'
+                          }`}
+                        >
+                          —
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </PopoverContent>
               </Popover>
+
+              {/* Rótulo de texto na Seta / Linha */}
+              {onStartEditing && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => onStartEditing(primaryElement)}
+                      className="size-7 text-muted-foreground hover:text-foreground rounded-md cursor-pointer active:scale-[0.97]"
+                    >
+                      <Edit3 className="size-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">
+                    {primaryElement.text ? 'Editar rótulo do conector' : 'Adicionar rótulo ao conector'}
+                  </TooltipContent>
+                </Tooltip>
+              )}
             </div>
           )}
 
@@ -3260,8 +3439,12 @@ export const SelectionContextBar: React.FC<SelectionContextBarProps> = React.mem
       {/* SLOT 4: AÇÕES UNIVERSAIS (Link, Votação, Bloquear, Excluir, Mais) */}
       {/* ========================================================= */}
       <div className="flex items-center gap-0.5">
-        {/* Link para qualquer elemento */}
-        {renderLinkPopover()}
+        {/* Link para elementos visuais/textuais (oculto em widgets estruturados como código, tabela, kanban e embed) */}
+        {primaryElement.type !== 'code' &&
+          primaryElement.type !== 'table' &&
+          primaryElement.type !== 'kanban' &&
+          primaryElement.type !== 'embed' &&
+          renderLinkPopover()}
 
         {/* Controles de Votação (Sessão Ativa) */}
         {isSessionActive && isElementEligible && primaryElement && (

@@ -35,10 +35,15 @@ import {
   Plus,
   Magnet,
   Eye,
+  Boxes,
+  Palette,
+  Search,
+  Map,
 } from '@/components/ui/icons';
 import type { CanvasElement } from '../../types/element';
 import type { AlignmentType } from '../../utils/alignment';
 import { selectionSupportsLayerReorder } from '../../utils/layerOrder';
+import { selectionHasGroup } from '../../utils/grouping';
 
 export interface BoardContextMenuProps {
   isOpen: boolean;
@@ -59,6 +64,14 @@ export interface BoardContextMenuProps {
   onToggleLock?: () => void;
   onReorderLayer: (action: 'bringToFront' | 'sendToBack' | 'bringForward' | 'sendBackward') => void;
   onAlign?: (type: AlignmentType) => void;
+  onGroup?: () => void;
+  onUngroup?: () => void;
+  onCopyStyle?: () => void;
+  onPasteStyle?: () => void;
+  hasCopiedStyle?: boolean;
+  onOpenSearch?: () => void;
+  onToggleMinimap?: () => void;
+  showMinimap?: boolean;
   onStartEditing?: (elementId: string) => void;
   onOpenTemplates?: () => void;
   onOpenStickers?: () => void;
@@ -91,6 +104,14 @@ export const BoardContextMenu: React.FC<BoardContextMenuProps> = ({
   onDelete,
   onReorderLayer,
   onAlign,
+  onGroup,
+  onUngroup,
+  onCopyStyle,
+  onPasteStyle,
+  hasCopiedStyle = false,
+  onOpenSearch,
+  onToggleMinimap,
+  showMinimap = false,
   onStartEditing,
   onOpenTemplates,
   onOpenStickers,
@@ -195,7 +216,9 @@ export const BoardContextMenu: React.FC<BoardContextMenuProps> = ({
     isSingleElement &&
     (primaryElement?.type === 'sticky' ||
       primaryElement?.type === 'text' ||
-      primaryElement?.type === 'frame');
+      primaryElement?.type === 'frame' ||
+      primaryElement?.type === 'arrow' ||
+      primaryElement?.type === 'line');
 
   return (
     <div
@@ -591,6 +614,46 @@ export const BoardContextMenu: React.FC<BoardContextMenuProps> = ({
                       </span>
                     </button>
                   )}
+
+                  {onToggleMinimap && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onToggleMinimap();
+                        onClose();
+                      }}
+                      className="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer text-left"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Map className="size-3.5 text-muted-foreground" />
+                        <span className="font-medium text-[11px]">
+                          {showMinimap ? 'Ocultar Minimapa' : 'Exibir Minimapa'}
+                        </span>
+                      </div>
+                      <kbd className="px-1 py-0.5 text-[9px] font-mono bg-muted text-muted-foreground rounded border border-border/50">
+                        M
+                      </kbd>
+                    </button>
+                  )}
+
+                  {onOpenSearch && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onOpenSearch();
+                        onClose();
+                      }}
+                      className="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer text-left"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Search className="size-3.5 text-muted-foreground" />
+                        <span className="font-medium text-[11px]">Buscar no Quadro</span>
+                      </div>
+                      <kbd className="px-1 py-0.5 text-[9px] font-mono bg-muted text-muted-foreground rounded border border-border/50">
+                        Ctrl+F
+                      </kbd>
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -689,6 +752,83 @@ export const BoardContextMenu: React.FC<BoardContextMenuProps> = ({
 
           {/* Separador */}
           <div className="h-px bg-border/60 my-1" />
+
+          {/* Agrupar / Desagrupar e Copiar/Colar Estilo */}
+          {!readOnly && !canCommentOnly && targetElements.length >= 2 && onGroup && (
+            <button
+              type="button"
+              onClick={() => {
+                onGroup();
+                onClose();
+              }}
+              className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer group"
+            >
+              <div className="flex items-center gap-2">
+                <Boxes className="size-4 text-muted-foreground group-hover:scale-105 transition-transform" />
+                <span className="font-medium">Agrupar Seleção</span>
+              </div>
+              <kbd className="px-1.5 py-0.5 text-[9px] font-mono bg-muted text-muted-foreground rounded border border-border/50">
+                Ctrl+G
+              </kbd>
+            </button>
+          )}
+
+          {!readOnly && !canCommentOnly && selectionHasGroup(targetElements) && onUngroup && (
+            <button
+              type="button"
+              onClick={() => {
+                onUngroup();
+                onClose();
+              }}
+              className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer group"
+            >
+              <div className="flex items-center gap-2">
+                <Boxes className="size-4 text-muted-foreground group-hover:scale-105 transition-transform" />
+                <span className="font-medium">Desagrupar</span>
+              </div>
+              <kbd className="px-1.5 py-0.5 text-[9px] font-mono bg-muted text-muted-foreground rounded border border-border/50">
+                Ctrl+⇧+G
+              </kbd>
+            </button>
+          )}
+
+          {!readOnly && !canCommentOnly && isSingleElement && onCopyStyle && (
+            <button
+              type="button"
+              onClick={() => {
+                onCopyStyle();
+                onClose();
+              }}
+              className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer group"
+            >
+              <div className="flex items-center gap-2">
+                <Palette className="size-4 text-muted-foreground group-hover:scale-105 transition-transform" />
+                <span className="font-medium">Copiar Estilo</span>
+              </div>
+              <kbd className="px-1.5 py-0.5 text-[9px] font-mono bg-muted text-muted-foreground rounded border border-border/50">
+                Ctrl+Alt+C
+              </kbd>
+            </button>
+          )}
+
+          {!readOnly && !canCommentOnly && hasCopiedStyle && onPasteStyle && (
+            <button
+              type="button"
+              onClick={() => {
+                onPasteStyle();
+                onClose();
+              }}
+              className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left hover:bg-accent hover:text-accent-foreground transition-all duration-100 active:scale-[0.98] cursor-pointer group"
+            >
+              <div className="flex items-center gap-2">
+                <ClipboardPaste className="size-4 text-muted-foreground group-hover:scale-105 transition-transform" />
+                <span className="font-medium">Colar Estilo</span>
+              </div>
+              <kbd className="px-1.5 py-0.5 text-[9px] font-mono bg-muted text-muted-foreground rounded border border-border/50">
+                Ctrl+Alt+V
+              </kbd>
+            </button>
+          )}
 
           {/* Submenu de Camadas (oculto para imagens/GIFs, que não participam da pilha) */}
           {!readOnly && !canCommentOnly && canReorderLayers && (
