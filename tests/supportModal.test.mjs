@@ -36,8 +36,32 @@ test('BuyMeACoffeeModal: conforms with project button standard and omits raw ema
   // Feedback tátil com active:scale-[0.97]
   assert.match(src, /active:scale-\[0\.97\]/);
 
-  // Transições curtas e objetivas (150ms)
+  // Transições curtas e objetivas (150ms) sem transition-all genérico
   assert.match(src, /duration-150/);
+  assert.doesNotMatch(src, /transition-all/);
+});
+
+test('BuyMeACoffeeModal: trigger and modal strictly follow Mirio monochrome HUD aesthetic and Emil Kowalski craft', () => {
+  const src = readSource('src/components/layout/BuyMeACoffeeModal.tsx');
+
+  // Sem cores saturadas arbitrárias (amber/emerald) que fujam da estética monocromática do projeto
+  assert.doesNotMatch(src, /\b(bg|text|border)-(amber|emerald)-\d+/);
+
+  // Sem badge promocional PIX pendurado dentro do botão
+  assert.doesNotMatch(src, />[\s\r\n]*PIX[\s\r\n]*<\/span>/);
+
+  // Trigger usa tokens semânticos discretos em repouso e estado ativo quando aberto
+  assert.match(src, /text-muted-foreground/);
+  assert.match(src, /hover:text-foreground/);
+  assert.match(src, /open && 'bg-muted\/90 border-foreground\/30 text-foreground ring-1 ring-border'/);
+
+  // Micro-interação de hover restrita a dispositivos de ponteiro fino + acessibilidade motion-reduce
+  assert.match(src, /\[@media\(hover:hover\)_and_\(pointer:fine\)\]/);
+  assert.match(src, /motion-reduce:transition-none/);
+
+  // Regras shadcn: usa cn() e flex gap-* em vez de space-y-*
+  assert.match(src, /import \{ cn \} from '@\/lib\/utils'/);
+  assert.doesNotMatch(src, /\bspace-[xy]-\d+/);
 });
 
 test('BuyMeACoffeeModal: conforms with project Dialog architecture and controlled props', () => {
