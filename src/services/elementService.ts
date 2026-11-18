@@ -4,11 +4,19 @@ import {
   setDoc, 
   updateDoc, 
   deleteDoc, 
+  deleteField,
+  arrayUnion,
+  arrayRemove,
   writeBatch,
   onSnapshot 
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '../config/firebase';
 import type { CanvasElement } from '../types/element';
+import {
+  deserializeElementFromFirestore,
+  serializeElementForFirestore,
+  serializeForFirestoreValue,
+} from '../utils/tableAndKanban';
 
 const getLocalKey = (boardId: string) => `mirio_board_elements_${boardId.replace(/^board_/, '')}`;
 
@@ -21,14 +29,60 @@ const boardSubscribers = new Map<string, Set<(elements: CanvasElement[]) => void
 // Canais de transmissão ativos por board
 const broadcastChannels = new Map<string, BroadcastChannel>();
 
-function cleanFirestoreData<T extends Record<string, any>>(data: T): Record<string, any> {
-  const result: Record<string, any> = {};
+// Funções de cancelamento ativas (garante limpeza de onSnapshot antigos durante Vite HMR)
+const activeUnsubscribers = new Set<() => void>();
+
+/**
+ * Limpa recursivamente valores `undefined` para gravações completas (`setDoc` / `batch.set`).
+ */
+function cleanFirestoreSetData<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value
+      .filter((item) => item !== undefined)
+      .map((item) => cleanFirestoreSetData(item)) as unknown as T;
+  }
+  if (value !== null && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (v !== undefined) {
+        out[k] = cleanFirestoreSetData(v);
+      }
+    }
+    return out as T;
+  }
+  return value;
+}
+
+/**
+ * Prepara payload parcial para `updateDoc` / `batch.update`:
+ * - Chaves explicitamente passadas como `undefined` são convertidas em `deleteField()`
+ * - Campos com arrays aninhados (como `tableData: string[][]`) são serializados em objetos compatíveis com o Firestore
+ */
+function prepareFirestoreUpdateData(data: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(data)) {
-    if (value !== undefined) {
-      result[key] = value;
+    if (value === undefined) {
+      result[key] = deleteField();
+    } else {
+      result[key] = serializeForFirestoreValue(value, key);
     }
   }
   return result;
+}
+
+/**
+ * Aplica atualizações parciais em um elemento em memória removendo chaves definidas como `undefined`.
+ */
+function mergeElementInMemory(existing: CanvasElement, updates: Partial<CanvasElement> & { updatedAt: number }): CanvasElement {
+  const merged: Record<string, unknown> = { ...existing };
+  for (const [key, value] of Object.entries(updates)) {
+    if (value === undefined) {
+      delete merged[key];
+    } else {
+      merged[key] = value;
+    }
+  }
+  return merged as unknown as CanvasElement;
 }
 
 function getBroadcastChannel(rawBoardId: string): BroadcastChannel | null {
@@ -45,8 +99,49 @@ function getBroadcastChannel(rawBoardId: string): BroadcastChannel | null {
   return broadcastChannels.get(boardId) || null;
 }
 
+function cleanupBroadcastChannelIfUnused(boardId: string) {
+  const subs = boardSubscribers.get(boardId);
+  if (!subs || subs.size === 0) {
+    boardSubscribers.delete(boardId);
+    const ch = broadcastChannels.get(boardId);
+    if (ch) {
+      try {
+        ch.close();
+      } catch {}
+      broadcastChannels.delete(boardId);
+    }
+  }
+}
+
 // Margem de segurança abaixo do limite estrito de 500 operações por writeBatch no Firestore
 const MAX_BATCH_SIZE = 400;
+// Limite seguro de bytes aproximados por lote (evita estourar 10 MiB do Firestore com múltiplas imagens Base64)
+const MAX_BATCH_BYTES = 7_500_000;
+
+function chunkOperationsBySize<T>(items: T[], estimateBytes: (item: T) => number): T[][] {
+  const chunks: T[][] = [];
+  let currentChunk: T[] = [];
+  let currentBytes = 0;
+
+  for (const item of items) {
+    const itemBytes = estimateBytes(item);
+    if (
+      currentChunk.length >= MAX_BATCH_SIZE ||
+      (currentChunk.length > 0 && currentBytes + itemBytes > MAX_BATCH_BYTES)
+    ) {
+      chunks.push(currentChunk);
+      currentChunk = [];
+      currentBytes = 0;
+    }
+    currentChunk.push(item);
+    currentBytes += itemBytes;
+  }
+
+  if (currentChunk.length > 0) {
+    chunks.push(currentChunk);
+  }
+  return chunks;
+}
 
 // Temporizadores de debounce para persistência em localStorage (evita congelamento da thread principal)
 const persistTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -69,7 +164,12 @@ function getCachedElements(rawBoardId: string): CanvasElement[] {
         localStorage.setItem(getLocalKey(boardId), raw);
       }
     }
-    const parsed: CanvasElement[] = raw ? JSON.parse(raw) : [];
+    const rawList: Array<Record<string, unknown>> = raw ? JSON.parse(raw) : [];
+    const parsed: CanvasElement[] = Array.isArray(rawList)
+      ? rawList.map((item, idx) =>
+          deserializeElementFromFirestore(String(item?.id || `elem_${idx}`), item || {})
+        )
+      : [];
     memoryCache.set(boardId, parsed);
     return parsed;
   } catch {
@@ -83,8 +183,6 @@ function persistElements(rawBoardId: string, elements: CanvasElement[]) {
   memoryCache.set(boardId, elements);
 
   // Quando o Firebase está configurado, o Firestore já persiste os elementos no IndexedDB
-  // (persistentLocalCache com persistentMultipleTabManager). Gravar no localStorage duplicaria
-  // megabytes de dados e estouraria a cota de 5MB do navegador.
   if (isFirebaseConfigured && db) {
     return;
   }
@@ -102,7 +200,6 @@ function persistElements(rawBoardId: string, elements: CanvasElement[]) {
       try {
         localStorage.setItem(getLocalKey(boardId), JSON.stringify(elements));
       } catch (err) {
-        // Trata cota excedida de localStorage de forma silenciosa
         console.warn('Armazenamento local do navegador indisponível ou cheio:', err);
       }
     }, 400)
@@ -132,6 +229,16 @@ function notifySubscribers(rawBoardId: string, elements: CanvasElement[]) {
 }
 
 export const elementService = {
+  clearMemoryCache(rawBoardId: string): void {
+    const boardId = rawBoardId.replace(/^board_/, '');
+    memoryCache.delete(boardId);
+    const timer = persistTimers.get(boardId);
+    if (timer) {
+      clearTimeout(timer);
+      persistTimers.delete(boardId);
+    }
+  },
+
   subscribeElements(rawBoardId: string, callback: (elements: CanvasElement[]) => void): () => void {
     const boardId = rawBoardId.replace(/^board_/, '');
     if (!boardSubscribers.has(boardId)) {
@@ -148,8 +255,12 @@ export const elementService = {
     if (channel) {
       handleChannelMessage = (event: MessageEvent) => {
         if (event.data?.type === 'sync' && Array.isArray(event.data.elements)) {
-          memoryCache.set(boardId, event.data.elements);
-          callback(event.data.elements);
+          const normalized = event.data.elements.map(
+            (item: Record<string, unknown>, idx: number) =>
+              deserializeElementFromFirestore(String(item?.id || `elem_${idx}`), item || {})
+          );
+          memoryCache.set(boardId, normalized);
+          callback(normalized);
         } else {
           callback(getCachedElements(boardId));
         }
@@ -160,7 +271,12 @@ export const elementService = {
     const handleStorageEvent = (e: StorageEvent) => {
       if (e.key === getLocalKey(boardId) && e.newValue) {
         try {
-          const parsed = JSON.parse(e.newValue);
+          const rawParsed = JSON.parse(e.newValue);
+          const parsed: CanvasElement[] = Array.isArray(rawParsed)
+            ? rawParsed.map((item: Record<string, unknown>, idx: number) =>
+                deserializeElementFromFirestore(String(item?.id || `elem_${idx}`), item || {})
+              )
+            : [];
           memoryCache.set(boardId, parsed);
           callback(parsed);
         } catch {}
@@ -169,13 +285,17 @@ export const elementService = {
     window.addEventListener('storage', handleStorageEvent);
 
     if (!isFirebaseConfigured || !db) {
-      return () => {
+      const cleanupLocal = () => {
+        activeUnsubscribers.delete(cleanupLocal);
         boardSubscribers.get(boardId)?.delete(callback);
         window.removeEventListener('storage', handleStorageEvent);
         if (channel && handleChannelMessage) {
           channel.removeEventListener('message', handleChannelMessage);
         }
+        cleanupBroadcastChannelIfUnused(boardId);
       };
+      activeUnsubscribers.add(cleanupLocal);
+      return cleanupLocal;
     }
 
     // Escuta em tempo real no Firestore se configurado
@@ -183,9 +303,33 @@ export const elementService = {
     const unsubscribeFirestore = onSnapshot(
       elementsRef,
       (snapshot) => {
-        const elements: CanvasElement[] = snapshot.docs.map(
-          (docSnap) => ({ id: docSnap.id, ...docSnap.data() } as CanvasElement)
-        );
+        const prevList = memoryCache.get(boardId) || [];
+        const prevById = new Map(prevList.map((el) => [el.id, el]));
+        let anyChanged = snapshot.docs.length !== prevList.length;
+
+        const elements: CanvasElement[] = snapshot.docs.map((docSnap, idx) => {
+          const restored = deserializeElementFromFirestore(
+            docSnap.id,
+            docSnap.data() as Record<string, unknown>
+          );
+          const prevEl = prevById.get(docSnap.id);
+          if (
+            prevEl &&
+            prevEl.updatedAt === restored.updatedAt &&
+            JSON.stringify(prevEl) === JSON.stringify(restored)
+          ) {
+            if (prevList[idx]?.id !== docSnap.id) {
+              anyChanged = true;
+            }
+            return prevEl;
+          }
+          anyChanged = true;
+          return restored;
+        });
+
+        if (!anyChanged && prevList.length > 0) {
+          return;
+        }
         persistElements(boardId, elements);
         callback(elements);
       },
@@ -195,24 +339,28 @@ export const elementService = {
       }
     );
 
-    return () => {
+    const cleanupAll = () => {
+      activeUnsubscribers.delete(cleanupAll);
       boardSubscribers.get(boardId)?.delete(callback);
       window.removeEventListener('storage', handleStorageEvent);
       if (channel && handleChannelMessage) {
         channel.removeEventListener('message', handleChannelMessage);
       }
       unsubscribeFirestore();
+      cleanupBroadcastChannelIfUnused(boardId);
     };
+    activeUnsubscribers.add(cleanupAll);
+    return cleanupAll;
   },
 
   async addElement(rawBoardId: string, element: Omit<CanvasElement, 'id' | 'updatedAt'> & { id?: string }): Promise<string> {
     const boardId = rawBoardId.replace(/^board_/, '');
     const elementId = element.id || 'elem_' + Math.random().toString(36).substring(2, 11);
-    const fullElement: CanvasElement = {
+    const fullElement = cleanFirestoreSetData({
       ...element,
       id: elementId,
       updatedAt: Date.now(),
-    };
+    }) as CanvasElement;
 
     const current = [...getCachedElements(boardId)];
     const existingIndex = current.findIndex((e) => e.id === elementId);
@@ -225,11 +373,11 @@ export const elementService = {
     persistElements(boardId, current);
     notifySubscribers(boardId, current);
 
-    // Persiste no Firestore
+    // Persiste no Firestore (serializa arrays 2D como tableData para evitar erro "Nested arrays are not supported")
     if (isFirebaseConfigured && db) {
       try {
         const docRef = doc(db, 'boards', boardId, 'elements', elementId);
-        await setDoc(docRef, fullElement);
+        await setDoc(docRef, serializeElementForFirestore(fullElement));
       } catch (err) {
         console.warn('Erro ao sincronizar novo elemento no Firestore (persistido localmente):', err);
       }
@@ -246,11 +394,13 @@ export const elementService = {
     if (elementsList.length === 0) return [];
 
     const now = Date.now();
-    const fullElements: CanvasElement[] = elementsList.map((el) => ({
-      ...el,
-      id: el.id || 'elem_' + Math.random().toString(36).substring(2, 11),
-      updatedAt: now,
-    }));
+    const fullElements: CanvasElement[] = elementsList.map((el) =>
+      cleanFirestoreSetData({
+        ...el,
+        id: el.id || 'elem_' + Math.random().toString(36).substring(2, 11),
+        updatedAt: now,
+      }) as CanvasElement
+    );
 
     const current = [...getCachedElements(boardId), ...fullElements];
     persistElements(boardId, current);
@@ -258,12 +408,12 @@ export const elementService = {
 
     if (isFirebaseConfigured && db) {
       try {
-        for (let i = 0; i < fullElements.length; i += MAX_BATCH_SIZE) {
-          const chunk = fullElements.slice(i, i + MAX_BATCH_SIZE);
+        const chunks = chunkOperationsBySize(fullElements, (el) => JSON.stringify(el).length + 256);
+        for (const chunk of chunks) {
           const batch = writeBatch(db);
           chunk.forEach((el) => {
             const docRef = doc(db!, 'boards', boardId, 'elements', el.id);
-            batch.set(docRef, el);
+            batch.set(docRef, serializeElementForFirestore(el));
           });
           await batch.commit();
         }
@@ -285,7 +435,7 @@ export const elementService = {
     const current = [...getCachedElements(boardId)];
     const idx = current.findIndex((e) => e.id === elementId);
     if (idx !== -1) {
-      current[idx] = { ...current[idx], ...payload };
+      current[idx] = mergeElementInMemory(current[idx], payload);
       persistElements(boardId, current);
       notifySubscribers(boardId, current);
     }
@@ -293,9 +443,50 @@ export const elementService = {
     if (isFirebaseConfigured && db) {
       try {
         const docRef = doc(db, 'boards', boardId, 'elements', elementId);
-        await updateDoc(docRef, cleanFirestoreData(payload));
+        await updateDoc(docRef, prepareFirestoreUpdateData(payload));
       } catch (err) {
         console.warn('Erro ao atualizar elemento no Firestore:', err);
+      }
+    }
+  },
+
+  async toggleElementReaction(
+    rawBoardId: string,
+    elementId: string,
+    reactionKey: string,
+    userId: string,
+    shouldAdd: boolean,
+    fallbackReactions: Record<string, string[]>,
+    legacyKeyToRemove?: string
+  ): Promise<void> {
+    const boardId = rawBoardId.replace(/^board_/, '');
+    const now = Date.now();
+
+    const current = [...getCachedElements(boardId)];
+    const idx = current.findIndex((e) => e.id === elementId);
+    if (idx !== -1) {
+      current[idx] = {
+        ...current[idx],
+        reactions: fallbackReactions,
+        updatedAt: now,
+      };
+      persistElements(boardId, current);
+      notifySubscribers(boardId, current);
+    }
+
+    if (isFirebaseConfigured && db) {
+      try {
+        const docRef = doc(db, 'boards', boardId, 'elements', elementId);
+        const atomicPayload: Record<string, unknown> = {
+          [`reactions.${reactionKey}`]: shouldAdd ? arrayUnion(userId) : arrayRemove(userId),
+          updatedAt: now,
+        };
+        if (legacyKeyToRemove && legacyKeyToRemove !== reactionKey && !/[.~*/[\]]/.test(legacyKeyToRemove)) {
+          atomicPayload[`reactions.${legacyKeyToRemove}`] = deleteField();
+        }
+        await updateDoc(docRef, atomicPayload);
+      } catch (err) {
+        console.warn('Erro ao atualizar reação atômica no Firestore:', err);
       }
     }
   },
@@ -354,7 +545,7 @@ export const elementService = {
     for (let i = 0; i < current.length; i++) {
       const up = updateMap.get(current[i].id);
       if (up) {
-        current[i] = { ...current[i], ...up, updatedAt: now };
+        current[i] = mergeElementInMemory(current[i], { ...up, updatedAt: now });
       }
     }
     persistElements(boardId, current);
@@ -362,12 +553,15 @@ export const elementService = {
 
     if (isFirebaseConfigured && db) {
       try {
-        for (let i = 0; i < updatesList.length; i += MAX_BATCH_SIZE) {
-          const chunk = updatesList.slice(i, i + MAX_BATCH_SIZE);
+        const chunks = chunkOperationsBySize(
+          updatesList,
+          (u) => JSON.stringify(u.updates || {}).length + 256
+        );
+        for (const chunk of chunks) {
           const batch = writeBatch(db);
           chunk.forEach(({ id, updates: elemUpdates }) => {
             const docRef = doc(db!, 'boards', boardId, 'elements', id);
-            batch.update(docRef, cleanFirestoreData({ ...elemUpdates, updatedAt: now }));
+            batch.update(docRef, prepareFirestoreUpdateData({ ...elemUpdates, updatedAt: now }));
           });
           await batch.commit();
         }
@@ -377,3 +571,14 @@ export const elementService = {
     }
   }
 };
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    Array.from(activeUnsubscribers).forEach((fn) => {
+      try {
+        fn();
+      } catch {}
+    });
+    activeUnsubscribers.clear();
+  });
+}

@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useRef, useCallback } from 'react';
-import { Layers, X, Frame, StickyNote, Square, Circle, Diamond, Triangle, Star, Type, ArrowRight, Minus, Pen, List, Smile, Play, MousePointerClick, LockClosed, Hexagon, Cylinder } from '@/components/ui/icons';
+import { Layers, X, Frame, StickyNote, Square, Circle, Diamond, Triangle, Star, Type, ArrowRight, Minus, Pen, List, Smile, Play, MousePointerClick, LockClosed, Hexagon, Cylinder, MessagePin, Table2, FolderKanban, Code2, ExternalLink } from '@/components/ui/icons';
 import type { CanvasElement, ElementType } from '../../types/element';
 import { sortElementsByLayer, moveBlockInLayerOrder, getLayerLabel, supportsLayerReorder, type ElementZIndexUpdate } from '../../utils/layerOrder';
 
@@ -39,6 +39,11 @@ const TYPE_ICONS: Record<ElementType, React.ComponentType<{ className?: string }
   gif: Play,
   hexagon: Hexagon,
   cylinder: Cylinder,
+  comment: MessagePin,
+  table: Table2,
+  kanban: FolderKanban,
+  code: Code2,
+  embed: ExternalLink,
 };
 
 const TYPE_LABELS: Partial<Record<ElementType, string>> = {
@@ -58,6 +63,11 @@ const TYPE_LABELS: Partial<Record<ElementType, string>> = {
   gif: 'GIF',
   hexagon: 'Hexágono',
   cylinder: 'Cilindro',
+  comment: 'Comentário',
+  table: 'Tabela',
+  kanban: 'Kanban',
+  code: 'Código',
+  embed: 'Link Rico',
 };
 
 // Amostra da cor de preenchimento do elemento para o chip do ícone

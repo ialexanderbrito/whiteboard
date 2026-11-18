@@ -71,6 +71,13 @@ export function getElementWorldBounds(el: CanvasElement): WorldBounds {
       w: Math.max(10, Math.abs(x2 - x1)),
       h: Math.max(10, Math.abs(y2 - y1)),
     };
+  } else if (el.type === 'comment') {
+    bounds = {
+      x: el.x,
+      y: el.y,
+      w: el.width || 38,
+      h: el.height || 38,
+    };
   } else if (el.type === 'text') {
     const fontSize = el.fontSize || 20;
     const lineCount = Math.max(1, (el.text || '').split('\n').length);

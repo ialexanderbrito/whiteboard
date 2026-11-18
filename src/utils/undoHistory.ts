@@ -143,7 +143,15 @@ export function applyPatchToState(
     if (!existing) continue;
     const fields = direction === 'undo' ? entry.before : entry.after;
     if (!fields) continue;
-    map.set(entry.id, { ...existing, ...fields });
+    const merged: Record<string, unknown> = { ...existing };
+    for (const [k, v] of Object.entries(fields)) {
+      if (v === undefined) {
+        delete merged[k];
+      } else {
+        merged[k] = v;
+      }
+    }
+    map.set(entry.id, merged as unknown as CanvasElement);
   }
 
   return Array.from(map.values());
@@ -167,16 +175,20 @@ export function shouldCoalescePatches(prev: UndoPatch, next: UndoPatch): boolean
   return true;
 }
 
-/** Funde dois patches: `before` vem do primeiro, `after` do último. */
+/** Funde dois patches contínuos: `before` preserva os valores iniciais e `after` acumula os finais. */
 export function mergePatches(prev: UndoPatch, next: UndoPatch): UndoPatch {
   const map = new Map(prev.entries.map((e) => [e.id, e] as const));
   for (const entry of next.entries) {
     const existing = map.get(entry.id);
     if (existing && existing.kind === 'modify' && entry.kind === 'modify') {
-      map.set(entry.id, { ...entry, before: existing.before, after: entry.after });
+      map.set(entry.id, {
+        ...entry,
+        before: { ...(entry.before ?? {}), ...(existing.before ?? {}) },
+        after: { ...(existing.after ?? {}), ...(entry.after ?? {}) },
+      });
     } else {
       map.set(entry.id, entry);
     }
   }
-  return { entries: Array.from(map.values()), timestamp: prev.timestamp };
+  return { entries: Array.from(map.values()), timestamp: next.timestamp };
 }
